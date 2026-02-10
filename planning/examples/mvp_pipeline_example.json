@@ -1,0 +1,41 @@
+{
+  "name": "market_analysis_mvp_v1",
+  "campaign_id": "mvp_demo_campaign",
+  "steps": [
+    {
+      "id": "market_signals",
+      "tool": "competitive_analysis",
+      "input": {
+        "topic": "freeze dried raw dog food for sensitive stomachs",
+        "max_sources": 8
+      }
+    },
+    {
+      "id": "seo_quality",
+      "tool": "seo_analyzer",
+      "input": {
+        "text": {
+          "from_step": "market_signals",
+          "path": "/signal_report_markdown"
+        },
+        "keywords": [
+          "freeze dried raw dog food",
+          "sensitive stomach",
+          "high protein"
+        ]
+      }
+    },
+    {
+      "id": "signal_chart",
+      "tool": "data_viz",
+      "input": {
+        "data": {
+          "from_step": "market_signals",
+          "path": "/keyword_frequency"
+        },
+        "chart_type": "bar",
+        "output_path": "/tmp/mvp_market_keyword_chart.png"
+      }
+    }
+  ]
+}

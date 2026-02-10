@@ -1,0 +1,5573 @@
+[
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 7,
+    "kind": "type",
+    "name": "ToolResult",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `contracts`\npurpose: Standard result alias for typed tool contracts."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 15,
+    "kind": "enum",
+    "name": "ToolErrorKind",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `contracts`\npurpose: Stable machine-readable tool error category.\ninvariants:\n- Variants are part of external API surface; changes require compatibility review."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 32,
+    "kind": "struct",
+    "name": "ToolError",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `contracts`\npurpose: Canonical error payload used across tools and runtimes.\ninvariants:\n- `message` is user-safe.\n- `retryable` indicates whether automated retry is acceptable."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 40,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 54,
+    "kind": "fn",
+    "name": "validation",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 58,
+    "kind": "fn",
+    "name": "configuration",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 62,
+    "kind": "fn",
+    "name": "provider",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 66,
+    "kind": "fn",
+    "name": "rate_limit",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 70,
+    "kind": "fn",
+    "name": "timeout",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 74,
+    "kind": "fn",
+    "name": "permission",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 78,
+    "kind": "fn",
+    "name": "internal",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 82,
+    "kind": "fn",
+    "name": "with_details",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 87,
+    "kind": "fn",
+    "name": "from_legacy_error",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 93,
+    "kind": "fn",
+    "name": "fmt",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 101,
+    "kind": "fn",
+    "name": "from",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 107,
+    "kind": "fn",
+    "name": "from",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 115,
+    "kind": "trait",
+    "name": "ToolContract",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `contracts`\npurpose: Declares a typed tool request/response contract."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 118,
+    "kind": "type",
+    "name": "Input",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 119,
+    "kind": "type",
+    "name": "Output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 126,
+    "kind": "trait",
+    "name": "TypedTool",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `contracts`\npurpose: Trait for strongly typed tool implementations."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 127,
+    "kind": "fn",
+    "name": "run_typed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 131,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/contracts.rs",
+    "line": 135,
+    "kind": "fn",
+    "name": "tool_error_builders_set_expected_values",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/data_models/design_spec.rs",
+    "line": 4,
+    "kind": "struct",
+    "name": "DesignSpecification",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/data_models/mod.rs",
+    "line": 1,
+    "kind": "mod",
+    "name": "design_spec",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/data_models/mod.rs",
+    "line": 2,
+    "kind": "mod",
+    "name": "social_media",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/data_models/social_media.rs",
+    "line": 4,
+    "kind": "struct",
+    "name": "SocialMediaPost",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/image_generator.rs",
+    "line": 27,
+    "kind": "fn",
+    "name": "generate_image",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Generates an image using the Google Gemini API.\n\nThis function sends a prompt to the \"models/nano-banana-pro-preview\" model\nvia the Gemini API, retrieves the generated image (base64 encoded),\ndecodes it, and saves it to the specified campaign directory.\n\n# Arguments\n* `prompt` - A string slice representing the prompt for image generation.\n* `campaign_dir` - A string slice representing the directory where the image will be saved.\n\n# Returns\nA `Result` which is `Ok(PathBuf)` containing the path to the saved image on success,\nor `Err(String)` containing an error message on failure."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 9,
+    "kind": "fn",
+    "name": "ensure_non_empty_trimmed",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `app_core::invariants`\npurpose: Shared invariant checks used by multiple subsystems.\ninvariants:\n- Validation helpers must return `ToolError::validation` for caller-safe failures.\n- Helpers must not perform I/O or mutate external state."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 24,
+    "kind": "fn",
+    "name": "ensure_range_usize",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `app_core::invariants`\npurpose: Enforce an inclusive numeric bound with a user-safe error.\ninvariants:\n- `name` is used directly in error messages and should be stable."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "ensure_json_pointer",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `app_core::invariants`\npurpose: Ensure JSON pointer strings are explicit and deterministic.\ninvariants:\n- JSON pointer paths must start with `/` to avoid ambiguous parsing."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 55,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 59,
+    "kind": "fn",
+    "name": "rejects_empty_string",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 65,
+    "kind": "fn",
+    "name": "validates_range",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/invariants.rs",
+    "line": 71,
+    "kind": "fn",
+    "name": "validates_json_pointer",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/legacy_adapter.rs",
+    "line": 6,
+    "kind": "fn",
+    "name": "adapt_legacy_error",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/legacy_adapter.rs",
+    "line": 50,
+    "kind": "fn",
+    "name": "run_legacy_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/legacy_adapter.rs",
+    "line": 60,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/legacy_adapter.rs",
+    "line": 64,
+    "kind": "fn",
+    "name": "maps_rate_limit_to_retryable",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 2,
+    "kind": "mod",
+    "name": "contracts",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 3,
+    "kind": "mod",
+    "name": "data_models",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 4,
+    "kind": "mod",
+    "name": "image_generator",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 5,
+    "kind": "mod",
+    "name": "invariants",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 6,
+    "kind": "mod",
+    "name": "legacy_adapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 7,
+    "kind": "mod",
+    "name": "pipeline",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 8,
+    "kind": "mod",
+    "name": "python_runner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 9,
+    "kind": "mod",
+    "name": "subsystems",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 10,
+    "kind": "mod",
+    "name": "tools",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/lib.rs",
+    "line": 11,
+    "kind": "mod",
+    "name": "utils",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 17,
+    "kind": "enum",
+    "name": "PipelineInputValue",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `pipeline`\npurpose: Declarative input value for pipeline step parameters.\ninvariants:\n- `Literal` values are passed through as-is.\n- `FromStep` references resolve only from previously completed steps."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 29,
+    "kind": "struct",
+    "name": "PipelineStep",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `pipeline`\npurpose: One executable unit in a sequential pipeline.\ninvariants:\n- `id` must be unique within a pipeline.\n- `tool` must map to an available registry entry at execution time."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 42,
+    "kind": "struct",
+    "name": "PipelineDefinition",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `pipeline`\npurpose: Full user-defined pipeline configuration.\ninvariants:\n- `steps` must be non-empty and bounded for stability.\n- references cannot point to future steps."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 50,
+    "kind": "enum",
+    "name": "PipelineStepStatus",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 57,
+    "kind": "struct",
+    "name": "PipelineStepResult",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 70,
+    "kind": "struct",
+    "name": "PipelineRunResult",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 86,
+    "kind": "fn",
+    "name": "execute_pipeline",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `pipeline`\npurpose: Execute a sequential pipeline with stop-on-failure semantics.\ninvariants:\n- Step order is deterministic (definition order).\n- A failed step terminates remaining execution.\n- Returned `steps` are prefix-complete up to failure point."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 189,
+    "kind": "fn",
+    "name": "validate_pipeline_definition",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 226,
+    "kind": "fn",
+    "name": "resolve_step_input",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 256,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 260,
+    "kind": "fn",
+    "name": "rejects_duplicate_step_ids",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 283,
+    "kind": "fn",
+    "name": "resolves_input_from_previous_step_output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 307,
+    "kind": "fn",
+    "name": "fails_when_reference_path_missing",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/pipeline.rs",
+    "line": 325,
+    "kind": "fn",
+    "name": "rejects_forward_reference",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/python_runner.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "execute_python_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Executes a Python tool via the `python_tool_dispatcher.py` script.\n\nThis function constructs and executes a command to run a Python script,\npassing the tool name and JSON-serialized parameters. It captures the\nstandard output and standard error, returning the stdout if successful,\nor an error message if the Python script fails or returns an error status.\n\n# Arguments\n* `tool_name` - The name of the Python tool to execute (e.g., \"email_sender_tool\").\n* `params` - A `serde_json::Value` containing the parameters for the tool.\n\n# Returns\nA `Result` which is `Ok(String)` containing the JSON output from the Python\nscript on success, or `Err(String)` containing an error message on failure."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/artifact_governance/mod.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "ArtifactManifestEntry",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::artifact_governance`\npurpose: Canonical artifact lineage and approval metadata contracts.\ninvariants:\n- Every production artifact includes run/source provenance.\n- Approval status is explicit and auditable."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/artifact_governance/mod.rs",
+    "line": 20,
+    "kind": "trait",
+    "name": "ArtifactGovernanceService",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::artifact_governance`\npurpose: Placeholder trait for manifest persistence and validation."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/artifact_governance/mod.rs",
+    "line": 21,
+    "kind": "fn",
+    "name": "service_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/campaign_orchestration/mod.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "CampaignRunDescriptor",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::campaign_orchestration`\npurpose: Domain contracts for campaign execution plans and run state.\ninvariants:\n- Campaign runs are immutable after completion.\n- Every run references a pipeline definition version."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/campaign_orchestration/mod.rs",
+    "line": 19,
+    "kind": "trait",
+    "name": "CampaignOrchestrator",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::campaign_orchestration`\npurpose: Placeholder orchestration trait for future campaign runtimes."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/campaign_orchestration/mod.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "orchestrator_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/marketing_data_analysis/mod.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "MarketSignalPack",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::marketing_data_analysis`\npurpose: Domain boundary for market/competitor signal extraction and interpretation.\ninvariants:\n- Raw evidence and inferred guidance are represented as separate fields.\n- Domain models remain transport-neutral and Rust-native."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/marketing_data_analysis/mod.rs",
+    "line": 19,
+    "kind": "trait",
+    "name": "MarketAnalysisService",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::marketing_data_analysis`\npurpose: Placeholder service boundary for future typed analysis APIs."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/marketing_data_analysis/mod.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "service_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/mod.rs",
+    "line": 7,
+    "kind": "mod",
+    "name": "artifact_governance",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems`\npurpose: High-level domain subsystem boundaries for long-term platform growth.\ninvariants:\n- Subsystems own domain contracts and orchestration, not UI transport.\n- Cross-subsystem calls should happen via typed contracts."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/mod.rs",
+    "line": 8,
+    "kind": "mod",
+    "name": "campaign_orchestration",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/mod.rs",
+    "line": 9,
+    "kind": "mod",
+    "name": "marketing_data_analysis",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/mod.rs",
+    "line": 10,
+    "kind": "mod",
+    "name": "provider_platform",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/mod.rs",
+    "line": 11,
+    "kind": "mod",
+    "name": "review_and_compliance",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/provider_platform/mod.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "ProviderCapability",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::provider_platform`\npurpose: Shared provider capability model and policy boundaries.\ninvariants:\n- Provider clients are configured through explicit contracts, not ad-hoc globals.\n- Retry/timeout/rate-limit policy is declared per provider class."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/provider_platform/mod.rs",
+    "line": 19,
+    "kind": "trait",
+    "name": "ProviderPlatformService",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::provider_platform`\npurpose: Placeholder trait for provider discovery and policy checks."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/provider_platform/mod.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "service_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/review_and_compliance/mod.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "ReviewDecision",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::review_and_compliance`\npurpose: Domain models for review outcomes and claim-safety checks.\ninvariants:\n- Review outcomes are explicit (`approved`, `approved_with_caveat`, `blocked`).\n- Claims must map to evidence references before approval."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/review_and_compliance/mod.rs",
+    "line": 19,
+    "kind": "trait",
+    "name": "ReviewService",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `subsystems::review_and_compliance`\npurpose: Placeholder trait for automated/manual review integration."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/subsystems/review_and_compliance/mod.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "service_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/base_tool.rs",
+    "line": 11,
+    "kind": "trait",
+    "name": "BaseTool",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tools::base_tool`\npurpose: Runtime-facing trait used by registry and Tauri execution paths.\ninvariants:\n- `name()` is stable and unique across active tools.\n- `run()` must be side-effect bounded and return deterministic schema for same input shape."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/base_tool.rs",
+    "line": 15,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tools::base_tool::name`\npurpose: Stable identifier used by registry lookup and frontend invocation."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/base_tool.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tools::base_tool::description`\npurpose: Human-readable description shown in tool discovery surfaces."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/base_tool.rs",
+    "line": 25,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tools::base_tool::is_available`\npurpose: Runtime availability check (config, credentials, environment)."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/base_tool.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tools::base_tool::run`\npurpose: Execute tool with dynamic JSON input at runtime boundary.\ninvariants:\n- Must return `Err` for invalid input instead of panicking.\n- On success, output must be JSON-serializable and schema-stable for consumers."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "CodeVerifierTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 16,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 23,
+    "kind": "fn",
+    "name": "check_command_exists",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 41,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/code_verifier.rs",
+    "line": 51,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "CompetitiveAnalysisInput",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 16,
+    "kind": "struct",
+    "name": "SearchSource",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 23,
+    "kind": "struct",
+    "name": "RecurringPhrase",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 29,
+    "kind": "struct",
+    "name": "CompetitiveSignal",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 37,
+    "kind": "struct",
+    "name": "CompetitiveAnalysisOutput",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 49,
+    "kind": "struct",
+    "name": "CompetitiveAnalysisTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 55,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 62,
+    "kind": "fn",
+    "name": "fetch_search_results",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 89,
+    "kind": "fn",
+    "name": "analyze_sources",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 127,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 131,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 135,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 139,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 164,
+    "kind": "fn",
+    "name": "parse_search_results",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 214,
+    "kind": "fn",
+    "name": "extract_keyword_frequency",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 239,
+    "kind": "fn",
+    "name": "extract_recurring_phrases",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 271,
+    "kind": "fn",
+    "name": "build_signals",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 324,
+    "kind": "fn",
+    "name": "derive_inferred_notes",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 355,
+    "kind": "fn",
+    "name": "build_signal_report_markdown",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 427,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 432,
+    "kind": "fn",
+    "name": "parses_ddg_result_html",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 450,
+    "kind": "fn",
+    "name": "builds_signal_evidence",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/competitive_analysis.rs",
+    "line": 477,
+    "kind": "fn",
+    "name": "rejects_empty_topic",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 11,
+    "kind": "fn",
+    "name": "_parse_css_from_html",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "_get_all_css_impl",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 72,
+    "kind": "struct",
+    "name": "CssAnalyzerTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 75,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 82,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 86,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 90,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 94,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 112,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 117,
+    "kind": "fn",
+    "name": "test_css_analyzer_tool_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 133,
+    "kind": "fn",
+    "name": "test_css_analyzer_tool_missing_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/css_analyzer.rs",
+    "line": 142,
+    "kind": "fn",
+    "name": "test_css_analyzer_tool_invalid_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 9,
+    "kind": "struct",
+    "name": "DataValidatorTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 15,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 25,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_validator.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 9,
+    "kind": "struct",
+    "name": "DataVizTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 15,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 25,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/data_viz.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 9,
+    "kind": "struct",
+    "name": "EmailSenderTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 12,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 16,
+    "kind": "fn",
+    "name": "get_smtp_config",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 41,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 45,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 97,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 104,
+    "kind": "struct",
+    "name": "TestEnvGuard",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 109,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 114,
+    "kind": "fn",
+    "name": "set_vars",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 122,
+    "kind": "fn",
+    "name": "drop",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 136,
+    "kind": "fn",
+    "name": "test_is_available_true",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 150,
+    "kind": "fn",
+    "name": "test_is_available_false_missing_host",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 164,
+    "kind": "fn",
+    "name": "test_is_available_false_missing_username",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 178,
+    "kind": "fn",
+    "name": "test_run_missing_to_email",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/email_sender_tool.rs",
+    "line": 208,
+    "kind": "fn",
+    "name": "test_run_success_integration",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 7,
+    "kind": "struct",
+    "name": "EventCalendarTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 10,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 15,
+    "kind": "fn",
+    "name": "_generate_mock_events",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 76,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 80,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 84,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 88,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 147,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 156,
+    "kind": "fn",
+    "name": "test_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 162,
+    "kind": "fn",
+    "name": "test_run_missing_dates",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 175,
+    "kind": "fn",
+    "name": "test_run_date_range_filtering",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 213,
+    "kind": "fn",
+    "name": "test_run_keyword_filtering",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 249,
+    "kind": "fn",
+    "name": "test_run_keyword_and_date_filtering",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/event_calendar_tool.rs",
+    "line": 270,
+    "kind": "fn",
+    "name": "test_run_invalid_date_format",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 7,
+    "kind": "struct",
+    "name": "FacebookAdapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 10,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 17,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 21,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 25,
+    "kind": "fn",
+    "name": "deploy_campaign",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 49,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 57,
+    "kind": "struct",
+    "name": "TestEnvGuard",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 62,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 67,
+    "kind": "fn",
+    "name": "set_vars",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 75,
+    "kind": "fn",
+    "name": "drop",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 89,
+    "kind": "fn",
+    "name": "test_facebook_adapter_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "test_facebook_adapter_is_available_true",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 106,
+    "kind": "fn",
+    "name": "test_facebook_adapter_is_available_false",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 114,
+    "kind": "fn",
+    "name": "test_facebook_adapter_deploy_campaign_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/facebook_adapter.rs",
+    "line": 133,
+    "kind": "fn",
+    "name": "test_facebook_adapter_deploy_campaign_failure_budget_low",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 11,
+    "kind": "struct",
+    "name": "BudgetState",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 19,
+    "kind": "struct",
+    "name": "GenerationRecord",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 27,
+    "kind": "struct",
+    "name": "ApiCosts",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 33,
+    "kind": "struct",
+    "name": "ApiCost",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 52,
+    "kind": "fn",
+    "name": "set_test_budget_file_path",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 57,
+    "kind": "fn",
+    "name": "set_test_api_costs_file_path",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 61,
+    "kind": "fn",
+    "name": "get_budget_file_path",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 74,
+    "kind": "fn",
+    "name": "get_api_costs_file_path",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "load_api_costs",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 102,
+    "kind": "fn",
+    "name": "get_budget_state",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 120,
+    "kind": "fn",
+    "name": "save_budget_state",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 127,
+    "kind": "fn",
+    "name": "check_and_update_budget",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 144,
+    "kind": "fn",
+    "name": "estimate_llm_cost",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 154,
+    "kind": "fn",
+    "name": "estimate_embedding_cost",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 163,
+    "kind": "fn",
+    "name": "can_generate",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 180,
+    "kind": "fn",
+    "name": "record_generation",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 195,
+    "kind": "fn",
+    "name": "get_budget_status",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 208,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 214,
+    "kind": "fn",
+    "name": "test_initial_budget_state",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 227,
+    "kind": "fn",
+    "name": "test_save_and_load_budget_state",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 250,
+    "kind": "fn",
+    "name": "test_can_generate_with_sufficient_budget",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 272,
+    "kind": "fn",
+    "name": "test_can_generate_with_insufficient_budget",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 294,
+    "kind": "fn",
+    "name": "test_record_generation",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/generation_budget_manager.rs",
+    "line": 319,
+    "kind": "fn",
+    "name": "test_daily_budget_reset",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 11,
+    "kind": "trait",
+    "name": "CommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 12,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 16,
+    "kind": "struct",
+    "name": "RealCommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 19,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 24,
+    "kind": "struct",
+    "name": "GifGeneratorTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "new_with_runner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "_run_ffmpeg_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Helper to run an `ffmpeg` command and return success status."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 68,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 72,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 76,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 80,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 146,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 157,
+    "kind": "struct",
+    "name": "MockCommandRunner",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 163,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 170,
+    "kind": "fn",
+    "name": "add_mock_output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 184,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 213,
+    "kind": "fn",
+    "name": "create_dummy_file",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 221,
+    "kind": "fn",
+    "name": "test_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 250,
+    "kind": "fn",
+    "name": "test_run_missing_input_images",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 266,
+    "kind": "fn",
+    "name": "test_run_missing_output_path",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 282,
+    "kind": "fn",
+    "name": "test_run_input_image_not_found",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 299,
+    "kind": "fn",
+    "name": "test_run_gif_creation_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/gif_generator_tool.rs",
+    "line": 346,
+    "kind": "fn",
+    "name": "test_run_gif_creation_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 13,
+    "kind": "struct",
+    "name": "GoogleAdsAdapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 16,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 23,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 27,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 31,
+    "kind": "fn",
+    "name": "deploy_campaign",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 45,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 49,
+    "kind": "struct",
+    "name": "TestEnvGuard",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 54,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 59,
+    "kind": "fn",
+    "name": "set_vars",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 67,
+    "kind": "fn",
+    "name": "drop",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 81,
+    "kind": "fn",
+    "name": "test_google_ads_adapter_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 87,
+    "kind": "fn",
+    "name": "test_google_ads_adapter_is_available_true",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 98,
+    "kind": "fn",
+    "name": "test_google_ads_adapter_is_available_false",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/google_ads_adapter.rs",
+    "line": 106,
+    "kind": "fn",
+    "name": "test_google_ads_adapter_deploy_campaign_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 9,
+    "kind": "fn",
+    "name": "_bundle_html_impl",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 30,
+    "kind": "struct",
+    "name": "HtmlBundlerTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 40,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 48,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 52,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 74,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 81,
+    "kind": "fn",
+    "name": "test_html_bundler_tool_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 100,
+    "kind": "fn",
+    "name": "test_html_bundler_tool_missing_path",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/html_bundler.rs",
+    "line": 109,
+    "kind": "fn",
+    "name": "test_html_bundler_tool_file_not_found",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 9,
+    "kind": "trait",
+    "name": "MemoryRetrievalToolTrait",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Trait defining the interface for a Memory Retrieval Tool.\nThis allows HumanFeedbackTool to interact with a mocked or real memory tool."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 10,
+    "kind": "fn",
+    "name": "store_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 11,
+    "kind": "fn",
+    "name": "retrieve_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 15,
+    "kind": "struct",
+    "name": "HumanFeedbackTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "A Human Feedback Tool that collects and retrieves feedback using a memory retrieval system."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 21,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Creates a new `HumanFeedbackTool` with a specific memory retrieval tool."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 30,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 34,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 38,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 42,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 87,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 94,
+    "kind": "struct",
+    "name": "MockMemoryTool",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 101,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 113,
+    "kind": "fn",
+    "name": "store_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 121,
+    "kind": "fn",
+    "name": "retrieve_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 131,
+    "kind": "fn",
+    "name": "store_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 135,
+    "kind": "fn",
+    "name": "retrieve_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 141,
+    "kind": "fn",
+    "name": "setup_human_feedback_tool",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 149,
+    "kind": "fn",
+    "name": "test_human_feedback_tool_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 155,
+    "kind": "fn",
+    "name": "test_human_feedback_tool_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 161,
+    "kind": "fn",
+    "name": "test_collect_feedback_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 184,
+    "kind": "fn",
+    "name": "test_collect_feedback_missing_feedback_document",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 204,
+    "kind": "fn",
+    "name": "test_retrieve_feedback_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 237,
+    "kind": "fn",
+    "name": "test_retrieve_feedback_missing_query",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/human_feedback_tool.rs",
+    "line": 256,
+    "kind": "fn",
+    "name": "test_invalid_action",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 11,
+    "kind": "fn",
+    "name": "generate_image",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 73,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 87,
+    "kind": "fn",
+    "name": "create_dummy_api_costs_file",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "create_dummy_budget_file",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 106,
+    "kind": "fn",
+    "name": "test_generate_image_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 163,
+    "kind": "fn",
+    "name": "test_generate_image_no_api_key",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 179,
+    "kind": "fn",
+    "name": "test_generate_image_budget_exceeded",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 207,
+    "kind": "fn",
+    "name": "test_generate_image_api_error",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_generation.rs",
+    "line": 251,
+    "kind": "fn",
+    "name": "test_generate_image_no_image_data_in_response",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 11,
+    "kind": "trait",
+    "name": "CommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 12,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 16,
+    "kind": "struct",
+    "name": "RealCommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 19,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 24,
+    "kind": "struct",
+    "name": "ImageManipulationTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "new_with_runner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "_run_magick_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Helper to run a `magick` command and return success status."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 68,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 72,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 76,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 80,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 182,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 193,
+    "kind": "struct",
+    "name": "MockCommandRunner",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 199,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 206,
+    "kind": "fn",
+    "name": "add_mock_output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 220,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 249,
+    "kind": "fn",
+    "name": "create_dummy_file",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 257,
+    "kind": "fn",
+    "name": "test_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 287,
+    "kind": "fn",
+    "name": "test_run_missing_paths",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 303,
+    "kind": "fn",
+    "name": "test_run_input_file_not_found",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 322,
+    "kind": "fn",
+    "name": "test_run_resize_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 364,
+    "kind": "fn",
+    "name": "test_run_resize_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 411,
+    "kind": "fn",
+    "name": "test_run_add_watermark_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 460,
+    "kind": "fn",
+    "name": "test_run_add_watermark_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/image_manipulation_tool.rs",
+    "line": 510,
+    "kind": "fn",
+    "name": "test_run_invalid_action",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 10,
+    "kind": "trait",
+    "name": "MarketingPlatformAdapterTrait",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Trait defining the interface for a Marketing Platform Adapter.\nConcrete adapters will implement this to deploy campaigns to specific platforms."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 11,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 12,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 13,
+    "kind": "fn",
+    "name": "deploy_campaign",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 21,
+    "kind": "struct",
+    "name": "MarketingPlatformManager",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "A Marketing Platform Manager tool that deploys campaigns to various platforms\nvia their respective adapters."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 26,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 32,
+    "kind": "fn",
+    "name": "register_adapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 38,
+    "kind": "fn",
+    "name": "_run_manager_logic",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 77,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 81,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 85,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 90,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 96,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 102,
+    "kind": "struct",
+    "name": "MockAdapter",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 109,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 122,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 125,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 128,
+    "kind": "fn",
+    "name": "deploy_campaign",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 140,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 143,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 146,
+    "kind": "fn",
+    "name": "deploy_campaign",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 156,
+    "kind": "fn",
+    "name": "test_manager_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 162,
+    "kind": "fn",
+    "name": "test_register_adapter",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 170,
+    "kind": "fn",
+    "name": "test_manager_is_available_true_one_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 178,
+    "kind": "fn",
+    "name": "test_manager_is_available_false_none_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 186,
+    "kind": "fn",
+    "name": "test_manager_is_available_false_empty_manager",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 192,
+    "kind": "fn",
+    "name": "test_run_missing_platform_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 207,
+    "kind": "fn",
+    "name": "test_run_unknown_platform",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 223,
+    "kind": "fn",
+    "name": "test_run_unavailable_platform",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 242,
+    "kind": "fn",
+    "name": "test_run_successful_deployment",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/marketing_platform_manager.rs",
+    "line": 258,
+    "kind": "fn",
+    "name": "test_run_adapter_deployment_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 17,
+    "kind": "trait",
+    "name": "ChromaCollectionTrait",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Trait defining the interface for a ChromaDB collection."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 18,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 19,
+    "kind": "fn",
+    "name": "add",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "query",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 24,
+    "kind": "struct",
+    "name": "MockChromaCollection",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Mock implementation of a ChromaDB collection."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 32,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 43,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 47,
+    "kind": "fn",
+    "name": "add",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 59,
+    "kind": "fn",
+    "name": "query",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 95,
+    "kind": "trait",
+    "name": "ChromaClientTrait",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Trait defining the interface for a ChromaDB client."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 96,
+    "kind": "fn",
+    "name": "get_or_create_collection",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 100,
+    "kind": "struct",
+    "name": "MockChromaClient",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Mock implementation of a ChromaDB client."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 105,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 113,
+    "kind": "fn",
+    "name": "get_or_create_collection",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 127,
+    "kind": "fn",
+    "name": "get_or_create_collection",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 134,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 137,
+    "kind": "fn",
+    "name": "add",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 140,
+    "kind": "fn",
+    "name": "query",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 147,
+    "kind": "struct",
+    "name": "MemoryRetrievalTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 153,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 160,
+    "kind": "fn",
+    "name": "get_collection",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 167,
+    "kind": "fn",
+    "name": "store_memory_impl",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 177,
+    "kind": "fn",
+    "name": "retrieve_memory_impl",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 210,
+    "kind": "fn",
+    "name": "store_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 214,
+    "kind": "fn",
+    "name": "retrieve_memory",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 222,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 226,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 230,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 235,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 272,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 277,
+    "kind": "fn",
+    "name": "setup_memory_retrieval_tool",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 285,
+    "kind": "fn",
+    "name": "test_memory_retrieval_tool_name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 291,
+    "kind": "fn",
+    "name": "test_memory_retrieval_tool_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 297,
+    "kind": "fn",
+    "name": "test_store_memory_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 333,
+    "kind": "fn",
+    "name": "test_store_memory_missing_document",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 351,
+    "kind": "fn",
+    "name": "test_retrieve_memory_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 392,
+    "kind": "fn",
+    "name": "test_retrieve_memory_multiple_results",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 440,
+    "kind": "fn",
+    "name": "test_retrieve_memory_missing_query",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/memory_retrieval.rs",
+    "line": 458,
+    "kind": "fn",
+    "name": "test_invalid_action",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 1,
+    "kind": "mod",
+    "name": "base_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 2,
+    "kind": "mod",
+    "name": "code_verifier",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 3,
+    "kind": "mod",
+    "name": "competitive_analysis",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 4,
+    "kind": "mod",
+    "name": "css_analyzer",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 5,
+    "kind": "mod",
+    "name": "data_validator",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 6,
+    "kind": "mod",
+    "name": "data_viz",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 7,
+    "kind": "mod",
+    "name": "email_sender_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 8,
+    "kind": "mod",
+    "name": "event_calendar_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 9,
+    "kind": "mod",
+    "name": "facebook_adapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 10,
+    "kind": "mod",
+    "name": "generation_budget_manager",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 11,
+    "kind": "mod",
+    "name": "gif_generator_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 12,
+    "kind": "mod",
+    "name": "google_ads_adapter",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 13,
+    "kind": "mod",
+    "name": "html_bundler",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 14,
+    "kind": "mod",
+    "name": "human_feedback_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 15,
+    "kind": "mod",
+    "name": "image_generation",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 16,
+    "kind": "mod",
+    "name": "image_manipulation_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 17,
+    "kind": "mod",
+    "name": "marketing_platform_manager",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 18,
+    "kind": "mod",
+    "name": "memory_retrieval",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 19,
+    "kind": "mod",
+    "name": "product_crawler",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 20,
+    "kind": "mod",
+    "name": "screenshot_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 21,
+    "kind": "mod",
+    "name": "seo_analyzer",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 22,
+    "kind": "mod",
+    "name": "tool_definition",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 23,
+    "kind": "mod",
+    "name": "tool_registry",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/mod.rs",
+    "line": 24,
+    "kind": "mod",
+    "name": "video_generator_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 13,
+    "kind": "struct",
+    "name": "ProductCrawlerInput",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 19,
+    "kind": "struct",
+    "name": "ProductEntry",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 25,
+    "kind": "struct",
+    "name": "ProductCrawlerOutput",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 32,
+    "kind": "struct",
+    "name": "ProductCrawlerContract",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 37,
+    "kind": "type",
+    "name": "Input",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 38,
+    "kind": "type",
+    "name": "Output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 41,
+    "kind": "struct",
+    "name": "ProductCrawlerTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 51,
+    "kind": "fn",
+    "name": "run_typed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 91,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 99,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 103,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 120,
+    "kind": "fn",
+    "name": "fetch_html",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 141,
+    "kind": "fn",
+    "name": "find_our_products_page",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 156,
+    "kind": "fn",
+    "name": "extract_product_links",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 185,
+    "kind": "fn",
+    "name": "product_name_from_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 208,
+    "kind": "fn",
+    "name": "build_competitive_insights",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 238,
+    "kind": "fn",
+    "name": "build_ad_angles",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 258,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 262,
+    "kind": "fn",
+    "name": "extracts_product_links_from_html",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/product_crawler.rs",
+    "line": 280,
+    "kind": "fn",
+    "name": "builds_name_from_slug",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 12,
+    "kind": "trait",
+    "name": "PlaywrightRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 13,
+    "kind": "fn",
+    "name": "take_screenshot_from_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 20,
+    "kind": "struct",
+    "name": "RealPlaywrightRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 24,
+    "kind": "fn",
+    "name": "take_screenshot_from_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 50,
+    "kind": "struct",
+    "name": "ScreenshotTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 55,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 63,
+    "kind": "fn",
+    "name": "new_with_runner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 72,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 76,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 80,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 86,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 105,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 113,
+    "kind": "struct",
+    "name": "MockPlaywrightRunner",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 118,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 128,
+    "kind": "fn",
+    "name": "take_screenshot_from_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 151,
+    "kind": "fn",
+    "name": "test_take_screenshot_success",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 174,
+    "kind": "fn",
+    "name": "test_run_missing_url",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 193,
+    "kind": "fn",
+    "name": "test_run_missing_output_path",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 208,
+    "kind": "fn",
+    "name": "test_run_playwright_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/screenshot_tool.rs",
+    "line": 230,
+    "kind": "fn",
+    "name": "test_run_file_write_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 9,
+    "kind": "struct",
+    "name": "SeoAnalyzerInput",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 15,
+    "kind": "struct",
+    "name": "SeoAnalyzerOutput",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 22,
+    "kind": "struct",
+    "name": "SeoAnalyzerContract",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 27,
+    "kind": "type",
+    "name": "Input",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 28,
+    "kind": "type",
+    "name": "Output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 32,
+    "kind": "struct",
+    "name": "SEOAnalyzerTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 38,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 48,
+    "kind": "fn",
+    "name": "run_typed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 83,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 87,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 91,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 112,
+    "kind": "fn",
+    "name": "count_words",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 116,
+    "kind": "fn",
+    "name": "count_sentences",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 120,
+    "kind": "fn",
+    "name": "count_keyword_occurrences",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 136,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 141,
+    "kind": "fn",
+    "name": "run_typed_returns_metrics",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/seo_analyzer.rs",
+    "line": 157,
+    "kind": "fn",
+    "name": "legacy_run_accepts_json_contract",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_definition.rs",
+    "line": 5,
+    "kind": "struct",
+    "name": "ParameterDefinition",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_definition.rs",
+    "line": 14,
+    "kind": "enum",
+    "name": "ToolComplexity",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_definition.rs",
+    "line": 21,
+    "kind": "struct",
+    "name": "ToolUIMetadata",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_definition.rs",
+    "line": 31,
+    "kind": "fn",
+    "name": "default",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_definition.rs",
+    "line": 44,
+    "kind": "struct",
+    "name": "ToolDefinition",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 15,
+    "kind": "struct",
+    "name": "ToolRegistry",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Manages a registry of tools, allowing them to be registered, retrieved, and their descriptions queried."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 21,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Creates a new, empty `ToolRegistry`."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 38,
+    "kind": "fn",
+    "name": "register_tool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Registers a tool with the registry.\nThe tool is moved into a `Box` to allow for dynamic dispatch."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "get_tool_instance",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Returns an instantiated tool if available and its `is_available()` method returns True.\nReturns `None` if not found or not available."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 52,
+    "kind": "fn",
+    "name": "get_available_tool_definitions",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Returns a list of `ToolDefinition` for all available tools."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 191,
+    "kind": "fn",
+    "name": "default",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 196,
+    "kind": "fn",
+    "name": "ui_metadata_for",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 257,
+    "kind": "fn",
+    "name": "input_examples_for",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 286,
+    "kind": "fn",
+    "name": "output_schema_for",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 334,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 341,
+    "kind": "struct",
+    "name": "MockToolAvailable",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 349,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 352,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 355,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 358,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 364,
+    "kind": "struct",
+    "name": "MockToolUnavailable",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 372,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 375,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 378,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 381,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 388,
+    "kind": "fn",
+    "name": "test_register_tool",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 400,
+    "kind": "fn",
+    "name": "test_get_tool_instance_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 415,
+    "kind": "fn",
+    "name": "test_get_tool_instance_unavailable",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 429,
+    "kind": "fn",
+    "name": "test_get_tool_instance_not_found",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/tool_registry.rs",
+    "line": 436,
+    "kind": "fn",
+    "name": "test_get_available_tool_descriptions",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 10,
+    "kind": "trait",
+    "name": "CommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 11,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 12,
+    "kind": "fn",
+    "name": "check_command_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 16,
+    "kind": "struct",
+    "name": "RealCommandRunner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 19,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 23,
+    "kind": "fn",
+    "name": "check_command_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 31,
+    "kind": "struct",
+    "name": "VideoGeneratorTool",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 36,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 44,
+    "kind": "fn",
+    "name": "new_with_runner",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 53,
+    "kind": "fn",
+    "name": "name",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 57,
+    "kind": "fn",
+    "name": "description",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 61,
+    "kind": "fn",
+    "name": "is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 65,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 223,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 234,
+    "kind": "struct",
+    "name": "MockCommandRunner",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 241,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 249,
+    "kind": "fn",
+    "name": "add_mock_output",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 262,
+    "kind": "fn",
+    "name": "set_command_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 271,
+    "kind": "fn",
+    "name": "run_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 298,
+    "kind": "fn",
+    "name": "check_command_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 309,
+    "kind": "fn",
+    "name": "test_is_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 322,
+    "kind": "fn",
+    "name": "test_video_generation_success_with_imagemagick",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 416,
+    "kind": "fn",
+    "name": "test_video_generation_success_without_imagemagick",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 463,
+    "kind": "fn",
+    "name": "test_run_ffmpeg_not_available",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 486,
+    "kind": "fn",
+    "name": "test_run_magick_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/tools/video_generator_tool.rs",
+    "line": 547,
+    "kind": "fn",
+    "name": "test_run_ffmpeg_failure",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 16,
+    "kind": "struct",
+    "name": "AgentDefinitionLoader",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Loads agent definition components from the file system."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 22,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Creates a new `AgentDefinitionLoader` with a specified base directory."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "_load_file_content",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Loads content from a single file, returns `None` if not found or cannot be read."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 37,
+    "kind": "fn",
+    "name": "_load_module",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Loads a specific part of an agent's definition for a given version.\nExample path: agent_definitions/StrategistAgent/v1/identity.txt"
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 48,
+    "kind": "fn",
+    "name": "get_full_agent_context",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Combines all modular parts of an agent's definition.\nBrand foundation is prioritized (loaded first)."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 89,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 95,
+    "kind": "fn",
+    "name": "create_dummy_agent_files",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 137,
+    "kind": "fn",
+    "name": "test_load_file_content",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 153,
+    "kind": "fn",
+    "name": "test_load_module",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 178,
+    "kind": "fn",
+    "name": "test_get_full_agent_context_strategist",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 197,
+    "kind": "fn",
+    "name": "test_get_full_agent_context_strategist_no_few_shot",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 215,
+    "kind": "fn",
+    "name": "test_get_full_agent_context_researcher",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 231,
+    "kind": "fn",
+    "name": "test_get_full_agent_context_missing_agent",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/agent_definition_loader.rs",
+    "line": 245,
+    "kind": "fn",
+    "name": "test_empty_base_dir",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 25,
+    "kind": "fn",
+    "name": "set_current_campaign_id",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Sets the current campaign ID for the calling thread."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 33,
+    "kind": "fn",
+    "name": "clear_current_campaign_id",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Clears the current campaign ID for the calling thread."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 43,
+    "kind": "struct",
+    "name": "JsonLogRecord",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 66,
+    "kind": "struct",
+    "name": "JsonLogger",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 70,
+    "kind": "struct",
+    "name": "KeyValueCollector",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Helper to collect key-value pairs from `log::kv::Source`"
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 73,
+    "kind": "fn",
+    "name": "visit_pair",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 82,
+    "kind": "fn",
+    "name": "enabled",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 86,
+    "kind": "fn",
+    "name": "log",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 127,
+    "kind": "fn",
+    "name": "flush",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 136,
+    "kind": "fn",
+    "name": "init_logger",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Initializes the custom JSON logger. This function should be called once at the start of the application."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 152,
+    "kind": "fn",
+    "name": "log_agent_event",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Logs an agent-specific event."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 170,
+    "kind": "fn",
+    "name": "log_llm_call",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Logs an LLM call."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 188,
+    "kind": "fn",
+    "name": "log_tool_use",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Logs a tool usage event."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 220,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/logger.rs",
+    "line": 230,
+    "kind": "fn",
+    "name": "test_logger_functionality",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/mod.rs",
+    "line": 1,
+    "kind": "mod",
+    "name": "agent_definition_loader",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/mod.rs",
+    "line": 2,
+    "kind": "mod",
+    "name": "logger",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/mod.rs",
+    "line": 3,
+    "kind": "mod",
+    "name": "scheduled_task_registry",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 10,
+    "kind": "struct",
+    "name": "ScheduledTask",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Represents a scheduled task."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 20,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Creates a new `ScheduledTask`."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 39,
+    "kind": "struct",
+    "name": "ScheduledTaskRegistry",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Manages a registry of scheduled tasks, persisting them to a JSON file."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 47,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Creates a new registry and loads tasks from the specified file."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 57,
+    "kind": "fn",
+    "name": "load_tasks",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Loads scheduled tasks from the storage file."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 75,
+    "kind": "fn",
+    "name": "save_tasks",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": "Saves scheduled tasks to the storage file."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 83,
+    "kind": "fn",
+    "name": "add_schedule",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Adds or updates a scheduled task."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 89,
+    "kind": "fn",
+    "name": "get_schedule",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Retrieves a specific scheduled task by its ID."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 94,
+    "kind": "fn",
+    "name": "get_schedules",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Retrieves a list of scheduled tasks, optionally filtered by frequency and enabled status."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 116,
+    "kind": "fn",
+    "name": "update_last_run",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Updates the `last_run` timestamp for a given task."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 135,
+    "kind": "fn",
+    "name": "remove_schedule",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": "Removes a scheduled task by its ID."
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 148,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 154,
+    "kind": "fn",
+    "name": "setup_registry",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 161,
+    "kind": "fn",
+    "name": "test_add_and_get_schedule",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 179,
+    "kind": "fn",
+    "name": "test_get_schedules_filtered",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 217,
+    "kind": "fn",
+    "name": "test_update_last_run",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 231,
+    "kind": "fn",
+    "name": "test_remove_schedule",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 243,
+    "kind": "fn",
+    "name": "test_persistence",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 280,
+    "kind": "fn",
+    "name": "test_empty_file_load",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "rustBotNetwork/app_core/src/utils/scheduled_task_registry.rs",
+    "line": 290,
+    "kind": "fn",
+    "name": "test_file_not_found",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 14,
+    "kind": "mod",
+    "name": "runtime",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 19,
+    "kind": "fn",
+    "name": "screenshot",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 29,
+    "kind": "fn",
+    "name": "analyze_css",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 39,
+    "kind": "fn",
+    "name": "bundle_html",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 54,
+    "kind": "fn",
+    "name": "get_tools",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_commands::get_tools`\npurpose: Return backend tool definitions for dynamic frontend rendering.\ninvariants:\n- Tool definitions originate from backend registry (single source of truth)."
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 65,
+    "kind": "fn",
+    "name": "run_tool",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_commands::run_tool`\npurpose: Compatibility command that runs a tool and waits for completion.\ninvariants:\n- Internally uses job manager rather than direct tool execution."
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 98,
+    "kind": "fn",
+    "name": "start_tool_job",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_commands::start_tool_job`\npurpose: Start asynchronous tool execution and return a job handle."
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 111,
+    "kind": "fn",
+    "name": "get_tool_job",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_commands::get_tool_job`\npurpose: Poll current job snapshot by id."
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 121,
+    "kind": "fn",
+    "name": "cancel_tool_job",
+    "visibility": "private",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_commands::cancel_tool_job`\npurpose: Request cancellation for a queued/running job."
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 126,
+    "kind": "fn",
+    "name": "generate_image_command",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/lib.rs",
+    "line": 139,
+    "kind": "fn",
+    "name": "run",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_app::run`\npurpose: Tauri app bootstrap and command registration.\ninvariants:\n- `JobManager` must be managed in app state before command invocation."
+  },
+  {
+    "file": "src-tauri/src/main.rs",
+    "line": 4,
+    "kind": "fn",
+    "name": "main",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 21,
+    "kind": "enum",
+    "name": "JobStatus",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_runtime::jobs`\npurpose: Canonical state machine for async tool jobs.\ninvariants:\n- Terminal states are `Succeeded`, `Failed`, `Canceled`.\n- `Succeeded` implies `output.is_some()` and `error.is_none()`.\n- `Failed`/`Canceled` imply `error.is_some()`."
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 36,
+    "kind": "struct",
+    "name": "JobSnapshot",
+    "visibility": "public",
+    "has_ndoc": true,
+    "doc": "# NDOC\ncomponent: `tauri_runtime::jobs`\npurpose: User-facing snapshot returned to frontend polling and events.\ninvariants:\n- `progress_pct` must be in `0..=100`.\n- `job_id` and `tool_name` are never empty."
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 48,
+    "kind": "struct",
+    "name": "JobHandle",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 53,
+    "kind": "struct",
+    "name": "JobManager",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 59,
+    "kind": "fn",
+    "name": "new",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 66,
+    "kind": "fn",
+    "name": "start_tool_job",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 169,
+    "kind": "fn",
+    "name": "get_job",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 176,
+    "kind": "fn",
+    "name": "cancel_job",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 210,
+    "kind": "fn",
+    "name": "wait_for_terminal_state",
+    "visibility": "public",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 240,
+    "kind": "fn",
+    "name": "is_canceled",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 247,
+    "kind": "fn",
+    "name": "update_running",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 258,
+    "kind": "fn",
+    "name": "update_succeeded",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 271,
+    "kind": "fn",
+    "name": "update_failed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 286,
+    "kind": "fn",
+    "name": "update_canceled",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 302,
+    "kind": "fn",
+    "name": "emit_progress",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 308,
+    "kind": "fn",
+    "name": "emit_completed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 314,
+    "kind": "fn",
+    "name": "emit_failed",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 320,
+    "kind": "fn",
+    "name": "assert_snapshot_invariant",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 332,
+    "kind": "fn",
+    "name": "default",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 337,
+    "kind": "fn",
+    "name": "next_job_id",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 347,
+    "kind": "fn",
+    "name": "validate_job_snapshot",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 378,
+    "kind": "mod",
+    "name": "tests",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 382,
+    "kind": "fn",
+    "name": "canceling_missing_job_returns_error",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  },
+  {
+    "file": "src-tauri/src/runtime.rs",
+    "line": 389,
+    "kind": "fn",
+    "name": "validates_snapshot_invariants",
+    "visibility": "private",
+    "has_ndoc": false,
+    "doc": ""
+  }
+]
