@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+if [[ "${SAFE_SHIP:-}" != "1" ]]; then
+  echo "Direct git commit is disabled." >&2
+  echo "Use: $ROOT/scripts/git_ship.sh -m \"your message\"" >&2
+  exit 1
+fi
+
+"$ROOT/scripts/secret_scan.sh" staged
