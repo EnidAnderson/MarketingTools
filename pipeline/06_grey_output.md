@@ -281,3 +281,60 @@ Grey completed CR-0077-BLUE by synthesizing the current usability-vs-safety wave
 - No executable edits.
 - No team authority reassignment.
 - No suppression of unresolved dependencies.
+
+---
+
+- run_id: run_2026-02-10_001
+- team_id: grey
+- timestamp_utc: 2026-02-11T00:20:00Z
+- input_refs:
+    - pipeline/03_green_output.md
+    - pipeline/06_grey_output.md
+    - data/team_ops/change_request_queue.csv
+- integrated_directive: |
+    Operator integration playbook synthesis for CR-GREEN-0015:
+    1) Phase 1: Safety floor lock
+       - Enforce fallback-state semantics (`action_blocked`, `action_limited`, `action_review_only`) with explicit non-bypass checks and escalation owner.
+    2) Phase 2: Compact-path usability
+       - Apply Green compact-path flow (5-step operator path) with mandatory trust-delta prompt at decision transitions.
+    3) Phase 3: Communication integrity
+       - Enforce fallback-state language/caveat templates so limited/review-only cannot be interpreted as approved.
+    4) Phase 4: Adversarial reinforcement
+       - Validate abuse-path controls for fallback misuse, prompt gaming, and workaround predictors.
+    5) Phase 5: QA sequencing order
+       - Sequence A: non-bypass + state transition validators.
+       - Sequence B: template/token and caveat integrity validators.
+       - Sequence C: trust-delta and workaround sentinel checks.
+- preserved_disagreements:
+    - Strict fail-closed enforcement lowers bypass risk but increases operator friction in high-pressure windows.
+    - Compact-path speed can conflict with full evidence reconciliation when delayed-conversion signals lag.
+- prioritized_requests:
+    - Dependencies to complete first for full playbook enforcement:
+      - CR-0071-BLUE
+      - CR-0072-BLUE
+      - CR-0073-BLUE
+      - CR-0074-BLUE
+      - CR-0075-BLUE
+      - CR-0076-BLUE
+- open_questions:
+    - Should `action_review_only` permit internal draft distribution by default, or require explicit owner approval?
+- references:
+    - pipeline/03_green_output.md
+    - pipeline/06_grey_output.md
+    - data/team_ops/change_request_queue.csv
+
+1. Summary (<= 300 words).
+Grey fulfilled CR-GREEN-0015 by producing a phased operator integration playbook that merges prior Grey usability-safety synthesis with Green compact-path execution. The playbook provides deterministic sequencing from safety floor to usability, communication integrity, and adversarial reinforcement, plus explicit QA implementation order.
+
+2. Numbered findings.
+1. The compact operator path is viable only when fallback states are enforced as non-bypass gates.
+2. Communication templates must be validated in-line to prevent review-only/limited states from being misread as approved.
+3. QA can implement this safely with a three-sequence rollout (state gates, language integrity, trust-delta safeguards).
+
+3. Open questions (if any).
+- Should draft-only internal sharing be allowed for `action_review_only` without escalation?
+
+4. Explicit non-goals.
+- No executable edits.
+- No authority model changes.
+- No suppression of unresolved dependencies.

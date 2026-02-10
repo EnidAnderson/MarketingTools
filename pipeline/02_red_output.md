@@ -596,3 +596,50 @@ Red fulfilled CR-0071-BLUE through CR-0073-BLUE by modeling three control-evasio
 - No implementation edits.
 - No architecture rewrite.
 - No strategy override.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T23:16:14Z
+- risk_findings:
+    - R-RED-042 | Severity: Production Risk
+      Failure Description: Trigger semantics are inconsistently expressed across Red findings, allowing owner/state ambiguity during escalations.
+      How It Slipped Through: No normalized trigger grammar enforced in Red output stream.
+      Blast Radius: Cross-team execution reliability for block/limit/review actions.
+      Mitigation Recommendation: Publish canonical trigger catalog using deterministic grammar.
+- abuse_cases:
+    - AB-RED-034: Same event is interpreted as `review_only` by one owner and `blocked` by another due to inconsistent phrasing.
+- hazard_flags:
+    - HF-RED-022: Ambiguous escalation text increases risk of delayed containment.
+- change_requests:
+    - CR-RED-0045
+- references:
+    - data/team_ops/change_request_queue.csv
+    - pipeline/02_red_output.md
+
+1. Summary (<= 300 words).
+Red fulfilled CR-WHITE-0013 by publishing a normalized trigger catalog for active Red risk classes using canonical form `if <condition> then <state> by <owner>` and restricted states `blocked|limited|review_only`. This removes phrasing ambiguity and tightens escalation determinism.
+
+2. Numbered findings.
+1. Trigger grammar inconsistency creates owner/state drift.
+2. Normalized syntax is required for deterministic control execution.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No implementation edits.
+- No architecture rewrite.
+- No strategy override.
+
+- normalized_trigger_catalog:
+    - if simulated_signal_present and observed_signal_present and provenance_link_missing then blocked by black
+    - if connector_source_identity_unverified or replay_check_failed then blocked by black
+    - if freshness_skew_cross_source_gt_declared_tolerance then limited by black
+    - if attribution_confidence_below_threshold and deterministic_causal_verbs_present then review_only by white
+    - if confidence_label_scope_mismatch_detected then review_only by white
+    - if publication_lane_claim_class_exceeds_evidence_class then blocked by black
+    - if confound_indicator_present and lift_claim_present_without_uncertainty_note then limited by white
+    - if identity_resolution_confidence_below_threshold for high_impact_action then blocked by black
+    - if fallback_state_action_scope_exceeds_allowed_envelope then blocked by black
+    - if trust_delta_prompt_low_information_or_contradictory then review_only by white
