@@ -1,0 +1,8 @@
+team_id,team_name,phase_order,can_edit_code,can_edit_config,can_edit_schema,primary_authority,output_file
+blue,Team Blue,1,false,false,false,strategy_and_intent,pipeline/01_blue_output.md
+red,Team Red,2,false,false,false,risk_and_failure,pipeline/02_red_output.md
+green,Team Green,3,false,false,false,growth_and_ux,pipeline/03_green_output.md
+black,Team Black,4,false,false,false,constraints_and_reality,pipeline/04_black_output.md
+white,Team White,5,false,false,false,accuracy_and_definitions,pipeline/05_white_output.md
+grey,Team Grey,6,false,false,false,synthesis_and_mediation,pipeline/06_grey_output.md
+qa_fixer,QA Fixer,7,true,true,true,implementation_and_verification,pipeline/07_qa_fix_log.md

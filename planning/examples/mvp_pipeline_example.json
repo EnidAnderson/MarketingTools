@@ -1,6 +1,7 @@
 {
   "name": "market_analysis_mvp_v1",
   "campaign_id": "mvp_demo_campaign",
+  "output_manifest_path": "/tmp/mvp_pipeline_run.json",
   "steps": [
     {
       "id": "market_signals",

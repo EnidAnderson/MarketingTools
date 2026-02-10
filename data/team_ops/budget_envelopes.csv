@@ -1,0 +1,2 @@
+run_id,workflow_id,subsystem,per_run_cap_usd,daily_cap_usd,monthly_cap_usd,fallback_mode,owner_role,declared_utc
+run_2026-02-10_001,colored_pipeline,campaign_orchestration,150.00,500.00,4000.00,reduced_scope,team_lead,2026-02-10T23:18:00Z

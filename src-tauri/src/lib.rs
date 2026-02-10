@@ -21,6 +21,39 @@ use governance::{
 use runtime::{JobHandle, JobManager, JobSnapshot};
 use std::time::Duration;
 
+fn validate_governed_pipeline_contract(definition: &PipelineDefinition) -> Result<(), String> {
+    let Some(refs) = definition.governance_refs.as_ref() else {
+        return Err(
+            "governed pipeline requires definition.governance_refs with budget/release/provenance references"
+                .to_string(),
+        );
+    };
+
+    if refs.budget_envelope_ref.trim().is_empty() {
+        return Err("governed pipeline requires non-empty governance_refs.budget_envelope_ref".to_string());
+    }
+    if refs.release_gate_log_ref.trim().is_empty() {
+        return Err("governed pipeline requires non-empty governance_refs.release_gate_log_ref".to_string());
+    }
+
+    let has_change_request = refs
+        .change_request_ids
+        .iter()
+        .any(|value| !value.trim().is_empty());
+    let has_decision = refs
+        .decision_ids
+        .iter()
+        .any(|value| !value.trim().is_empty());
+    if !has_change_request && !has_decision {
+        return Err(
+            "governed pipeline requires at least one non-empty change_request_id or decision_id"
+                .to_string(),
+        );
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn screenshot(url: String) -> Result<Value, String> {
     let tool = ScreenshotTool::new();
@@ -168,6 +201,8 @@ fn start_pipeline_job_governed(
     budget: BudgetEnvelope,
     gates: ReleaseGateInput,
 ) -> Result<JobHandle, String> {
+    validate_governed_pipeline_contract(&definition)?;
+
     let budget_validation = validate_budget_envelope(&budget);
     if !budget_validation.ok {
         return Err(format!(

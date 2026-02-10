@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Change Request",
+  "type": "object",
+  "required": ["request_id", "source_team", "priority", "statement", "acceptance_criteria"],
+  "properties": {
+    "request_id": { "type": "string", "pattern": "^CR-(BLUE|RED|GREEN|BLACK|WHITE|GREY)-[0-9]{4}$" },
+    "source_team": {
+      "type": "string",
+      "enum": ["blue", "red", "green", "black", "white", "grey"]
+    },
+    "priority": { "type": "string", "enum": ["P0", "P1", "P2"] },
+    "statement": { "type": "string", "minLength": 1 },
+    "acceptance_criteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

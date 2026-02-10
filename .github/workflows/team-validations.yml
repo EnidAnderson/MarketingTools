@@ -1,0 +1,36 @@
+# provenance: decision_id=DEC-0001; change_request_id=RQ-033
+name: Team Validations
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  validate-team-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make scripts executable
+        run: chmod +x teams/_validation/*.sh
+
+      - name: Run team validations
+        run: |
+          BASE_REF="HEAD"
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            BASE_REF="HEAD~1"
+          fi
+          bash teams/_validation/run_all_validations.sh "$BASE_REF"
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: team-validation-report
+          path: teams/_validation/validation_report.json

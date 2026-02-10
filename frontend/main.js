@@ -64,13 +64,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 parameters: [
                     { name: 'topic', type: 'string', optional: false, description: 'Market analysis topic query.' },
                     { name: 'max_sources', type: 'number', optional: true, description: 'Maximum sources to analyze (3-20).' },
-                    { name: 'chart_output_path', type: 'string', optional: false, description: 'Absolute path for generated chart output.' }
+                    { name: 'chart_output_path', type: 'string', optional: false, description: 'Absolute path for generated chart output.' },
+                    { name: 'pipeline_manifest_path', type: 'string', optional: false, description: 'Absolute path for pipeline run manifest JSON.' }
                 ],
                 input_examples: [
                     {
                         topic: 'freeze dried raw dog food for sensitive stomachs',
                         max_sources: 8,
-                        chart_output_path: '/tmp/mvp_market_keyword_chart.png'
+                        chart_output_path: '/tmp/mvp_market_keyword_chart.png',
+                        pipeline_manifest_path: '/tmp/mvp_pipeline_run.json'
                     }
                 ]
             },
@@ -388,10 +390,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const maxSources = Number.isFinite(maxSourcesRaw) ? Math.max(3, Math.min(20, maxSourcesRaw)) : 8;
         const topic = params.topic;
         const chartOutputPath = params.chart_output_path;
+        const manifestPath = params.pipeline_manifest_path;
 
         return {
             name: 'market_analysis_mvp_v1',
             campaign_id: 'frontend_mvp_pipeline',
+            output_manifest_path: manifestPath,
             steps: [
                 {
                     id: 'market_signals',

@@ -3,6 +3,7 @@ use app_core::pipeline::{execute_pipeline, PipelineDefinition};
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -207,6 +208,7 @@ impl JobManager {
         let manager = self.clone();
         let app_handle = app_handle.clone();
         let spawned_job_id = job_id.clone();
+        let manifest_path = definition.output_manifest_path.clone();
         tauri::async_runtime::spawn(async move {
             manager.update_running(&spawned_job_id);
             manager.assert_snapshot_invariant(&spawned_job_id);
@@ -228,6 +230,21 @@ impl JobManager {
                     } else {
                         match serde_json::to_value(result) {
                             Ok(output) => {
+                                if let Some(path) = manifest_path.as_deref() {
+                                    if let Err(err) = write_pipeline_manifest(path, &output) {
+                                        manager.update_failed(
+                                            &spawned_job_id,
+                                            serde_json::json!({
+                                                "kind": "internal_error",
+                                                "message": format!("Failed to write pipeline manifest: {}", err),
+                                                "retryable": false
+                                            }),
+                                        );
+                                        manager.assert_snapshot_invariant(&spawned_job_id);
+                                        manager.emit_failed(&app_handle, &spawned_job_id);
+                                        return;
+                                    }
+                                }
                                 manager.update_succeeded(&spawned_job_id, output);
                                 manager.assert_snapshot_invariant(&spawned_job_id);
                                 manager.emit_completed(&app_handle, &spawned_job_id);
@@ -471,6 +488,18 @@ fn validate_job_snapshot(snapshot: &JobSnapshot) -> Result<(), String> {
         }
         JobStatus::Queued | JobStatus::Running => {}
     }
+    Ok(())
+}
+
+fn write_pipeline_manifest(path: &str, output: &Value) -> Result<(), String> {
+    let manifest = serde_json::to_string_pretty(output).map_err(|e| e.to_string())?;
+    let manifest_path = std::path::Path::new(path);
+    if let Some(parent) = manifest_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+    }
+    fs::write(manifest_path, manifest).map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -42,7 +42,26 @@ pub struct PipelineStep {
 pub struct PipelineDefinition {
     pub name: String,
     pub campaign_id: Option<String>,
+    pub output_manifest_path: Option<String>,
+    #[serde(default)]
+    pub governance_refs: Option<PipelineGovernanceRefs>,
     pub steps: Vec<PipelineStep>,
+}
+
+/// # NDOC
+/// component: `pipeline::governance_refs`
+/// purpose: Optional provenance/evidence references attached to a pipeline run.
+/// invariants:
+///   - If present, `budget_envelope_ref` and `release_gate_log_ref` are non-empty.
+///   - At least one of `change_request_ids` or `decision_ids` is non-empty.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipelineGovernanceRefs {
+    pub budget_envelope_ref: String,
+    pub release_gate_log_ref: String,
+    #[serde(default)]
+    pub change_request_ids: Vec<String>,
+    #[serde(default)]
+    pub decision_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +89,7 @@ pub struct PipelineStepResult {
 pub struct PipelineRunResult {
     pub pipeline_name: String,
     pub campaign_id: Option<String>,
+    pub governance_refs: Option<PipelineGovernanceRefs>,
     pub started_at: String,
     pub finished_at: String,
     pub succeeded: bool,
@@ -179,6 +199,7 @@ pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<Pipeline
     Ok(PipelineRunResult {
         pipeline_name: definition.name,
         campaign_id: definition.campaign_id,
+        governance_refs: definition.governance_refs,
         started_at: run_started.to_rfc3339(),
         finished_at: Utc::now().to_rfc3339(),
         succeeded: run_succeeded,
@@ -192,6 +213,9 @@ fn validate_pipeline_definition(definition: &PipelineDefinition) -> Result<(), T
         return Err(ToolError::validation("pipeline must include at least one step"));
     }
     ensure_range_usize(definition.steps.len(), 1, 50, "steps.len")?;
+    if let Some(refs) = &definition.governance_refs {
+        validate_governance_refs(refs)?;
+    }
 
     let mut ids = HashSet::new();
     for (idx, step) in definition.steps.iter().enumerate() {
@@ -219,6 +243,23 @@ fn validate_pipeline_definition(definition: &PipelineDefinition) -> Result<(), T
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_governance_refs(refs: &PipelineGovernanceRefs) -> Result<(), ToolError> {
+    ensure_non_empty_trimmed(&refs.budget_envelope_ref, "governance_refs.budget_envelope_ref")?;
+    ensure_non_empty_trimmed(&refs.release_gate_log_ref, "governance_refs.release_gate_log_ref")?;
+
+    let has_change_request = refs
+        .change_request_ids
+        .iter()
+        .any(|v| !v.trim().is_empty());
+    let has_decision = refs.decision_ids.iter().any(|v| !v.trim().is_empty());
+    if !has_change_request && !has_decision {
+        return Err(ToolError::validation(
+            "governance_refs requires at least one non-empty change_request_id or decision_id",
+        ));
     }
     Ok(())
 }
@@ -261,6 +302,8 @@ mod tests {
         let definition = PipelineDefinition {
             name: "dup-ids".to_string(),
             campaign_id: None,
+            output_manifest_path: None,
+            governance_refs: None,
             steps: vec![
                 PipelineStep {
                     id: "step1".to_string(),
@@ -335,6 +378,8 @@ mod tests {
         let definition = PipelineDefinition {
             name: "forward-ref".to_string(),
             campaign_id: None,
+            output_manifest_path: None,
+            governance_refs: None,
             steps: vec![
                 PipelineStep {
                     id: "first".to_string(),
@@ -356,5 +401,28 @@ mod tests {
 
         let err = validate_pipeline_definition(&definition).expect_err("must fail");
         assert!(err.message.contains("before it exists"));
+    }
+
+    #[test]
+    fn rejects_governance_refs_without_provenance_ids() {
+        let definition = PipelineDefinition {
+            name: "gov-refs-missing-ids".to_string(),
+            campaign_id: None,
+            output_manifest_path: None,
+            governance_refs: Some(PipelineGovernanceRefs {
+                budget_envelope_ref: "data/team_ops/budget_envelopes.csv#run_1".to_string(),
+                release_gate_log_ref: "planning/reports/RELEASE_GATE_LOG.csv#rel_1".to_string(),
+                change_request_ids: vec![],
+                decision_ids: vec![],
+            }),
+            steps: vec![PipelineStep {
+                id: "first".to_string(),
+                tool: "seo_analyzer".to_string(),
+                input: HashMap::new(),
+            }],
+        };
+
+        let err = validate_pipeline_definition(&definition).expect_err("must fail");
+        assert!(err.message.contains("requires at least one non-empty change_request_id"));
     }
 }

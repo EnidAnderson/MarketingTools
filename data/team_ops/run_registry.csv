@@ -1,0 +1,3 @@
+run_id,created_utc,status,current_phase,owner,summary,supersedes_run_id
+run_2026-02-10_001,2026-02-10T22:35:20Z,active,black,team_lead,green outstanding requests completed; handoff advanced to black,run_2026-02-10_001
+run_2026-02-10_001,2026-02-10T22:45:06Z,completed,qa_fixer,qa_fixer,grey synthesis and qa control bundle completed; open requests superseded,run_2026-02-10_001

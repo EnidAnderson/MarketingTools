@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Team Handoff Payload",
+  "type": "object",
+  "required": [
+    "run_id",
+    "team_id",
+    "input_refs",
+    "output_summary",
+    "change_requests",
+    "risks_or_open_questions",
+    "done_criteria",
+    "timestamp_utc"
+  ],
+  "properties": {
+    "run_id": { "type": "string", "minLength": 1 },
+    "team_id": {
+      "type": "string",
+      "enum": ["blue", "red", "green", "black", "white", "grey", "qa_fixer"]
+    },
+    "input_refs": { "type": "array", "items": { "type": "string" } },
+    "output_summary": { "type": "string", "minLength": 1 },
+    "change_requests": { "type": "array", "items": { "type": "string" } },
+    "risks_or_open_questions": { "type": "array", "items": { "type": "string" } },
+    "done_criteria": { "type": "array", "items": { "type": "string" } },
+    "timestamp_utc": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

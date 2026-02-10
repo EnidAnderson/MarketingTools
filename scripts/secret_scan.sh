@@ -22,13 +22,36 @@ run_scan() {
   local raw=""
 
   if [[ "$scope" == "tracked" ]]; then
-    raw="$(git grep -nI -E "$SECRET_PATTERN" -- . 2>/dev/null || true)"
+    local tracked_hits=""
+    while IFS= read -r -d '' file; do
+      [[ -f "$file" ]] || continue
+      local file_hits
+      file_hits="$(rg -n -I -e "$SECRET_PATTERN" -- "$file" 2>/dev/null || true)"
+      if [[ -n "$file_hits" ]]; then
+        tracked_hits+="$file_hits"$'\n'
+      fi
+    done < <(git ls-files -z)
+    raw="$tracked_hits"
   else
     if git diff --cached --quiet; then
       echo "No staged changes to scan."
       return 0
     fi
-    raw="$(git grep -nI --cached -E "$SECRET_PATTERN" -- . 2>/dev/null || true)"
+    local staged_hits=""
+    while IFS= read -r -d '' file; do
+      local content
+      content="$(git show ":$file" 2>/dev/null || true)"
+      [[ -n "$content" ]] || continue
+
+      local blob_hits
+      blob_hits="$(printf '%s' "$content" | rg -n -I -e "$SECRET_PATTERN" 2>/dev/null || true)"
+      if [[ -n "$blob_hits" ]]; then
+        while IFS= read -r line; do
+          staged_hits+="${file}:${line}"$'\n'
+        done <<< "$blob_hits"
+      fi
+    done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+    raw="$staged_hits"
   fi
 
   if [[ -z "$raw" ]]; then

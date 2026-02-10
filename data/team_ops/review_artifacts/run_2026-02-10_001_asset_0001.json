@@ -1,0 +1,45 @@
+{
+  "run_id": "run_2026-02-10_001",
+  "artifact_id": "asset_0001",
+  "mode_label": "approved",
+  "confidence_label": "medium",
+  "prompt_version": "pv1.4",
+  "model_version": "gpt-5-codex-2026-02",
+  "source_input_hash": "9f1d3c8ab77d1a2c",
+  "editor_log": [
+    {
+      "editor": "qa_fixer",
+      "timestamp_utc": "2026-02-10T23:20:00Z",
+      "change_note": "Applied lexical and metadata contract checks before approval."
+    }
+  ],
+  "approval_timestamp_utc": "2026-02-10T23:22:00Z",
+  "evidence_caveat_map": [
+    {
+      "claim_id": "claim_001",
+      "evidence_ref": "planning/RAPID_REVIEW_CELL/logs/EVIDENCE_SUPPORT.csv",
+      "caveat": "May support digestion for some pets; not therapeutic guidance."
+    }
+  ],
+  "provenance_bundle": {
+    "prompt_version": "pv1.4",
+    "model_version": "gpt-5-codex-2026-02",
+    "source_input_hash": "9f1d3c8ab77d1a2c",
+    "editor_log_ref": "data/team_ops/review_artifacts/run_2026-02-10_001_asset_0001.json"
+  },
+  "white_lexicon_version": "v1",
+  "bounded_claim_class": "educational_qualified",
+  "prohibited_implication_scan": {
+    "hits": 0
+  },
+  "lexical_hard_fail_count": 0,
+  "ws_fail_state_checks": {
+    "WS-FS-001": false,
+    "WS-FS-002": false,
+    "WS-FS-003": false
+  },
+  "superseded_ids": [
+    "CR-0011",
+    "CR-0012"
+  ]
+}
