@@ -1,4 +1,5 @@
 use app_core::image_generator::generate_image;
+use app_core::pipeline::PipelineDefinition;
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
@@ -105,6 +106,54 @@ fn start_tool_job(
 }
 
 /// # NDOC
+/// component: `tauri_commands::start_pipeline_job`
+/// purpose: Start asynchronous pipeline execution and return a job handle.
+/// invariants:
+///   - Pipeline lifecycle is managed by the same JobManager used for tool jobs.
+#[tauri::command]
+fn start_pipeline_job(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    definition: PipelineDefinition,
+) -> Result<JobHandle, String> {
+    state.start_pipeline_job(&app_handle, definition)
+}
+
+/// # NDOC
+/// component: `tauri_commands::run_pipeline`
+/// purpose: Compatibility command that starts and waits for a pipeline run.
+/// invariants:
+///   - Uses `start_pipeline_job` + terminal wait for consistent behavior.
+#[tauri::command]
+async fn run_pipeline(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    definition: PipelineDefinition,
+) -> Result<Value, String> {
+    let handle = state.start_pipeline_job(&app_handle, definition)?;
+    let snapshot = state
+        .wait_for_terminal_state(&handle.job_id, Duration::from_secs(180))
+        .await?;
+
+    match snapshot.status {
+        runtime::JobStatus::Succeeded => snapshot
+            .output
+            .ok_or_else(|| "Completed pipeline job missing output payload.".to_string()),
+        runtime::JobStatus::Failed => {
+            let message = snapshot
+                .error
+                .as_ref()
+                .and_then(|e| e.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("Pipeline job failed");
+            Err(message.to_string())
+        }
+        runtime::JobStatus::Canceled => Err("Pipeline job canceled".to_string()),
+        _ => Err("Pipeline job did not reach terminal state.".to_string()),
+    }
+}
+
+/// # NDOC
 /// component: `tauri_commands::get_tool_job`
 /// purpose: Poll current job snapshot by id.
 #[tauri::command]
@@ -158,6 +207,8 @@ pub fn run() {
             get_tools,
             run_tool,
             start_tool_job,
+            start_pipeline_job,
+            run_pipeline,
             get_tool_job,
             cancel_tool_job,
             generate_image_command

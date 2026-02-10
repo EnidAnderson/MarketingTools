@@ -1,4 +1,5 @@
 use app_core::legacy_adapter::adapt_legacy_error;
+use app_core::pipeline::{execute_pipeline, PipelineDefinition};
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -155,6 +156,105 @@ impl JobManager {
                             "message": mapped.message,
                             "retryable": mapped.retryable,
                             "details": mapped.details
+                        }),
+                    );
+                    manager.assert_snapshot_invariant(&spawned_job_id);
+                    manager.emit_failed(&app_handle, &spawned_job_id);
+                }
+            }
+        });
+
+        Ok(JobHandle { job_id })
+    }
+
+    /// # NDOC
+    /// component: `tauri_runtime::jobs::start_pipeline_job`
+    /// purpose: Start asynchronous pipeline execution as a managed job.
+    /// invariants:
+    ///   - Uses the same snapshot state machine as tool jobs.
+    ///   - `tool_name` field stores `pipeline::<pipeline_name>` for UI compatibility.
+    pub fn start_pipeline_job(
+        &self,
+        app_handle: &AppHandle,
+        definition: PipelineDefinition,
+    ) -> Result<JobHandle, String> {
+        if definition.name.trim().is_empty() {
+            return Err("pipeline name cannot be empty".to_string());
+        }
+
+        let job_id = next_job_id();
+        let snapshot = JobSnapshot {
+            job_id: job_id.clone(),
+            tool_name: format!("pipeline::{}", definition.name),
+            status: JobStatus::Queued,
+            progress_pct: 0,
+            stage: "queued".to_string(),
+            message: Some("Pipeline job accepted".to_string()),
+            output: None,
+            error: None,
+        };
+
+        {
+            let mut jobs = self
+                .jobs
+                .write()
+                .map_err(|_| "Failed to acquire write lock for jobs".to_string())?;
+            jobs.insert(job_id.clone(), snapshot);
+        }
+        self.assert_snapshot_invariant(&job_id);
+        self.emit_progress(app_handle, &job_id);
+
+        let manager = self.clone();
+        let app_handle = app_handle.clone();
+        let spawned_job_id = job_id.clone();
+        tauri::async_runtime::spawn(async move {
+            manager.update_running(&spawned_job_id);
+            manager.assert_snapshot_invariant(&spawned_job_id);
+            manager.emit_progress(&app_handle, &spawned_job_id);
+
+            if manager.is_canceled(&spawned_job_id) {
+                manager.update_canceled(&spawned_job_id, "Pipeline canceled before execution");
+                manager.assert_snapshot_invariant(&spawned_job_id);
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+
+            match execute_pipeline(definition).await {
+                Ok(result) => {
+                    if manager.is_canceled(&spawned_job_id) {
+                        manager.update_canceled(&spawned_job_id, "Pipeline canceled during execution");
+                        manager.assert_snapshot_invariant(&spawned_job_id);
+                        manager.emit_failed(&app_handle, &spawned_job_id);
+                    } else {
+                        match serde_json::to_value(result) {
+                            Ok(output) => {
+                                manager.update_succeeded(&spawned_job_id, output);
+                                manager.assert_snapshot_invariant(&spawned_job_id);
+                                manager.emit_completed(&app_handle, &spawned_job_id);
+                            }
+                            Err(err) => {
+                                manager.update_failed(
+                                    &spawned_job_id,
+                                    serde_json::json!({
+                                        "kind": "internal_error",
+                                        "message": format!("Failed to serialize pipeline result: {}", err),
+                                        "retryable": false
+                                    }),
+                                );
+                                manager.assert_snapshot_invariant(&spawned_job_id);
+                                manager.emit_failed(&app_handle, &spawned_job_id);
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    manager.update_failed(
+                        &spawned_job_id,
+                        serde_json::json!({
+                            "kind": format!("{:?}", err.kind),
+                            "message": err.message,
+                            "retryable": err.retryable,
+                            "details": err.details
                         }),
                     );
                     manager.assert_snapshot_invariant(&spawned_job_id);

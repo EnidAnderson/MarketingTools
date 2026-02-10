@@ -1,0 +1,17 @@
+langchain
+langchain-community
+langgraph
+langchain-google-genai
+google-genai
+chromadb
+python-dotenv
+beautifulsoup4
+lxml
+unstructured
+markdown
+stability-sdk
+playwright
+Pillow
+numpy
+mypy
+pydantic

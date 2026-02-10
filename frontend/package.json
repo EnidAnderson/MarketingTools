@@ -1,0 +1,18 @@
+{
+  "name": "webassets",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "dev": "live-server . --port=3000 --no-browser --no-open",
+    "build": "echo 'No build step required for vanilla JS frontend.'",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "live-server": "^1.2.2"
+  }
+}

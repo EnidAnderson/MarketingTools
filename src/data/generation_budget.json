@@ -1,0 +1,1606 @@
+{
+    "daily_spend": 0.753659375,
+    "daily_resets_on": "2026-01-31",
+    "generations": [
+        {
+            "timestamp": "2026-01-26T22:24:58.156826",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:25:14.539934",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:25:31.431459",
+            "tool": "CopywriterAgent",
+            "cost": 0.0087746875
+        },
+        {
+            "timestamp": "2026-01-26T22:25:59.666533",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.014728437500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:26:22.642992",
+            "tool": "CriticAgent",
+            "cost": 0.0136484375
+        },
+        {
+            "timestamp": "2026-01-26T22:26:46.999297",
+            "tool": "CopywriterAgent",
+            "cost": 0.012741250000000003
+        },
+        {
+            "timestamp": "2026-01-26T22:27:18.442513",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016532500000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:27:45.008472",
+            "tool": "CriticAgent",
+            "cost": 0.014523125000000001
+        },
+        {
+            "timestamp": "2026-01-26T22:28:05.983464",
+            "tool": "CopywriterAgent",
+            "cost": 0.010661875000000001
+        },
+        {
+            "timestamp": "2026-01-26T22:28:34.519455",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016580625
+        },
+        {
+            "timestamp": "2026-01-26T22:29:00.234381",
+            "tool": "CriticAgent",
+            "cost": 0.014979062500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:29:22.752496",
+            "tool": "CopywriterAgent",
+            "cost": 0.012625
+        },
+        {
+            "timestamp": "2026-01-26T22:29:52.659944",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.017161250000000003
+        },
+        {
+            "timestamp": "2026-01-26T22:30:14.964813",
+            "tool": "CriticAgent",
+            "cost": 0.011484375
+        },
+        {
+            "timestamp": "2026-01-26T22:30:30.288418",
+            "tool": "CopywriterAgent",
+            "cost": 0.01073625
+        },
+        {
+            "timestamp": "2026-01-26T22:30:58.992462",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0157825
+        },
+        {
+            "timestamp": "2026-01-26T22:31:22.689129",
+            "tool": "CriticAgent",
+            "cost": 0.012699375000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:31:36.657219",
+            "tool": "stability-sdk",
+            "cost": 0.009
+        },
+        {
+            "timestamp": "2026-01-26T22:32:34.754831",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:32:54.854046",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:33:19.619009",
+            "tool": "CopywriterAgent",
+            "cost": 0.0100790625
+        },
+        {
+            "timestamp": "2026-01-26T22:33:43.338974",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.014447812500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:34:09.650204",
+            "tool": "CriticAgent",
+            "cost": 0.0169665625
+        },
+        {
+            "timestamp": "2026-01-26T22:34:31.041170",
+            "tool": "CopywriterAgent",
+            "cost": 0.010512812500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:35:02.595417",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0180940625
+        },
+        {
+            "timestamp": "2026-01-26T22:35:24.921744",
+            "tool": "CriticAgent",
+            "cost": 0.014835000000000001
+        },
+        {
+            "timestamp": "2026-01-26T22:35:40.880108",
+            "tool": "CopywriterAgent",
+            "cost": 0.010684375000000001
+        },
+        {
+            "timestamp": "2026-01-26T22:36:11.308538",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016565625
+        },
+        {
+            "timestamp": "2026-01-26T22:36:32.839504",
+            "tool": "CriticAgent",
+            "cost": 0.0135925
+        },
+        {
+            "timestamp": "2026-01-26T22:37:01.696322",
+            "tool": "CopywriterAgent",
+            "cost": 0.017721562500000003
+        },
+        {
+            "timestamp": "2026-01-26T22:37:31.097836",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0173728125
+        },
+        {
+            "timestamp": "2026-01-26T22:37:52.989243",
+            "tool": "CriticAgent",
+            "cost": 0.01615875
+        },
+        {
+            "timestamp": "2026-01-26T22:38:18.598947",
+            "tool": "CopywriterAgent",
+            "cost": 0.0146128125
+        },
+        {
+            "timestamp": "2026-01-26T22:38:46.133057",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016596562500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:39:08.576749",
+            "tool": "CriticAgent",
+            "cost": 0.0159921875
+        },
+        {
+            "timestamp": "2026-01-26T22:39:21.075125",
+            "tool": "stability-sdk",
+            "cost": 0.009
+        },
+        {
+            "timestamp": "2026-01-26T22:40:18.901677",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:40:40.889272",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:41:05.506696",
+            "tool": "CopywriterAgent",
+            "cost": 0.0133078125
+        },
+        {
+            "timestamp": "2026-01-26T22:41:40.579074",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.021474062500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:42:07.429880",
+            "tool": "CriticAgent",
+            "cost": 0.01996125
+        },
+        {
+            "timestamp": "2026-01-26T22:42:30.894497",
+            "tool": "CopywriterAgent",
+            "cost": 0.013518437500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:43:07.149982",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.025047187500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:43:33.673102",
+            "tool": "CriticAgent",
+            "cost": 0.0162490625
+        },
+        {
+            "timestamp": "2026-01-26T22:43:56.606553",
+            "tool": "CopywriterAgent",
+            "cost": 0.0160375
+        },
+        {
+            "timestamp": "2026-01-26T22:44:28.348793",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.019786250000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:44:58.775514",
+            "tool": "CriticAgent",
+            "cost": 0.0199128125
+        },
+        {
+            "timestamp": "2026-01-26T22:45:24.307662",
+            "tool": "CopywriterAgent",
+            "cost": 0.01466625
+        },
+        {
+            "timestamp": "2026-01-26T22:45:58.472308",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0241675
+        },
+        {
+            "timestamp": "2026-01-26T22:46:27.748721",
+            "tool": "CriticAgent",
+            "cost": 0.015367500000000003
+        },
+        {
+            "timestamp": "2026-01-26T22:46:47.143219",
+            "tool": "CopywriterAgent",
+            "cost": 0.01515875
+        },
+        {
+            "timestamp": "2026-01-26T22:47:22.328743",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.024877500000000004
+        },
+        {
+            "timestamp": "2026-01-26T22:49:33.196707",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:49:48.594890",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:50:07.912057",
+            "tool": "CopywriterAgent",
+            "cost": 0.008150312500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:50:37.208375",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0162940625
+        },
+        {
+            "timestamp": "2026-01-26T22:51:03.346871",
+            "tool": "CriticAgent",
+            "cost": 0.018558437500000004
+        },
+        {
+            "timestamp": "2026-01-26T22:51:28.817955",
+            "tool": "CopywriterAgent",
+            "cost": 0.015225312500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:51:53.749202",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.015319062500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:52:14.909384",
+            "tool": "CriticAgent",
+            "cost": 0.0156946875
+        },
+        {
+            "timestamp": "2026-01-26T22:52:34.686384",
+            "tool": "CopywriterAgent",
+            "cost": 0.009303437500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:53:01.413869",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.015774687500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:53:28.610819",
+            "tool": "CriticAgent",
+            "cost": 0.016935000000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:53:50.534728",
+            "tool": "CopywriterAgent",
+            "cost": 0.010346562500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:54:15.608234",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.015305312500000001
+        },
+        {
+            "timestamp": "2026-01-26T22:56:22.657274",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:56:46.651672",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T22:57:05.277769",
+            "tool": "CopywriterAgent",
+            "cost": 0.009271250000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:57:38.793234",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.015410000000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:58:06.947037",
+            "tool": "CriticAgent",
+            "cost": 0.017458750000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:58:29.984075",
+            "tool": "CopywriterAgent",
+            "cost": 0.012055
+        },
+        {
+            "timestamp": "2026-01-26T22:59:00.205246",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.019981250000000002
+        },
+        {
+            "timestamp": "2026-01-26T22:59:29.785912",
+            "tool": "CriticAgent",
+            "cost": 0.021443437500000002
+        },
+        {
+            "timestamp": "2026-01-26T22:59:59.980319",
+            "tool": "CopywriterAgent",
+            "cost": 0.0180771875
+        },
+        {
+            "timestamp": "2026-01-26T23:00:31.897340",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.021915937500000003
+        },
+        {
+            "timestamp": "2026-01-26T23:00:58.671363",
+            "tool": "CriticAgent",
+            "cost": 0.01742125
+        },
+        {
+            "timestamp": "2026-01-26T23:01:59.317695",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:02:21.081825",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:02:40.091871",
+            "tool": "CopywriterAgent",
+            "cost": 0.009858125
+        },
+        {
+            "timestamp": "2026-01-26T23:03:14.496858",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016939375000000003
+        },
+        {
+            "timestamp": "2026-01-26T23:03:38.960373",
+            "tool": "CriticAgent",
+            "cost": 0.016246562500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:04:09.034017",
+            "tool": "CopywriterAgent",
+            "cost": 0.017055625
+        },
+        {
+            "timestamp": "2026-01-26T23:04:41.276993",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.020911875
+        },
+        {
+            "timestamp": "2026-01-26T23:05:12.115341",
+            "tool": "CriticAgent",
+            "cost": 0.0216659375
+        },
+        {
+            "timestamp": "2026-01-26T23:05:33.579010",
+            "tool": "CopywriterAgent",
+            "cost": 0.012715937500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:06:07.834644",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.020499687500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:06:36.381097",
+            "tool": "CriticAgent",
+            "cost": 0.015609375000000002
+        },
+        {
+            "timestamp": "2026-01-26T23:07:55.013601",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:08:14.472950",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:08:35.680027",
+            "tool": "CopywriterAgent",
+            "cost": 0.012932500000000001
+        },
+        {
+            "timestamp": "2026-01-26T23:09:09.152962",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.02021625
+        },
+        {
+            "timestamp": "2026-01-26T23:09:34.706510",
+            "tool": "CriticAgent",
+            "cost": 0.017121875
+        },
+        {
+            "timestamp": "2026-01-26T23:09:59.117831",
+            "tool": "CopywriterAgent",
+            "cost": 0.0161971875
+        },
+        {
+            "timestamp": "2026-01-26T23:10:29.745974",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.019280937500000005
+        },
+        {
+            "timestamp": "2026-01-26T23:10:55.545719",
+            "tool": "CriticAgent",
+            "cost": 0.016948750000000002
+        },
+        {
+            "timestamp": "2026-01-26T23:11:19.916668",
+            "tool": "CopywriterAgent",
+            "cost": 0.013379062500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:11:43.359094",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:11:54.587366",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.023065312500000004
+        },
+        {
+            "timestamp": "2026-01-26T23:12:03.340870",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:12:24.733205",
+            "tool": "CriticAgent",
+            "cost": 0.0197871875
+        },
+        {
+            "timestamp": "2026-01-26T23:12:24.806422",
+            "tool": "CopywriterAgent",
+            "cost": 0.015045000000000001
+        },
+        {
+            "timestamp": "2026-01-26T23:12:53.280689",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.01661875
+        },
+        {
+            "timestamp": "2026-01-26T23:13:20.542814",
+            "tool": "CriticAgent",
+            "cost": 0.018031875000000003
+        },
+        {
+            "timestamp": "2026-01-26T23:13:43.687191",
+            "tool": "CopywriterAgent",
+            "cost": 0.0149684375
+        },
+        {
+            "timestamp": "2026-01-26T23:14:11.862648",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:14:13.813028",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.016982187500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:14:29.290568",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:14:38.054152",
+            "tool": "CriticAgent",
+            "cost": 0.018444375
+        },
+        {
+            "timestamp": "2026-01-26T23:14:46.880413",
+            "tool": "CopywriterAgent",
+            "cost": 0.011590000000000001
+        },
+        {
+            "timestamp": "2026-01-26T23:15:02.016059",
+            "tool": "CopywriterAgent",
+            "cost": 0.014082187500000001
+        },
+        {
+            "timestamp": "2026-01-26T23:15:32.223916",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.020003437500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:15:59.150157",
+            "tool": "CriticAgent",
+            "cost": 0.0171015625
+        },
+        {
+            "timestamp": "2026-01-26T23:16:21.937772",
+            "tool": "CopywriterAgent",
+            "cost": 0.014096562500000001
+        },
+        {
+            "timestamp": "2026-01-26T23:16:54.351315",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0210153125
+        },
+        {
+            "timestamp": "2026-01-26T23:17:06.727786",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:17:21.891771",
+            "tool": "CriticAgent",
+            "cost": 0.019174375
+        },
+        {
+            "timestamp": "2026-01-26T23:17:31.005185",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:17:45.858460",
+            "tool": "CopywriterAgent",
+            "cost": 0.0146134375
+        },
+        {
+            "timestamp": "2026-01-26T23:17:50.096808",
+            "tool": "CopywriterAgent",
+            "cost": 0.009855937500000002
+        },
+        {
+            "timestamp": "2026-01-26T23:18:22.855266",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.023222187500000005
+        },
+        {
+            "timestamp": "2026-01-26T23:18:50.728663",
+            "tool": "CriticAgent",
+            "cost": 0.018875625
+        },
+        {
+            "timestamp": "2026-01-26T23:19:03.113725",
+            "tool": "stability-sdk",
+            "cost": 0.009
+        },
+        {
+            "timestamp": "2026-01-26T23:48:18.805912",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:48:41.944100",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-26T23:49:00.061539",
+            "tool": "CopywriterAgent",
+            "cost": 0.009752812500000001
+        },
+        {
+            "timestamp": "2026-01-26T23:49:27.691783",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.012016562500000001
+        },
+        {
+            "timestamp": "2026-01-26T23:49:44.805633",
+            "tool": "CriticAgent",
+            "cost": 0.0086346875
+        },
+        {
+            "timestamp": "2026-01-28T14:56:40.902931",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T14:56:59.942919",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T14:57:18.290233",
+            "tool": "CopywriterAgent",
+            "cost": 0.048696875
+        },
+        {
+            "timestamp": "2026-01-28T14:57:42.432853",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.11950937500000001
+        },
+        {
+            "timestamp": "2026-01-28T14:57:57.359593",
+            "tool": "CriticAgent",
+            "cost": 0.06747500000000001
+        },
+        {
+            "timestamp": "2026-01-28T15:24:44.653063",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:24:57.639505",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:25:11.386576",
+            "tool": "CopywriterAgent",
+            "cost": 0.052809375000000006
+        },
+        {
+            "timestamp": "2026-01-28T15:25:38.472428",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.096496875
+        },
+        {
+            "timestamp": "2026-01-28T15:25:53.484761",
+            "tool": "CriticAgent",
+            "cost": 0.049015625
+        },
+        {
+            "timestamp": "2026-01-28T15:27:10.372521",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:27:29.789592",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:27:44.994636",
+            "tool": "CopywriterAgent",
+            "cost": 0.05516875
+        },
+        {
+            "timestamp": "2026-01-28T15:28:07.056470",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.10210625000000001
+        },
+        {
+            "timestamp": "2026-01-28T15:28:24.870424",
+            "tool": "CriticAgent",
+            "cost": 0.06381250000000001
+        },
+        {
+            "timestamp": "2026-01-28T15:31:10.603692",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:31:28.270412",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T15:31:45.336866",
+            "tool": "CopywriterAgent",
+            "cost": 0.063296875
+        },
+        {
+            "timestamp": "2026-01-28T15:32:07.831250",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.115234375
+        },
+        {
+            "timestamp": "2026-01-28T15:32:25.744549",
+            "tool": "CriticAgent",
+            "cost": 0.082921875
+        },
+        {
+            "timestamp": "2026-01-28T15:32:39.813083",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-28T16:00:47.882046",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:01:05.996239",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:01:23.771109",
+            "tool": "CopywriterAgent",
+            "cost": 0.0644625
+        },
+        {
+            "timestamp": "2026-01-28T16:01:47.307084",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.10032500000000001
+        },
+        {
+            "timestamp": "2026-01-28T16:02:44.536334",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:03:01.412460",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:03:19.599528",
+            "tool": "CopywriterAgent",
+            "cost": 0.043840625
+        },
+        {
+            "timestamp": "2026-01-28T16:03:43.998121",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.11615312500000001
+        },
+        {
+            "timestamp": "2026-01-28T16:26:02.404312",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:26:19.537031",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-28T16:26:35.132247",
+            "tool": "CopywriterAgent",
+            "cost": 0.06321875
+        },
+        {
+            "timestamp": "2026-01-28T16:27:01.082225",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.14610625
+        },
+        {
+            "timestamp": "2026-01-29T14:43:43.029994",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:43:53.159422",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:44:02.864475",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:44:29.308387",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:44:56.075116",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:46:33.196579",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:46:42.318178",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:46:55.879995",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:47:14.837059",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:47:38.849714",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:49:04.848743",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:49:21.412301",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:49:38.120404",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:50:32.218305",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:50:55.570117",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:51:13.888678",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:51:40.519309",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:52:10.003453",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:54:15.787037",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:54:36.315569",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:54:56.741969",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:55:17.786274",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:55:46.885562",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:58:17.452126",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:58:39.527641",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:58:58.991406",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:59:18.440158",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T14:59:45.273145",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:30:10.624410",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:30:18.885412",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:30:30.472510",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:30:48.961458",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:44:14.204129",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:44:36.525533",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:44:54.488361",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:45:19.529690",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:45:45.125264",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:45:58.652459",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-29T15:52:43.001595",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:52:59.059166",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:53:14.441580",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:53:33.194977",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:53:56.222635",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:54:10.748795",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-29T15:59:19.978700",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:59:34.916811",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T15:59:51.892503",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T16:00:12.183224",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T16:00:33.614527",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-29T16:00:47.501500",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-29T16:52:19.289551",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-29T17:38:58.928504",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T12:53:31.291227",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:53:46.951015",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:54:04.772110",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:54:24.437589",
+            "tool": "CopywriterAgent",
+            "cost": 0.10594062500000001
+        },
+        {
+            "timestamp": "2026-01-30T12:54:52.361201",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.15852812500000002
+        },
+        {
+            "timestamp": "2026-01-30T12:55:17.837172",
+            "tool": "CriticAgent",
+            "cost": 0.10672812500000001
+        },
+        {
+            "timestamp": "2026-01-30T12:55:36.218867",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T12:55:52.696682",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:56:03.352584",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:56:20.051723",
+            "tool": "CopywriterAgent",
+            "cost": 0.08015625
+        },
+        {
+            "timestamp": "2026-01-30T12:56:40.458175",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.10486875
+        },
+        {
+            "timestamp": "2026-01-30T12:57:07.195463",
+            "tool": "CriticAgent",
+            "cost": 0.103390625
+        },
+        {
+            "timestamp": "2026-01-30T12:57:28.644851",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T12:57:44.827844",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:58:04.018550",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T12:58:17.885684",
+            "tool": "CopywriterAgent",
+            "cost": 0.049046875000000004
+        },
+        {
+            "timestamp": "2026-01-30T13:13:53.832781",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:14:09.431819",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:14:31.203940",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:14:54.462001",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:15:19.238758",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:15:53.037408",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:16:15.339381",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T13:16:35.368065",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:16:53.893860",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:17:15.767476",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:17:38.501610",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:18:03.970923",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:18:24.407039",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T13:18:36.870446",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:18:54.715980",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:19:14.773288",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:19:37.734652",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:20:00.455109",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:20:21.179282",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T13:20:36.898547",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:20:55.334826",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:21:14.548722",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:21:43.542465",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:22:08.882507",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:22:29.313016",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T13:22:42.367564",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:23:00.646130",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:23:17.856597",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:23:38.428334",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:24:01.924171",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:24:26.544291",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T13:24:41.099127",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:24:55.168491",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T13:25:14.746448",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:45:08.689744",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:45:26.180821",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:45:46.119268",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:58:56.570939",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:59:05.935961",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T15:59:17.091221",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:07:37.585519",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:07:50.177895",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:08:05.927405",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:12:49.589824",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:13:00.573901",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:13:11.354415",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:18:45.222189",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:19:01.199646",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:19:20.276925",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:24:43.600551",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:24:57.234830",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:25:19.310134",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:25:31.215184",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:31:26.924938",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:31:38.339487",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:31:56.953192",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:32:12.088123",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:34:33.146299",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:34:46.162209",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:35:06.974041",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:35:18.643490",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:35:40.161786",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:48:50.599292",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:49:02.997545",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:49:23.990401",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:49:36.332164",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:49:58.524263",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:50:22.863634",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:52:08.781366",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:52:24.079532",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:52:42.719487",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:52:54.720595",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:53:18.382658",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:53:50.713031",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:54:08.900812",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:54:23.571477",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:54:36.597138",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:54:57.097002",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:55:22.242874",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:55:46.899501",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        },
+        {
+            "timestamp": "2026-01-30T16:56:33.166039",
+            "tool": "ContentPlannerAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:56:45.377602",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:57:00.618925",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:57:13.455756",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:57:31.726248",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:57:56.985593",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:58:16.889746",
+            "tool": "StrategistAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:58:38.243001",
+            "tool": "ResearcherAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:58:52.085209",
+            "tool": "CopywriterAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:59:15.813086",
+            "tool": "CreativeDirectorAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T16:59:40.396355",
+            "tool": "CriticAgent",
+            "cost": 0.0
+        },
+        {
+            "timestamp": "2026-01-30T17:00:05.264377",
+            "tool": "gemini-image-generation",
+            "cost": 0.005
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = [
+    "app_core",
+    # "frontend",
+    # "frontend/src-tauri",
+    # "cli",      # Will add later
+]

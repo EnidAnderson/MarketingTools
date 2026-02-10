@@ -40,6 +40,12 @@ node_modules/
 target/
 dist/
 build/
+rustBotNetwork/target/
+src/chroma_db/
+CAMPAIGNS/
+src-tauri/CAMPAIGNS/
+temp_tauri_scaffold/
+.git-nested-backups/
 
 # Ignore OS generated files
 .DS_Store

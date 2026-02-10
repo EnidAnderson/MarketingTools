@@ -1,0 +1,29 @@
+{
+  "$schema": "../schemas/capabilities.json",
+  "identifier": "main-window-capabilities",
+  "description": "Capabilities for the main application window.",
+  "windows": ["main"],
+  "local": true,
+      "permissions": [
+      "dialog:allow-open",
+      "dialog:default",
+      "core:path:default",
+      {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$APPCONFIG/*" },
+        { "path": "$APPDATA/*" },
+        { "path": "$APPLOCALDATA/*" },
+        { "path": "$CWD/*" },
+        { "path": "$DOCUMENT/*" },
+        { "path": "$DOWNLOAD/*" },
+        { "path": "$HOME/*" },
+        { "path": "$PICTURE/*" },
+        { "path": "$PUBLIC/*" },
+        { "path": "$RUNTIME/*" },
+        { "path": "$TEMP/*" },
+        { "path": "$VIDEO/*" }
+      ]
+    }
+  ]
+}
