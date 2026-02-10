@@ -1,0 +1,2 @@
+row_id,ts_utc,review_run_id,artifact_id,artifact_version,claim_id,support_status,evidence_type,evidence_ref,evidence_snapshot_or_hash,caveat_text,reviewer_id,supersedes_row_id
+1,2026-02-10T00:00:00Z,rrc_2026-02-10_001,artifact_001,v1,claim_001,supported,doc_ref,/absolute/path/to/spec.md,sha256:example,,review_cell,

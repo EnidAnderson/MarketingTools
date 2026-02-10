@@ -1,0 +1,2 @@
+row_id,ts_utc,review_run_id,artifact_id,artifact_version,artifact_type,channel,artifact_locator,intended_audience,reviewer_id,notes,supersedes_row_id
+1,2026-02-10T00:00:00Z,rrc_2026-02-10_001,artifact_001,v1,landing_page,website,/absolute/path/or/url,pet_owners,review_cell,"initial intake",

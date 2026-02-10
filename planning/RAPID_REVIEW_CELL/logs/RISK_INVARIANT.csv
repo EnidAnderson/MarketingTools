@@ -1,0 +1,2 @@
+row_id,ts_utc,review_run_id,artifact_id,artifact_version,claim_id,failure_mode,invariant,adversarial_reading,risk_level,reviewer_id,supersedes_row_id
+1,2026-02-10T00:00:00Z,rrc_2026-02-10_001,artifact_001,v1,claim_001,"ingredient list outdated","feature exists in current SKU","could mislead if prior formula shown",high,review_cell,

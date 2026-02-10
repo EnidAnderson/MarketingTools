@@ -1,0 +1,46 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+/src/.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+*.cer
+*.der
+
+# Python specific files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.ipynb_checkpoints
+.pytest_cache
+
+# Ignore IDE-specific files
+.idea/
+.vscode/
+*.swp
+*.bak
+*.swo
+
+# Ignore virtual environment
+venv/
+.venv/
+env/
+node_modules/
+
+# Ignore temporary files
+*.tmp
+*.log
+target/
+dist/
+build/
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
