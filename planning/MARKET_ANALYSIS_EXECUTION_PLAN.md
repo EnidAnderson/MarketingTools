@@ -148,3 +148,123 @@ Acceptance:
 2. Tool execution is fully async and inspectable in Tauri UI.
 3. Contracts are stable and typed in Rust.
 4. Legacy Python path is no longer required for this capability.
+
+## 12. Hardening Control Binding
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-021`
+
+| Control ID | Plan Section | Owner Role | Verification Artifact | Gate Type |
+|---|---|---|---|---|
+| HC-01 | 6. Quality Gates | Security Steward | secret scan output | security |
+| HC-02 | 7. Risk Management | Security Steward | threat model review record | security |
+| HC-03 | 6. Quality Gates | Security Steward | control baseline mapping | security |
+| HC-04 | 13. Budget Envelope and Hard-Stop Policy | Team Lead | budget manifest per milestone | budget |
+| HC-05 | 13. Budget Envelope and Hard-Stop Policy | Team Lead | exception log row | budget |
+| HC-06 | 6. Quality Gates | Team Lead | release gate log row | governance |
+| HC-07 | 9. Team Operating Model | Platform Architect | ADR checkpoint artifact | change |
+| HC-08 | 9. Team Operating Model | Team Lead | role contract signoff | role |
+| HC-09 | 9. Team Operating Model | Team Lead | escalation protocol reference | role |
+| HC-10 | 6. Quality Gates | Product Steward | evidence support coverage report | evidence |
+
+## 13. Budget Envelope and Hard-Stop Policy
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-023`
+
+Milestone envelopes:
+1. M1 `$350` warn `$260` fallback `reduced_scope`.
+2. M2 `$500` warn `$375` fallback `lower_cost_provider`.
+3. M3 `$550` warn `$410` fallback `reduced_scope`.
+4. M4 `$450` warn `$340` fallback `reduced_scope`.
+5. M5 `$300` warn `$225` fallback `hard_stop`.
+
+Hard-stop condition:
+1. Spend > hard cap forces `blocked_budget_cap_exceeded`.
+2. Only Team Lead-approved unexpired exception can unblock.
+
+## 14. SLO and Quantified Acceptance
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-022`
+
+1. Max runtime per run class: `<= 120s`.
+2. Failure-rate threshold over 7 days: `< 3%`.
+3. Minimum evidence completeness: `>= 95%`.
+4. Max unresolved critical risk count: `0`.
+
+## 15. Security Assumptions and Abuse Cases
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-024`
+
+| Abuse case | Detection | Response owner | Blocked by policy |
+|---|---|---|---|
+| Secret leakage path | scan/hook fail | Security Steward | yes |
+| Prompt injection from external content | unsupported evidence state | Product Steward | yes |
+| Unsafe artifact promotion | release gate red | Team Lead | yes |
+| Unauthorized override | role mismatch / missing signoff | Team Lead | yes |
+
+References:
+1. `planning/SECURITY_THREAT_MODEL.md`
+2. `planning/SECURITY_CONTROL_BASELINE.md`
+
+## 16. Milestone Signoff Matrix
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-025`
+
+| Milestone | Required roles | Can approve | Can block | Evidence required | Escalation path |
+|---|---|---|---|---|---|
+| M1 Contract parity | Platform Architect, Product Steward | both | either | schema + run proof | role escalation protocol |
+| M2 Evidence upgrade | Product Steward, Security Steward | both | either | evidence/inference map | role escalation protocol |
+| M3 Runtime reliability | Runtime Engineer, Platform Architect | both | either | timeout/cancel tests | role escalation protocol |
+| M4 Frontend validation | Frontend Engineer, Product Steward | both | either | UI validation artifacts | role escalation protocol |
+| M5 Operational readiness | Team Lead, Product Steward | both | either | gate pack + release checklist | role escalation protocol |
+
+## 17. Failure and Rollback
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-026`
+
+State transitions:
+1. `green -> yellow`: warning threshold breached.
+2. `yellow -> red`: critical failure or unmitigated warning.
+3. `red -> green`: remediation evidence accepted.
+
+Stop criteria:
+1. release gate red.
+2. critical incident active.
+3. budget hard-stop.
+
+Rollback owner:
+1. Platform Architect for technical rollback.
+2. Team Lead for release/publish rollback.
+
+Recovery evidence:
+1. passing validation report.
+2. updated risk register entry with closure.
+
+## 18. ADR Trigger Checkpoints
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-027`
+
+Checkpoint must run after milestones with architecture impact:
+1. M1 contract changes.
+2. M3 runtime reliability wrappers.
+
+Completion is blocked when ADR trigger hits without ADR artifact:
+- `planning/ADR_TRIGGER_RULES.md`
+
+## 19. Glossary Reference
+
+See:
+- `planning/CROSS_PLAN_GLOSSARY.md`

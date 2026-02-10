@@ -28,6 +28,11 @@ Follow this order exactly and log outputs at each step:
 - Decide one outcome: `approved_as_is`, `approved_with_caveat`, `needs_revision`, `blocked`.
 - Record outcome in `planning/RAPID_REVIEW_CELL/logs/DECISION_DISPOSITION.csv` with claim-linked rationale.
 
+5. Ticket handoff pass
+- If outcome is `needs_revision` or `blocked`, create engineering tickets from unresolved claims:
+  `python3 scripts/rapid_review/tickets.py from-review --review-run-id <id> --owner-team <team> --opened-by teams_leader`.
+- Require engineering responses to log `non_breaking_change` explicitly in `TICKET_RESPONSES.csv`.
+
 Constraints:
 - No silent approvals.
 - No unsupported claim may be marked safe.

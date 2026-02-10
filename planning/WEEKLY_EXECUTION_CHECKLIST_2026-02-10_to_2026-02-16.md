@@ -36,12 +36,12 @@ Primary objective: deliver a stable MVP pipeline path with enforceable invariant
   - [x] per-step status and error message
 
 ### A3. Pipeline artifact output
-- [ ] Persist `pipeline_run.json` manifest for each run.
+- [x] Persist `pipeline_run.json` manifest for each run.
 - [ ] Include:
-  - [ ] run timestamp
+  - [x] run timestamp
   - [ ] input payload
-  - [ ] step outputs/errors
-  - [ ] artifact paths (if any)
+  - [x] step outputs/errors
+  - [x] artifact paths (if any)
 
 ## 4. Workstream B: Market Analysis Quality (P1)
 ### B1. Evidence and coverage

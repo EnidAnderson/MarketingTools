@@ -1,0 +1,202 @@
+# Pipeline Stage 07: QA Fix Log
+
+Append-only.
+
+## Entry template
+- run_id:
+- timestamp_utc:
+- request_ids_implemented:
+- files_changed:
+- rationale:
+- verification_evidence:
+- residual_risks:
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T22:20:00Z
+- request_ids_implemented:
+    - RQ-029
+    - RQ-030
+    - RQ-031
+    - RQ-032
+    - RQ-033
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: RQ-029
+    - change_request_id: RQ-030
+    - change_request_id: RQ-031
+    - change_request_id: RQ-032
+    - change_request_id: RQ-033
+- files_changed:
+    - teams/_validation/check_pipeline_order.sh
+    - teams/_validation/check_append_only.sh
+    - teams/_validation/check_qa_edit_authority.sh
+    - teams/_validation/run_all_validations.sh
+    - teams/_validation/README.md
+    - .github/workflows/team-validations.yml
+    - qa_fixer/WORK_QUEUE.md
+- rationale: |
+    Implement machine-checkable enforcement for team pipeline order, append-only integrity, and QA edit authority with provenance requirements, then wire a CI gate and local operator documentation.
+- verification_evidence:
+    - bash teams/_validation/check_pipeline_order.sh
+    - bash teams/_validation/check_append_only.sh HEAD
+    - bash teams/_validation/check_qa_edit_authority.sh HEAD
+    - bash teams/_validation/run_all_validations.sh HEAD
+- residual_risks:
+    - CI default base (`HEAD~1`) may require adjustment in repositories with squash merges or unusual history shape.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T22:35:00Z
+- request_ids_implemented:
+    - RQ-013
+    - RQ-014
+    - RQ-015
+    - RQ-016
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: RQ-013
+    - change_request_id: RQ-014
+    - change_request_id: RQ-015
+    - change_request_id: RQ-016
+- files_changed:
+    - scripts/governance_preflight.sh
+    - planning/BUDGET_ENVELOPE_SCHEMA.md
+    - planning/examples/budget_envelope_example.json
+    - planning/ROLE_PERMISSION_MATRIX.md
+    - planning/EXTERNAL_PUBLISH_CONTROL.md
+    - AGENTS.md
+    - PLANNING.md
+    - planning/RAPID_REVIEW_CELL/SOP.md
+    - planning/reports/TEAM_LEAD_REQUEST_QUEUE_OPERATIONS_2026-02-10.md
+    - qa_fixer/HARD_THINGS_TO_DO.md
+    - qa_fixer/HIGH_IMPORTANCE_TICKETS.md
+- rationale: |
+    Completed highest-priority unblocked operations hardening batch by adding policy-as-code preflight, budget envelope schema/template, least-privilege role matrix, and external publish two-person control with rollback protocol.
+- verification_evidence:
+    - bash scripts/governance_preflight.sh
+    - python3 JSON parse check for planning/examples/budget_envelope_example.json required fields
+- residual_risks:
+    - Existing team data still violates pipeline-order doctrine and requires upstream handoff correction.
+    - Provenance annotation migration for legacy executable files remains incomplete.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T22:45:00Z
+- request_ids_implemented:
+    - RQ-021
+    - RQ-022
+    - RQ-023
+    - RQ-024
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: RQ-021
+    - change_request_id: RQ-022
+    - change_request_id: RQ-023
+    - change_request_id: RQ-024
+- files_changed:
+    - planning/MARKET_ANALYSIS_SUITE_ARCHITECTURE.md
+    - planning/MARKET_ANALYSIS_EXECUTION_PLAN.md
+    - planning/MVP_PIPELINE_INTEGRATION_PLAN.md
+    - planning/reports/TEAM_LEAD_REQUEST_QUEUE_SPEC_HARDENING_2026-02-10.md
+    - qa_fixer/HIGH_IMPORTANCE_TICKETS.md
+- rationale: |
+    Added required hardening control bindings, quantified SLO thresholds, budget envelope hard-stop policies, and security abuse-case handling to all targeted core planning artifacts.
+- verification_evidence:
+    - grep checks for sections: Hardening Control Binding, SLO and Quantified Acceptance, Budget Envelope and Hard-Stop Policy, Security Assumptions and Abuse Cases.
+- residual_risks:
+    - Remaining P1/P2 queues still require execution for full governance maturity.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T23:05:00Z
+- request_ids_implemented:
+    - RQ-017
+    - RQ-018
+    - RQ-019
+    - RQ-020
+    - RQ-025
+    - RQ-026
+    - RQ-027
+    - RQ-028
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: RQ-017
+    - change_request_id: RQ-018
+    - change_request_id: RQ-019
+    - change_request_id: RQ-020
+    - change_request_id: RQ-025
+    - change_request_id: RQ-026
+    - change_request_id: RQ-027
+    - change_request_id: RQ-028
+- files_changed:
+    - planning/KILL_SWITCH_PROTOCOL.md
+    - planning/TABLETOP_DRILL_PROGRAM.md
+    - planning/TABLETOP_DRILL_TEMPLATE.md
+    - planning/HARDENING_METRICS_DICTIONARY.md
+    - planning/GOVERNANCE_DRIFT_REVIEW.md
+    - planning/CROSS_PLAN_GLOSSARY.md
+    - planning/MARKET_ANALYSIS_SUITE_ARCHITECTURE.md
+    - planning/MARKET_ANALYSIS_EXECUTION_PLAN.md
+    - planning/MVP_PIPELINE_INTEGRATION_PLAN.md
+    - planning/reports/TEAM_LEAD_REQUEST_QUEUE_OPERATIONS_2026-02-10.md
+    - planning/reports/TEAM_LEAD_REQUEST_QUEUE_SPEC_HARDENING_2026-02-10.md
+    - qa_fixer/HIGH_IMPORTANCE_TICKETS.md
+- rationale: |
+    Completed remaining operations/spec hardening queue by adding safe-mode operations, drill program, KPI dictionary, drift review, milestone signoff matrixes, failure/rollback maps, ADR checkpoints, and a shared glossary.
+- verification_evidence:
+    - section presence checks in three target plans.
+    - queue status reviews show fulfilled markers for completed requests.
+- residual_risks:
+    - Live validation blockers in handoff/provenance still require upstream resolution workflow.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T23:30:00Z
+- request_ids_implemented:
+    - CR-0018
+    - CR-0019
+    - CR-BLACK-0001
+    - CR-BLACK-0002
+    - CR-BLACK-0003
+    - CR-BLACK-0004
+    - CR-WHITE-0001
+    - CR-WHITE-0002
+    - CR-WHITE-0003
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: CR-0018
+    - change_request_id: CR-0019
+    - change_request_id: CR-BLACK-0001
+    - change_request_id: CR-BLACK-0002
+    - change_request_id: CR-BLACK-0003
+    - change_request_id: CR-BLACK-0004
+    - change_request_id: CR-WHITE-0001
+    - change_request_id: CR-WHITE-0002
+    - change_request_id: CR-WHITE-0003
+- files_changed:
+    - planning/WHITE_LEXICAL_CONTRACT_v1.md
+    - planning/REVIEW_METADATA_CONTRACT_v1.md
+    - teams/schemas/review_artifact.schema.json
+    - data/team_ops/review_artifacts/README.md
+    - data/team_ops/review_artifacts/run_2026-02-10_001_asset_0001.json
+    - data/team_ops/budget_envelopes.csv
+    - planning/reports/RELEASE_GATE_LOG.csv
+    - teams/_validation/check_budget_and_release_gates.sh
+    - teams/_validation/check_review_artifact_contract.sh
+    - teams/_validation/run_all_validations.sh
+    - teams/_validation/README.md
+- rationale: |
+    Implemented White lexical/metadata contracts and Black governance constraints as machine-checkable artifacts and validation scripts, then added append-only operational evidence rows for budget envelopes and release gates.
+- verification_evidence:
+    - bash teams/_validation/check_budget_and_release_gates.sh
+    - bash teams/_validation/check_review_artifact_contract.sh
+    - bash teams/_validation/run_all_validations.sh HEAD
+- residual_risks:
+    - Historical queue IDs remain mixed-format in legacy rows; active superseding rows now carry deterministic lineage.
+    - Validator coverage currently targets JSON review payloads in `data/team_ops/review_artifacts/`.

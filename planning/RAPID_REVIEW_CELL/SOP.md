@@ -82,9 +82,28 @@ Required output:
 - Append one row to `planning/RAPID_REVIEW_CELL/logs/DECISION_DISPOSITION.csv`.
 - Include rationale tied to claim IDs.
 
+## Phase 5: Ticket handoff
+
+Goal: convert unresolved claim risk into actionable engineering work.
+
+Required output:
+- Append rows to `planning/RAPID_REVIEW_CELL/logs/TICKET_QUEUE.csv` directly or via:
+  `python3 scripts/rapid_review/tickets.py from-review --review-run-id <id> --owner-team <team> --opened-by teams_leader`
+- Engineering appends responses/status updates in:
+  `planning/RAPID_REVIEW_CELL/logs/TICKET_RESPONSES.csv`.
+
+Gate to close review cycle:
+- Every `needs_revision` or `blocked` outcome has at least one open ticket.
+
 ## Final stakeholder output
 
 Create a concise summary using `planning/RAPID_REVIEW_CELL/SUMMARY_TEMPLATE.md` with:
 - what is safe to say,
 - what needs adjustment,
 - what should not be claimed yet.
+
+## External publish linkage
+
+Before external publish, apply:
+- `planning/EXTERNAL_PUBLISH_CONTROL.md`
+- two-person approval rule + rollback readiness.

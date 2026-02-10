@@ -114,3 +114,123 @@ Status:
 3. Frontend Engineer: MVP pipeline UI + output rendering.
 4. Tool Engineer: market-analysis and data_viz stability.
 5. Product Steward: production-safety and audit signoff.
+
+## 11. Hardening Control Binding
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-021`
+
+| Control ID | Plan Section | Owner Role | Verification Artifact | Gate Type |
+|---|---|---|---|---|
+| HC-01 | 9. Risk Register | Security Steward | secret scan output | security |
+| HC-02 | 9. Risk Register | Security Steward | threat model reference | security |
+| HC-03 | 9. Risk Register | Security Steward | control baseline mapping | security |
+| HC-04 | 12. Budget Envelope and Hard-Stop Policy | Team Lead | budget envelope per step | budget |
+| HC-05 | 12. Budget Envelope and Hard-Stop Policy | Team Lead | budget exception log | budget |
+| HC-06 | 6. MVP Acceptance Criteria | Team Lead | release gate log entry | governance |
+| HC-07 | 5. Immediate Build Plan | Platform Architect | ADR checkpoint | change |
+| HC-08 | 10. Ownership | Team Lead | role signoff matrix | role |
+| HC-09 | 10. Ownership | Team Lead | escalation record | role |
+| HC-10 | 6. MVP Acceptance Criteria | Product Steward | evidence mapping artifacts | evidence |
+
+## 12. Budget Envelope and Hard-Stop Policy
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-023`
+
+Step envelopes:
+1. A (engine): cap `$250`, warning `$190`, fallback `reduced_scope`.
+2. B (runtime): cap `$200`, warning `$150`, fallback `hard_stop`.
+3. C (frontend): cap `$250`, warning `$190`, fallback `reduced_scope`.
+4. D (artifact/audit): cap `$150`, warning `$110`, fallback `hard_stop`.
+
+Hard-stop:
+1. Any step exceeding cap transitions pipeline to `blocked_budget_cap_exceeded`.
+2. Recovery requires approved exception with expiry.
+3. Owner role: Team Lead.
+
+## 13. SLO and Quantified Acceptance
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-022`
+
+1. Max runtime for MVP full pipeline: `<= 120s`.
+2. Pipeline failure-rate threshold: `< 5%` over 7-day rolling window.
+3. Evidence completeness for externally-facing claims: `>= 95%`.
+4. Max unresolved critical risk count before release: `0`.
+
+## 14. Security Assumptions and Abuse Cases
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-024`
+
+| Abuse case | Detection | Response owner | Policy block |
+|---|---|---|---|
+| Secret leakage path | pre-ship scan/hook fail | Security Steward | yes |
+| Prompt-injection from external content | unsupported claim in evidence logs | Product Steward | yes |
+| Unsafe artifact promotion | release gate red | Team Lead | yes |
+| Unauthorized override | role mismatch / missing dual signoff | Team Lead | yes |
+
+References:
+1. `planning/SECURITY_THREAT_MODEL.md`
+2. `planning/SECURITY_CONTROL_BASELINE.md`
+
+## 15. Milestone Signoff Matrix
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-025`
+
+| Milestone/Step | Required roles | Can approve | Can block | Evidence required | Escalation path |
+|---|---|---|---|---|---|
+| Step A Pipeline engine | Platform Architect, Tool Engineer | both | either | unit tests + schema proof | role escalation protocol |
+| Step B Tauri wiring | Runtime Engineer, Platform Architect | both | either | command/runtime tests | role escalation protocol |
+| Step C Frontend MVP UI | Frontend Engineer, Product Steward | both | either | UX proof + step traces | role escalation protocol |
+| Step D Artifact/audit layer | Product Steward, Team Lead | both | either | artifact lineage evidence | role escalation protocol |
+
+## 16. Failure and Rollback
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-026`
+
+Transitions:
+1. `green`: all checks pass.
+2. `yellow`: partial degradation but safe rollback available.
+3. `red`: safety/compliance failure or blocked budget state.
+
+Stop criteria:
+1. red control gate.
+2. failed lineage/audit requirement.
+3. unresolved role conflict beyond SLA.
+
+Rollback owner:
+1. Platform Architect (pipeline/runtime rollback).
+2. Team Lead (operational release rollback).
+
+Recovery evidence:
+1. fixed step run output.
+2. refreshed validation + gate logs.
+
+## 17. ADR Trigger Checkpoints
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-027`
+
+ADR checkpoint required after:
+1. pipeline contract changes.
+2. execution model changes.
+3. policy-aware execution control changes.
+
+Milestone completion is blocked when triggered without ADR:
+- `planning/ADR_TRIGGER_RULES.md`
+
+## 18. Glossary Reference
+
+See:
+- `planning/CROSS_PLAN_GLOSSARY.md`

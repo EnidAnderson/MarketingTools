@@ -156,3 +156,129 @@ Stages to emit:
 - geometry/content safety signoff
 - audit trail completeness
 4. See `planning/PRODUCT_STEWARD_OPERATING_MODEL.md` for role-level workflow.
+
+## 13. Hardening Control Binding
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-021`
+
+| Control ID | Plan Section | Owner Role | Verification Artifact | Gate Type |
+|---|---|---|---|---|
+| HC-01 | 8. Reliability and Governance | Security Steward | `scripts/secret_scan.sh` output | security |
+| HC-02 | 12. Operating Governance | Security Steward | `planning/SECURITY_THREAT_MODEL.md` | security |
+| HC-03 | 8. Reliability and Governance | Security Steward | `planning/SECURITY_CONTROL_BASELINE.md` | security |
+| HC-04 | 14. Budget Envelope and Hard-Stop Policy | Team Lead | budget envelope JSON | budget |
+| HC-05 | 14. Budget Envelope and Hard-Stop Policy | Team Lead | `planning/BUDGET_EXCEPTION_LOG.md` | budget |
+| HC-06 | 12. Operating Governance | Team Lead | `planning/reports/RELEASE_GATE_LOG.csv` | governance |
+| HC-07 | 12. Operating Governance | Platform Architect | ADR file in `planning/adrs/` | change |
+| HC-08 | 12. Operating Governance | Team Lead | `planning/AGENT_ROLE_CONTRACTS.md` | role |
+| HC-09 | 12. Operating Governance | Team Lead | `planning/ROLE_ESCALATION_PROTOCOL.md` | role |
+| HC-10 | 6. Evidence and Inference Separation | Product Steward | Rapid Review evidence logs | evidence |
+
+## 14. Budget Envelope and Hard-Stop Policy
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-023`
+
+Milestone budget envelope:
+1. M1: cap `$400`, warning `$300`, hard-stop at cap, fallback `reduced_scope`.
+2. M2: cap `$500`, warning `$375`, hard-stop at cap, fallback `lower_cost_provider`.
+3. M3: cap `$500`, warning `$375`, hard-stop at cap, fallback `reduced_scope`.
+4. M4: cap `$450`, warning `$340`, hard-stop at cap, fallback `reduced_scope`.
+5. M5: cap `$350`, warning `$260`, hard-stop at cap, fallback `hard_stop`.
+
+Deterministic hard-stop:
+1. If cumulative spend exceeds cap, run state becomes `blocked_budget_cap_exceeded`.
+2. Resume requires approved exception with expiry.
+3. Owner role: Team Lead.
+
+## 15. SLO and Quantified Acceptance
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-022`
+
+1. Max runtime per run class: `<= 120s`.
+2. Failure-rate threshold (weekly): `< 3%` failed runs.
+3. Minimum evidence completeness: `>= 95%` externally-facing claims supported/caveated.
+4. Max unresolved critical risk count: `0`.
+
+## 16. Security Assumptions and Abuse Cases
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-024`
+
+Security assumptions:
+1. External content is untrusted until evidence-bound.
+2. Secret material is never committed to tracked/staged scopes.
+
+| Abuse case | Detection | Response owner | Blocked state |
+|---|---|---|---|
+| Secret leakage path | secret scan fail | Security Steward | release blocked |
+| Prompt injection from external content | unsupported claim/caveat gap | Product Steward | evidence gate red |
+| Unsafe artifact promotion | release gate red | Team Lead | publish blocked |
+| Unauthorized override | role mismatch in approvals | Team Lead | role gate red |
+
+Control refs:
+1. `planning/SECURITY_THREAT_MODEL.md`
+2. `planning/SECURITY_CONTROL_BASELINE.md`
+
+## 17. Milestone Signoff Matrix
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-025`
+
+| Milestone | Required roles | Can approve | Can block | Evidence required | Escalation path |
+|---|---|---|---|---|---|
+| M1 Contract/UX parity | Platform Architect, Product Steward | both | either | contract tests + schema evidence | role escalation protocol |
+| M2 Evidence quality | Product Steward, Security Steward | both | either | evidence mapping report | role escalation protocol |
+| M3 Runtime reliability | Platform Architect, Runtime Engineer | both | either | cancellation/timeout tests | role escalation protocol |
+| M4 Frontend validation | Frontend Engineer, Product Steward | both | either | UI evidence panels + screenshots | role escalation protocol |
+| M5 Operational readiness | Team Lead, Product Steward | both | either | gate pack + regression suite | role escalation protocol |
+
+## 18. Failure and Rollback
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-026`
+
+Transition map:
+1. `green`: all gates pass.
+2. `yellow`: non-critical warning threshold breached; mitigation active.
+3. `red`: critical control failure; stop criteria triggered.
+
+Stop criteria:
+1. red gate.
+2. unsupported external claim.
+3. budget hard-cap exceeded.
+
+Rollback owner:
+1. Team Lead (operational rollback).
+2. Platform Architect (technical rollback).
+
+Recovery evidence:
+1. new green gate log row.
+2. resolved ticket references.
+
+## 19. ADR Trigger Checkpoints
+
+Provenance:
+- `decision_id=DEC-0001`
+- `change_request_id=RQ-027`
+
+ADR checkpoint is required at:
+1. runtime model changes.
+2. provider boundary changes.
+3. trust/security boundary changes.
+
+Completion is blocked if trigger condition is met without ADR per:
+- `planning/ADR_TRIGGER_RULES.md`
+
+## 20. Glossary Reference
+
+See:
+- `planning/CROSS_PLAN_GLOSSARY.md`

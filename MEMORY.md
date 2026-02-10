@@ -37,6 +37,7 @@ Build a production-grade, Rust-first agentic marketing platform for Nature's Die
 5. Decommission Python only behind explicit acceptance gates with parity evidence.
 6. Adopt Product Steward operating model for marketing-system governance and artifact safety.
 7. Enforce code-level invariants and structured NDOC docstrings for core declarations.
+8. Enforce release gates, budget caps, and role-contract authority boundaries before external publish.
 
 ## Workstream Map
 
@@ -125,6 +126,21 @@ Build a production-grade, Rust-first agentic marketing platform for Nature's Die
 - milestone burn-down
 - roadmap updates
 - staffing/ownership adjustments
+4. Weekly hardening review:
+- control status snapshot vs `planning/reports/HARDENING_CONTROL_MATRIX_2026-02-10.md`
+- top 5 open risks and mitigation ETAs
+- budget exception summary
+- role conflict and escalation latency
+
+## Governance and hardening references
+1. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/RELEASE_GATES_POLICY.md`
+2. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/SECURITY_THREAT_MODEL.md`
+3. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/SECURITY_CONTROL_BASELINE.md`
+4. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/BUDGET_GUARDRAILS_STANDARD.md`
+5. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/AGENT_ROLE_CONTRACTS.md`
+6. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/ROLE_ESCALATION_PROTOCOL.md`
+7. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/RISK_REGISTER.md`
+8. `/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/planning/INCIDENT_RESPONSE_PLAYBOOK.md`
 
 ## Ownership Model (Recommended)
 1. Platform Architect:

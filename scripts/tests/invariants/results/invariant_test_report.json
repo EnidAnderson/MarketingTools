@@ -1,0 +1,113 @@
+{
+  "generated_at_utc": "2026-02-10T21:52:45Z",
+  "total": 15,
+  "passed": 15,
+  "failed": 0,
+  "results": [
+    {
+      "test_file": "test_inv_global_aud_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 379,
+      "diagnostic": "perl: warning: Falling back to the standard locale (\"C\")."
+    },
+    {
+      "test_file": "test_inv_global_aud_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 215,
+      "diagnostic": "PASS INV-GLOBAL-AUD-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_bud_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 38,
+      "diagnostic": "PASS INV-GLOBAL-BUD-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_bud_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 40,
+      "diagnostic": "PASS INV-GLOBAL-BUD-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_chg_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 202,
+      "diagnostic": "PASS INV-GLOBAL-CHG-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_evd_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 65,
+      "diagnostic": "PASS INV-GLOBAL-EVD-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_evd_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 47,
+      "diagnostic": "PASS INV-GLOBAL-EVD-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_gov_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 63,
+      "diagnostic": "PASS INV-GLOBAL-GOV-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_gov_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 35,
+      "diagnostic": "PASS INV-GLOBAL-GOV-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_ops_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 34,
+      "diagnostic": "PASS INV-GLOBAL-OPS-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_ops_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 304,
+      "diagnostic": "PASS INV-GLOBAL-OPS-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_rol_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 37,
+      "diagnostic": "PASS INV-GLOBAL-ROL-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_rol_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 201,
+      "diagnostic": "PASS INV-GLOBAL-ROL-002 validated"
+    },
+    {
+      "test_file": "test_inv_global_sec_001.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 204,
+      "diagnostic": "PASS INV-GLOBAL-SEC-001 validated"
+    },
+    {
+      "test_file": "test_inv_global_sec_002.sh",
+      "status": "pass",
+      "exit_code": 0,
+      "duration_ms": 219,
+      "diagnostic": "PASS INV-GLOBAL-SEC-002 validated"
+    }
+  ]
+}

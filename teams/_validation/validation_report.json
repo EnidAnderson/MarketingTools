@@ -1,0 +1,55 @@
+{
+  "generated_at_utc": "2026-02-10T23:08:26Z",
+  "base_ref": "HEAD",
+  "overall_status": "fail",
+  "checks": [
+    {
+      "check_id": "RQ-029",
+      "check_name": "check_pipeline_order",
+      "rule_ref": "teams/shared/OPERATING_DOCTRINE.md",
+      "status": "fail",
+      "exit_code": 29,
+      "diagnostic": "FAIL[RQ-029] run_id=run_2026-02-10_001 out-of-order handoff; expected=green->black; observed=white->grey; doctrine=teams/shared/OPERATING_DOCTRINE.md"
+    },
+    {
+      "check_id": "RQ-030",
+      "check_name": "check_append_only",
+      "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-030",
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-030] append-only integrity check passed for pipeline/*.md and data/team_ops/*.csv"
+    },
+    {
+      "check_id": "RQ-031",
+      "check_name": "check_qa_edit_authority",
+      "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-031",
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-031] QA edit authority + provenance checks passed"
+    },
+    {
+      "check_id": "RQ-034",
+      "check_name": "check_request_id_policy",
+      "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-034",
+      "status": "fail",
+      "exit_code": 34,
+      "diagnostic": "DETAIL[RQ-034] line 100: request_id 'CR-0039-BLUE' must match CR-<TEAM>-NNNN (TEAM in BLUE|RED|GREEN|BLACK|WHITE|GREY)"
+    },
+    {
+      "check_id": "CR-BLACK-0001/0002",
+      "check_name": "check_budget_and_release_gates",
+      "rule_ref": "planning/RELEASE_GATES_POLICY.md",
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[CR-BLACK-0001/0002] budget and release gates valid for run_id=run_2026-02-10_001"
+    },
+    {
+      "check_id": "CR-WHITE-0001/0002/0003",
+      "check_name": "check_review_artifact_contract",
+      "rule_ref": "planning/REVIEW_METADATA_CONTRACT_v1.md",
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[CR-WHITE-0001/0002/0003|CR-BLACK-0003/0004] validated 1 review artifact(s)"
+    }
+  ]
+}

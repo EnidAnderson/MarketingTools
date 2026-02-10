@@ -1,0 +1,1 @@
+row_id,ts_utc,ticket_id,review_run_id,artifact_id,artifact_version,claim_id,priority,status,title,requested_change,acceptance_criteria,owner_team,opened_by,supersedes_row_id
