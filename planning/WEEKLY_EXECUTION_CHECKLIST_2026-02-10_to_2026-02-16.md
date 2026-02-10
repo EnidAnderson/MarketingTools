@@ -4,8 +4,8 @@ Owner: Platform Engineering (Rust + Tauri)
 Primary objective: deliver a stable MVP pipeline path with enforceable invariants, while raising maintainability baseline.
 
 ## 1. Weekly Outcomes (Must-Hit)
-- [ ] MVP pipeline runnable from Tauri command surface (`start_pipeline_job` + `run_pipeline`) with step-level status fidelity.
-- [ ] Frontend can invoke at least one predefined pipeline template and display completion/failure status.
+- [x] MVP pipeline runnable from Tauri command surface (`start_pipeline_job` + `run_pipeline`) with step-level status fidelity.
+- [x] Frontend can invoke at least one predefined pipeline template and display completion/failure status.
 - [ ] Market-analysis output upgraded with coverage and evidence-confidence fields for human trust.
 - [ ] Invariant checks expanded to critical runtime paths and covered by tests.
 - [ ] NDOC coverage on public declarations increased materially from current baseline report.
@@ -19,21 +19,21 @@ Primary objective: deliver a stable MVP pipeline path with enforceable invariant
 
 ## 3. Workstream A: Pipeline MVP (P0)
 ### A1. Runtime and command parity
-- [ ] Add/verify `start_pipeline_job` and `run_pipeline` command behavior against tool-job semantics.
-- [ ] Ensure canceled/failed/succeeded states serialize consistently in `JobSnapshot`.
+- [x] Add/verify `start_pipeline_job` and `run_pipeline` command behavior against tool-job semantics.
+- [x] Ensure canceled/failed/succeeded states serialize consistently in `JobSnapshot`.
 - [ ] Add test cases for:
   - [ ] pipeline success snapshot
   - [ ] pipeline validation failure snapshot
   - [ ] pipeline canceled snapshot
 
 ### A2. Frontend MVP pipeline runner
-- [ ] Add a minimal "Pipelines" UI section (single template first).
-- [ ] Wire invocation to `start_pipeline_job`.
-- [ ] Show polling/event updates until terminal state.
-- [ ] Render final summary with:
-  - [ ] pipeline name
-  - [ ] succeeded flag
-  - [ ] per-step status and error message
+- [x] Add a minimal "Pipelines" UI section (single template first).
+- [x] Wire invocation to `start_pipeline_job`.
+- [x] Show polling/event updates until terminal state.
+- [x] Render final summary with:
+  - [x] pipeline name
+  - [x] succeeded flag
+  - [x] per-step status and error message
 
 ### A3. Pipeline artifact output
 - [ ] Persist `pipeline_run.json` manifest for each run.

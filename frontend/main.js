@@ -53,6 +53,28 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadTools() {
         const localSpecialTools = [
             {
+                name: 'mvp_pipeline_runner',
+                description: 'Runs the MVP cross-tool pipeline (competitive analysis -> SEO analyzer -> data visualization).',
+                ui_metadata: {
+                    category: 'Pipelines',
+                    display_name: 'MVP Pipeline Runner',
+                    tags: ['pipeline', 'mvp', 'orchestration'],
+                    estimated_time_seconds: 90
+                },
+                parameters: [
+                    { name: 'topic', type: 'string', optional: false, description: 'Market analysis topic query.' },
+                    { name: 'max_sources', type: 'number', optional: true, description: 'Maximum sources to analyze (3-20).' },
+                    { name: 'chart_output_path', type: 'string', optional: false, description: 'Absolute path for generated chart output.' }
+                ],
+                input_examples: [
+                    {
+                        topic: 'freeze dried raw dog food for sensitive stomachs',
+                        max_sources: 8,
+                        chart_output_path: '/tmp/mvp_market_keyword_chart.png'
+                    }
+                ]
+            },
+            {
                 name: 'generate_image',
                 description: 'Generates an image using Google Gemini.',
                 ui_metadata: {
@@ -299,6 +321,32 @@ document.addEventListener('DOMContentLoaded', () => {
         setOutput(`Executing ${toolName} with parameters:\n${JSON.stringify(params, null, 2)}\n`);
 
         try {
+            if (toolName === 'mvp_pipeline_runner') {
+                const definition = buildMvpPipelineDefinition(params);
+                const handle = await window.__TAURI__.core.invoke('start_pipeline_job', { definition });
+                appendOutput(`Started pipeline job ${handle.job_id}`);
+
+                while (true) {
+                    const snapshot = await window.__TAURI__.core.invoke('get_tool_job', { jobId: handle.job_id });
+
+                    if (snapshot.status === 'succeeded') {
+                        appendOutput('Pipeline completed successfully.');
+                        appendPipelineSummary(snapshot.output || {});
+                        appendOutput(`Raw pipeline output:\n${JSON.stringify(snapshot.output, null, 2)}`);
+                        break;
+                    }
+
+                    if (snapshot.status === 'failed' || snapshot.status === 'canceled') {
+                        appendOutput(`Pipeline ended with status: ${snapshot.status}`);
+                        appendOutput(`Error:\n${JSON.stringify(snapshot.error, null, 2)}`);
+                        break;
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 300));
+                }
+                return;
+            }
+
             if (toolName === 'generate_image') {
                 const result = await window.__TAURI__.core.invoke('generate_image_command', {
                     prompt: params.prompt,
@@ -332,6 +380,63 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             appendOutput(`Execution error: ${error}`);
+        }
+    }
+
+    function buildMvpPipelineDefinition(params) {
+        const maxSourcesRaw = Number(params.max_sources);
+        const maxSources = Number.isFinite(maxSourcesRaw) ? Math.max(3, Math.min(20, maxSourcesRaw)) : 8;
+        const topic = params.topic;
+        const chartOutputPath = params.chart_output_path;
+
+        return {
+            name: 'market_analysis_mvp_v1',
+            campaign_id: 'frontend_mvp_pipeline',
+            steps: [
+                {
+                    id: 'market_signals',
+                    tool: 'competitive_analysis',
+                    input: {
+                        topic,
+                        max_sources: maxSources
+                    }
+                },
+                {
+                    id: 'seo_quality',
+                    tool: 'seo_analyzer',
+                    input: {
+                        text: {
+                            from_step: 'market_signals',
+                            path: '/signal_report_markdown'
+                        },
+                        keywords: ['raw dog food', 'sensitive stomach', 'nutrition']
+                    }
+                },
+                {
+                    id: 'signal_chart',
+                    tool: 'data_viz',
+                    input: {
+                        data: {
+                            from_step: 'market_signals',
+                            path: '/keyword_frequency'
+                        },
+                        chart_type: 'bar',
+                        output_path: chartOutputPath
+                    }
+                }
+            ]
+        };
+    }
+
+    function appendPipelineSummary(result) {
+        appendOutput(`Pipeline: ${result.pipeline_name}`);
+        appendOutput(`Succeeded: ${result.succeeded}`);
+        appendOutput(`Started: ${result.started_at}`);
+        appendOutput(`Finished: ${result.finished_at}`);
+        appendOutput('Steps:');
+        for (const step of (result.steps || [])) {
+            const errorMessage = step.error?.message ? ` | error: ${step.error.message}` : '';
+            appendOutput(`- ${step.step_id} [${step.status}] (${step.duration_ms}ms)${errorMessage}`);
         }
     }
 

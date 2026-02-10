@@ -12,7 +12,12 @@ use tauri::State;
 use tauri_plugin_dialog::init as init_dialog_plugin;
 use tauri_plugin_fs::init as init_fs_plugin;
 
+mod governance;
 mod runtime;
+use governance::{
+    validate_budget_envelope, validate_release_gates, BudgetEnvelope, GovernanceValidationResult,
+    ReleaseGateInput,
+};
 use runtime::{JobHandle, JobManager, JobSnapshot};
 use std::time::Duration;
 
@@ -106,6 +111,39 @@ fn start_tool_job(
 }
 
 /// # NDOC
+/// component: `tauri_commands::start_tool_job_governed`
+/// purpose: Start tool execution only when release gates and budget envelope pass validation.
+/// invariants:
+///   - Existing `start_tool_job` behavior remains unchanged.
+#[tauri::command]
+fn start_tool_job_governed(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    tool_name: String,
+    input: Value,
+    budget: BudgetEnvelope,
+    gates: ReleaseGateInput,
+) -> Result<JobHandle, String> {
+    let budget_validation = validate_budget_envelope(&budget);
+    if !budget_validation.ok {
+        return Err(format!(
+            "budget envelope validation failed: {}",
+            budget_validation.errors.join("; ")
+        ));
+    }
+
+    let gate_validation = validate_release_gates(&gates);
+    if !gate_validation.ok {
+        return Err(format!(
+            "release gate validation failed: {}",
+            gate_validation.errors.join("; ")
+        ));
+    }
+
+    state.start_tool_job(&app_handle, tool_name, input)
+}
+
+/// # NDOC
 /// component: `tauri_commands::start_pipeline_job`
 /// purpose: Start asynchronous pipeline execution and return a job handle.
 /// invariants:
@@ -117,6 +155,60 @@ fn start_pipeline_job(
     definition: PipelineDefinition,
 ) -> Result<JobHandle, String> {
     state.start_pipeline_job(&app_handle, definition)
+}
+
+/// # NDOC
+/// component: `tauri_commands::start_pipeline_job_governed`
+/// purpose: Start pipeline execution only when release gates and budget envelope pass validation.
+#[tauri::command]
+fn start_pipeline_job_governed(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    definition: PipelineDefinition,
+    budget: BudgetEnvelope,
+    gates: ReleaseGateInput,
+) -> Result<JobHandle, String> {
+    let budget_validation = validate_budget_envelope(&budget);
+    if !budget_validation.ok {
+        return Err(format!(
+            "budget envelope validation failed: {}",
+            budget_validation.errors.join("; ")
+        ));
+    }
+
+    let gate_validation = validate_release_gates(&gates);
+    if !gate_validation.ok {
+        return Err(format!(
+            "release gate validation failed: {}",
+            gate_validation.errors.join("; ")
+        ));
+    }
+
+    state.start_pipeline_job(&app_handle, definition)
+}
+
+/// # NDOC
+/// component: `tauri_commands::validate_governance_inputs`
+/// purpose: Expose governance validation to frontend/operators without starting execution.
+#[tauri::command]
+fn validate_governance_inputs(
+    budget: BudgetEnvelope,
+    gates: ReleaseGateInput,
+) -> Result<GovernanceValidationResult, String> {
+    let mut errors = Vec::new();
+    let budget_validation = validate_budget_envelope(&budget);
+    if !budget_validation.ok {
+        errors.extend(budget_validation.errors);
+    }
+    let gate_validation = validate_release_gates(&gates);
+    if !gate_validation.ok {
+        errors.extend(gate_validation.errors);
+    }
+
+    Ok(GovernanceValidationResult {
+        ok: errors.is_empty(),
+        errors,
+    })
 }
 
 /// # NDOC
@@ -207,8 +299,11 @@ pub fn run() {
             get_tools,
             run_tool,
             start_tool_job,
+            start_tool_job_governed,
             start_pipeline_job,
+            start_pipeline_job_governed,
             run_pipeline,
+            validate_governance_inputs,
             get_tool_job,
             cancel_tool_job,
             generate_image_command
