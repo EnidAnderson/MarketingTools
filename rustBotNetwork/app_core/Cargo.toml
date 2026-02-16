@@ -23,6 +23,7 @@ playwright = "0.0.12"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 rand = "0.8" # Added for random number generation
+rand_chacha = "0.3"
 dotenv = "0.15"
 image = "0.24" # For image processing
 tempfile = "3.8" # For creating temporary files

@@ -1,15 +1,12 @@
 use app_core::image_generator::generate_image;
 use app_core::pipeline::PipelineDefinition;
+use app_core::subsystems::marketing_data_analysis::MockAnalyticsRequestV1;
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
 use app_core::tools::screenshot_tool::ScreenshotTool;
 use app_core::tools::tool_definition::ToolDefinition;
 use app_core::tools::tool_registry::ToolRegistry;
-use app_core::analytics_reporter::generate_analytics_report; // Added import for analytics reporter
-use app_core::data_models::analytics::AnalyticsReport; // Added import for AnalyticsReport
-use app_core::dashboard_processor::process_dashboard_config; // Added import for dashboard processor
-use app_core::data_models::dashboard::{DashboardConfig, DashboardRenderData}; // Added import for DashboardConfig and DashboardRenderData
 
 use serde_json::Value;
 use tauri::AppHandle;
@@ -303,27 +300,16 @@ fn cancel_tool_job(state: State<'_, JobManager>, job_id: String) -> Result<(), S
     state.cancel_job(&job_id)
 }
 
+/// # NDOC
+/// component: `tauri_commands::start_mock_analytics_job`
+/// purpose: Start async deterministic mock analytics run and return job id for polling.
 #[tauri::command]
-async fn process_dashboard_config_command(
-    config: DashboardConfig,
-) -> Result<DashboardRenderData, String> {
-    process_dashboard_config(&config).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn generate_analytics_report_command(
-    start_date: String,
-    end_date: String,
-    campaign_filter: Option<String>,
-    ad_group_filter: Option<String>,
-) -> Result<AnalyticsReport, String> {
-    let report = generate_analytics_report(
-        &start_date,
-        &end_date,
-        campaign_filter.as_deref(),
-        ad_group_filter.as_deref(),
-    );
-    Ok(report)
+fn start_mock_analytics_job(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    request: MockAnalyticsRequestV1,
+) -> Result<JobHandle, String> {
+    state.start_mock_analytics_job(&app_handle, request)
 }
 
 #[tauri::command]
@@ -369,9 +355,8 @@ pub fn run() {
             validate_governance_inputs,
             get_tool_job,
             cancel_tool_job,
+            start_mock_analytics_job,
             generate_image_command,
-            generate_analytics_report_command,
-            process_dashboard_config_command // Registered the new command
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

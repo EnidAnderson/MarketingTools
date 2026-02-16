@@ -1,0 +1,601 @@
+use super::contracts::{
+    AnalyticsError, AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem, MockAnalyticsArtifactV1,
+    MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+};
+use super::validators::{
+    validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1,
+};
+use crate::data_models::analytics::{
+    AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport, CampaignReportRow,
+    CampaignResource, Ga4NormalizedEvent, GoogleAdsRow, KeywordData, KeywordReportRow, MetricsData,
+    ReportMetrics, SegmentsData, SourceClassLabel, SourceProvenance,
+};
+use async_trait::async_trait;
+use chrono::{Duration, NaiveDate};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+
+const CAMPAIGN_NAMES: &[&str] = &[
+    "Summer Pet Food Promo",
+    "New Puppy Essentials",
+    "Senior Dog Health",
+    "Organic Cat Treats",
+];
+const AD_GROUP_NAMES: &[&str] = &["Dry Food", "Wet Food", "Treats", "Supplements"];
+const KEYWORD_TEXTS: &[&str] = &[
+    "healthy dog food",
+    "grain-free cat food",
+    "best puppy treats",
+    "senior pet vitamins",
+];
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::service`
+/// purpose: Transport-neutral service contract for mock analytics orchestration.
+#[async_trait]
+pub trait MarketAnalysisService: Send + Sync {
+    async fn run_mock_analysis(
+        &self,
+        request: MockAnalyticsRequestV1,
+    ) -> Result<MockAnalyticsArtifactV1, AnalyticsError>;
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::service`
+/// purpose: Default deterministic mock analytics implementation.
+pub struct DefaultMarketAnalysisService;
+
+impl DefaultMarketAnalysisService {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DefaultMarketAnalysisService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl MarketAnalysisService for DefaultMarketAnalysisService {
+    async fn run_mock_analysis(
+        &self,
+        request: MockAnalyticsRequestV1,
+    ) -> Result<MockAnalyticsArtifactV1, AnalyticsError> {
+        let (start, end) = validate_mock_analytics_request_v1(&request)?;
+        let seed = resolve_seed(&request);
+
+        let rows = generate_rows(&request, start, end, seed);
+        let report = rows_to_report(rows, &request, start, end);
+        let provenance = vec![SourceProvenance {
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            source_class: SourceClassLabel::Simulated,
+            source_system: "mock_analytics".to_string(),
+            collected_at_utc: "deterministic-simulated".to_string(),
+            freshness_minutes: 0,
+        }];
+        let (observed_evidence, inferred_guidance, uncertainty_notes) =
+            build_evidence_and_guidance(&report, request.include_narratives);
+
+        let metadata = AnalyticsRunMetadataV1 {
+            run_id: deterministic_run_id(&request, seed),
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            profile_id: request.profile_id.clone(),
+            seed,
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            date_span_days: ((end - start).num_days() + 1) as u32,
+            requested_at_utc: None,
+        };
+
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request,
+            metadata,
+            report,
+            observed_evidence,
+            inferred_guidance,
+            uncertainty_notes,
+            provenance,
+            validation: super::contracts::AnalyticsValidationReportV1 {
+                is_valid: false,
+                checks: Vec::new(),
+            },
+        };
+
+        artifact.validation = validate_mock_analytics_artifact_v1(&artifact);
+        if !artifact.validation.is_valid {
+            return Err(AnalyticsError::internal(
+                "artifact_invariant_violation",
+                "generated artifact failed invariant checks",
+            ));
+        }
+
+        Ok(artifact)
+    }
+}
+
+fn resolve_seed(request: &MockAnalyticsRequestV1) -> u64 {
+    if let Some(seed) = request.seed {
+        return seed;
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(request.start_date.as_bytes());
+    hasher.update(request.end_date.as_bytes());
+    hasher.update(request.profile_id.as_bytes());
+    if let Some(v) = &request.campaign_filter {
+        hasher.update(v.as_bytes());
+    }
+    if let Some(v) = &request.ad_group_filter {
+        hasher.update(v.as_bytes());
+    }
+    hasher.update(if request.include_narratives { b"1" } else { b"0" });
+    let digest = hasher.finalize();
+    u64::from_le_bytes([
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+    ])
+}
+
+fn deterministic_run_id(request: &MockAnalyticsRequestV1, seed: u64) -> String {
+    let serialized = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
+    let mut hasher = Sha256::new();
+    hasher.update(MOCK_ANALYTICS_SCHEMA_VERSION_V1.as_bytes());
+    hasher.update(serialized.as_bytes());
+    hasher.update(seed.to_le_bytes());
+    let digest = hasher.finalize();
+    format!("mockrun-{:x}", digest)[..24].to_string()
+}
+
+fn generate_rows(
+    request: &MockAnalyticsRequestV1,
+    start: NaiveDate,
+    end: NaiveDate,
+    seed: u64,
+) -> Vec<GoogleAdsRow> {
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let mut rows = Vec::new();
+    let mut current = start;
+
+    while current <= end {
+        let date_str = current.format("%Y-%m-%d").to_string();
+        for (campaign_idx, campaign_name) in CAMPAIGN_NAMES.iter().enumerate() {
+            if let Some(filter) = &request.campaign_filter {
+                if !campaign_name.contains(filter) {
+                    continue;
+                }
+            }
+            let campaign_id = format!("{}", campaign_idx + 1);
+            let campaign_resource = format!("customers/123/campaigns/{}", campaign_id);
+            let campaign_status = if rng.gen_bool(0.9) { "ENABLED" } else { "PAUSED" };
+            let campaign = CampaignResource {
+                resourceName: campaign_resource.clone(),
+                id: campaign_id.clone(),
+                name: (*campaign_name).to_string(),
+                status: campaign_status.to_string(),
+            };
+
+            for (ad_group_idx, ad_group_name) in AD_GROUP_NAMES.iter().enumerate() {
+                if let Some(filter) = &request.ad_group_filter {
+                    if !ad_group_name.contains(filter) {
+                        continue;
+                    }
+                }
+                let ad_group_id = format!("{}.{}", campaign_id, ad_group_idx + 1);
+                let ad_group_resource = format!("customers/123/adGroups/{}", ad_group_id);
+                let ad_group_status = if rng.gen_bool(0.9) { "ENABLED" } else { "PAUSED" };
+                let ad_group = AdGroupResource {
+                    resourceName: ad_group_resource.clone(),
+                    id: ad_group_id.clone(),
+                    name: (*ad_group_name).to_string(),
+                    status: ad_group_status.to_string(),
+                    campaignResourceName: campaign_resource.clone(),
+                };
+
+                for (kw_idx, keyword_text) in KEYWORD_TEXTS.iter().enumerate() {
+                    let impressions: u64 = rng.gen_range(100..1200);
+                    let max_clicks = (impressions / 2).max(1);
+                    let clicks: u64 = rng.gen_range(1..=max_clicks);
+                    let cost_micros = clicks * rng.gen_range(200_000..1_300_000);
+                    let conversions = round4(rng.gen_range(0.0..(clicks as f64 / 5.0)));
+                    let conversions_value = round4(conversions * rng.gen_range(10.0..60.0));
+
+                    let metrics = MetricsData {
+                        clicks,
+                        impressions,
+                        costMicros: cost_micros,
+                        conversions,
+                        conversionsValue: conversions_value,
+                        ctr: round4((clicks as f64 / impressions as f64) * 100.0),
+                        averageCpc: round4(cost_micros as f64 / clicks as f64 / 1_000_000.0),
+                    };
+
+                    let criterion_id = format!("{}{}{}", campaign_idx + 1, ad_group_idx + 1, kw_idx + 1);
+                    let criterion = AdGroupCriterionResource {
+                        resourceName: format!(
+                            "customers/123/adGroupCriteria/{}.{}",
+                            ad_group_id, criterion_id
+                        ),
+                        criterionId: criterion_id,
+                        status: "ENABLED".to_string(),
+                        keyword: Some(KeywordData {
+                            text: (*keyword_text).to_string(),
+                            matchType: "EXACT".to_string(),
+                        }),
+                        qualityScore: Some(rng.gen_range(1..=10)),
+                        adGroupResourceName: ad_group_resource.clone(),
+                    };
+
+                    rows.push(GoogleAdsRow {
+                        campaign: Some(campaign.clone()),
+                        adGroup: Some(ad_group.clone()),
+                        keywordView: None,
+                        adGroupCriterion: Some(criterion),
+                        metrics: Some(metrics),
+                        segments: Some(SegmentsData {
+                            date: Some(date_str.clone()),
+                            device: Some("DESKTOP".to_string()),
+                        }),
+                    });
+                }
+            }
+        }
+        let Some(next) = current.checked_add_signed(Duration::days(1)) else {
+            break;
+        };
+        current = next;
+    }
+
+    rows
+}
+
+fn rows_to_report(
+    rows: Vec<GoogleAdsRow>,
+    request: &MockAnalyticsRequestV1,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> AnalyticsReport {
+    type CampaignAgg = (String, String, ReportMetrics);
+    type AdGroupAgg = (String, String, String, ReportMetrics);
+    type KeywordAgg = (String, String, String, String, ReportMetrics, Option<u32>);
+
+    let mut total = ReportMetrics::default();
+    let mut campaigns: BTreeMap<String, CampaignAgg> = BTreeMap::new();
+    let mut ad_groups: BTreeMap<String, AdGroupAgg> = BTreeMap::new();
+    let mut keywords: BTreeMap<String, KeywordAgg> = BTreeMap::new();
+
+    for row in rows {
+        let Some(metrics) = row.metrics else { continue };
+        let campaign = row.campaign.unwrap_or(CampaignResource {
+            resourceName: "".to_string(),
+            id: "".to_string(),
+            name: "".to_string(),
+            status: "UNKNOWN".to_string(),
+        });
+        let ad_group = row.adGroup.unwrap_or(AdGroupResource {
+            resourceName: "".to_string(),
+            id: "".to_string(),
+            name: "".to_string(),
+            status: "UNKNOWN".to_string(),
+            campaignResourceName: "".to_string(),
+        });
+        let criterion = row.adGroupCriterion.unwrap_or(AdGroupCriterionResource {
+            resourceName: "".to_string(),
+            criterionId: "".to_string(),
+            status: "UNKNOWN".to_string(),
+            keyword: None,
+            qualityScore: None,
+            adGroupResourceName: "".to_string(),
+        });
+
+        let line = from_metrics_data(&metrics);
+        total = sum_metrics(&total, &line);
+
+        let campaign_entry = campaigns
+            .entry(campaign.id.clone())
+            .or_insert((campaign.name.clone(), campaign.status.clone(), ReportMetrics::default()));
+        campaign_entry.0 = campaign.name.clone();
+        campaign_entry.1 = campaign.status.clone();
+        campaign_entry.2 = sum_metrics(&campaign_entry.2, &line);
+
+        let ad_group_entry = ad_groups.entry(ad_group.id.clone()).or_insert((
+            campaign.id.clone(),
+            ad_group.name.clone(),
+            ad_group.status.clone(),
+            ReportMetrics::default(),
+        ));
+        ad_group_entry.0 = campaign.id.clone();
+        ad_group_entry.1 = ad_group.name.clone();
+        ad_group_entry.2 = ad_group.status.clone();
+        ad_group_entry.3 = sum_metrics(&ad_group_entry.3, &line);
+
+        let keyword_entry = keywords.entry(criterion.criterionId.clone()).or_insert((
+            campaign.id.clone(),
+            ad_group.id.clone(),
+            criterion
+                .keyword
+                .as_ref()
+                .map(|k| k.text.clone())
+                .unwrap_or_default(),
+            criterion
+                .keyword
+                .as_ref()
+                .map(|k| k.matchType.clone())
+                .unwrap_or_else(|| "EXACT".to_string()),
+            ReportMetrics::default(),
+            criterion.qualityScore,
+        ));
+        keyword_entry.0 = campaign.id.clone();
+        keyword_entry.1 = ad_group.id.clone();
+        keyword_entry.4 = sum_metrics(&keyword_entry.4, &line);
+        keyword_entry.5 = criterion.qualityScore;
+    }
+
+    let campaign_data = campaigns
+        .into_iter()
+        .map(|(id, (name, status, metrics))| CampaignReportRow {
+            date: "".to_string(),
+            campaign_id: id,
+            campaign_name: name,
+            campaign_status: status,
+            metrics: round_metrics(metrics),
+        })
+        .collect::<Vec<_>>();
+
+    let ad_group_data = ad_groups
+        .into_iter()
+        .map(|(id, (campaign_id, name, status, metrics))| {
+            let campaign_name = campaign_data
+                .iter()
+                .find(|c| c.campaign_id == campaign_id)
+                .map(|c| c.campaign_name.clone())
+                .unwrap_or_default();
+            AdGroupReportRow {
+                date: "".to_string(),
+                campaign_id,
+                campaign_name,
+                ad_group_id: id,
+                ad_group_name: name,
+                ad_group_status: status,
+                metrics: round_metrics(metrics),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let keyword_data = keywords
+        .into_iter()
+        .map(|(id, (campaign_id, ad_group_id, text, match_type, metrics, quality_score))| {
+            let campaign_name = campaign_data
+                .iter()
+                .find(|c| c.campaign_id == campaign_id)
+                .map(|c| c.campaign_name.clone())
+                .unwrap_or_default();
+            let ad_group_name = ad_group_data
+                .iter()
+                .find(|ag| ag.ad_group_id == ad_group_id)
+                .map(|ag| ag.ad_group_name.clone())
+                .unwrap_or_default();
+            KeywordReportRow {
+                date: "".to_string(),
+                campaign_id,
+                campaign_name,
+                ad_group_id,
+                ad_group_name,
+                keyword_id: id,
+                keyword_text: text,
+                match_type,
+                quality_score,
+                metrics: round_metrics(metrics),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    AnalyticsReport {
+        report_name: format!(
+            "Mock Analytics Report: {} to {}",
+            request.start_date, request.end_date
+        ),
+        date_range: format!("{} to {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d")),
+        total_metrics: round_metrics(total),
+        campaign_data,
+        ad_group_data,
+        keyword_data,
+    }
+}
+
+fn from_metrics_data(data: &MetricsData) -> ReportMetrics {
+    let cost = data.costMicros as f64 / 1_000_000.0;
+    derived_metrics(
+        data.impressions,
+        data.clicks,
+        cost,
+        data.conversions,
+        data.conversionsValue,
+    )
+}
+
+fn sum_metrics(a: &ReportMetrics, b: &ReportMetrics) -> ReportMetrics {
+    derived_metrics(
+        a.impressions + b.impressions,
+        a.clicks + b.clicks,
+        a.cost + b.cost,
+        a.conversions + b.conversions,
+        a.conversions_value + b.conversions_value,
+    )
+}
+
+fn round_metrics(mut m: ReportMetrics) -> ReportMetrics {
+    m.cost = round4(m.cost);
+    m.conversions = round4(m.conversions);
+    m.conversions_value = round4(m.conversions_value);
+    m.ctr = round4(m.ctr);
+    m.cpc = round4(m.cpc);
+    m.cpa = round4(m.cpa);
+    m.roas = round4(m.roas);
+    m
+}
+
+fn derived_metrics(
+    impressions: u64,
+    clicks: u64,
+    cost: f64,
+    conversions: f64,
+    conversions_value: f64,
+) -> ReportMetrics {
+    let ctr = if impressions > 0 {
+        (clicks as f64 / impressions as f64) * 100.0
+    } else {
+        0.0
+    };
+    let cpc = if clicks > 0 { cost / clicks as f64 } else { 0.0 };
+    let cpa = if conversions > 0.0 { cost / conversions } else { 0.0 };
+    let roas = if cost > 0.0 {
+        conversions_value / cost
+    } else {
+        0.0
+    };
+    ReportMetrics {
+        impressions,
+        clicks,
+        cost,
+        conversions,
+        conversions_value,
+        ctr,
+        cpc,
+        cpa,
+        roas,
+    }
+}
+
+fn round4(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
+}
+
+fn build_evidence_and_guidance(
+    report: &AnalyticsReport,
+    include_narratives: bool,
+) -> (Vec<EvidenceItem>, Vec<GuidanceItem>, Vec<String>) {
+    let mut evidence = Vec::new();
+    evidence.push(EvidenceItem {
+        evidence_id: "ev_total_impressions".to_string(),
+        label: "Total Impressions".to_string(),
+        value: report.total_metrics.impressions.to_string(),
+        source_class: "simulated".to_string(),
+    });
+    evidence.push(EvidenceItem {
+        evidence_id: "ev_total_clicks".to_string(),
+        label: "Total Clicks".to_string(),
+        value: report.total_metrics.clicks.to_string(),
+        source_class: "simulated".to_string(),
+    });
+
+    let mut guidance = Vec::new();
+    if include_narratives {
+        guidance.push(GuidanceItem {
+            guidance_id: "gd_budget_focus".to_string(),
+            text: "Prioritize campaigns with above-median ROAS in next optimization pass."
+                .to_string(),
+            confidence_label: "medium".to_string(),
+        });
+        guidance.push(GuidanceItem {
+            guidance_id: "gd_quality_improve".to_string(),
+            text: "Review ad groups with low CTR for creative/keyword alignment.".to_string(),
+            confidence_label: "medium".to_string(),
+        });
+    }
+
+    let uncertainty = vec![
+        "Dataset is simulated and intended for tool integration validation only.".to_string(),
+        "Attribution assumptions are simplified for deterministic replay.".to_string(),
+    ];
+    (evidence, guidance, uncertainty)
+}
+
+#[allow(dead_code)]
+fn build_ga4_events(seed: u64) -> Vec<Ga4NormalizedEvent> {
+    vec![Ga4NormalizedEvent {
+        event_name: "purchase".to_string(),
+        event_timestamp_utc: "deterministic-simulated".to_string(),
+        session_id: format!("sess_{seed}"),
+        user_pseudo_id: format!("user_{seed}"),
+        traffic_source: Some("google".to_string()),
+        medium: Some("cpc".to_string()),
+        campaign: Some("spring_launch".to_string()),
+        revenue_micros: Some(1_000_000),
+        provenance: SourceProvenance {
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            source_class: SourceClassLabel::Simulated,
+            source_system: "mock_analytics".to_string(),
+            collected_at_utc: "deterministic-simulated".to_string(),
+            freshness_minutes: 0,
+        },
+    }]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn same_request_and_seed_is_byte_stable() {
+        let svc = DefaultMarketAnalysisService::new();
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-03".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(42),
+            profile_id: "small".to_string(),
+            include_narratives: true,
+        };
+
+        let a = svc
+            .run_mock_analysis(req.clone())
+            .await
+            .expect("run should succeed");
+        let b = svc.run_mock_analysis(req).await.expect("run should succeed");
+        let sa = serde_json::to_string(&a).expect("serialize");
+        let sb = serde_json::to_string(&b).expect("serialize");
+        assert_eq!(sa, sb);
+    }
+
+    #[tokio::test]
+    async fn derived_seed_is_stable_when_seed_omitted() {
+        let svc = DefaultMarketAnalysisService::new();
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-02".to_string(),
+            campaign_filter: Some("Summer".to_string()),
+            ad_group_filter: None,
+            seed: None,
+            profile_id: "small".to_string(),
+            include_narratives: false,
+        };
+        let first = svc
+            .run_mock_analysis(req.clone())
+            .await
+            .expect("run should succeed");
+        let second = svc.run_mock_analysis(req).await.expect("run should succeed");
+        assert_eq!(first.metadata.seed, second.metadata.seed);
+        assert_eq!(first.metadata.run_id, second.metadata.run_id);
+    }
+
+    #[tokio::test]
+    async fn property_impressions_are_always_gte_clicks() {
+        let svc = DefaultMarketAnalysisService::new();
+        for seed in 1..=16_u64 {
+            let req = MockAnalyticsRequestV1 {
+                start_date: "2026-01-01".to_string(),
+                end_date: "2026-01-03".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(seed),
+                profile_id: "small".to_string(),
+                include_narratives: true,
+            };
+            let artifact = svc.run_mock_analysis(req).await.expect("run should succeed");
+            assert!(artifact.report.total_metrics.impressions >= artifact.report.total_metrics.clicks);
+        }
+    }
+}

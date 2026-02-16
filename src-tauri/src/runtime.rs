@@ -1,6 +1,8 @@
 use app_core::pipeline::{execute_pipeline, PipelineDefinition};
+use app_core::subsystems::marketing_data_analysis::{
+    DefaultMarketAnalysisService, MarketAnalysisService, MockAnalyticsRequestV1,
+};
 use app_core::tools::tool_registry::ToolRegistry;
-use app_core::tools::tool_definition::Tool; // Added Tool trait import
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -10,7 +12,6 @@ use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::time::{sleep, Duration, Instant};
-use std::error::Error; // Added Error trait import
 
 /// # NDOC
 /// component: `tauri_runtime::jobs`
@@ -284,6 +285,137 @@ impl JobManager {
         Ok(JobHandle { job_id })
     }
 
+    /// # NDOC
+    /// component: `tauri_runtime::jobs::start_mock_analytics_job`
+    /// purpose: Start deterministic mock analytics run as a managed async job.
+    /// invariants:
+    ///   - Uses stage names: validating_input -> generating_data -> assembling_report -> validating_invariants -> completed.
+    pub fn start_mock_analytics_job(
+        &self,
+        app_handle: &AppHandle,
+        request: MockAnalyticsRequestV1,
+    ) -> Result<JobHandle, String> {
+        let job_id = next_job_id();
+        let snapshot = JobSnapshot {
+            job_id: job_id.clone(),
+            tool_name: "analytics::mock_pipeline".to_string(),
+            status: JobStatus::Queued,
+            progress_pct: 0,
+            stage: "queued".to_string(),
+            message: Some("Mock analytics job accepted".to_string()),
+            output: None,
+            error: None,
+        };
+
+        {
+            let mut jobs = self
+                .jobs
+                .write()
+                .map_err(|_| "Failed to acquire write lock for jobs".to_string())?;
+            jobs.insert(job_id.clone(), snapshot);
+        }
+        self.assert_snapshot_invariant(&job_id);
+        self.emit_progress(app_handle, &job_id);
+
+        let manager = self.clone();
+        let app_handle = app_handle.clone();
+        let spawned_job_id = job_id.clone();
+        tauri::async_runtime::spawn(async move {
+            manager.update_running(&spawned_job_id);
+            manager.update_stage(
+                &spawned_job_id,
+                "validating_input",
+                15,
+                "Validating mock analytics request",
+            );
+            manager.assert_snapshot_invariant(&spawned_job_id);
+            manager.emit_progress(&app_handle, &spawned_job_id);
+
+            if manager.is_canceled(&spawned_job_id) {
+                manager.update_canceled(&spawned_job_id, "Job canceled before generation");
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+
+            manager.update_stage(
+                &spawned_job_id,
+                "generating_data",
+                40,
+                "Generating deterministic mock analytics data",
+            );
+            manager.emit_progress(&app_handle, &spawned_job_id);
+            sleep(Duration::from_millis(150)).await;
+
+            if manager.is_canceled(&spawned_job_id) {
+                manager.update_canceled(&spawned_job_id, "Job canceled during generating_data");
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+
+            manager.update_stage(
+                &spawned_job_id,
+                "assembling_report",
+                70,
+                "Assembling analytics report artifact",
+            );
+            manager.emit_progress(&app_handle, &spawned_job_id);
+
+            let service = DefaultMarketAnalysisService::new();
+            match service.run_mock_analysis(request).await {
+                Ok(artifact) => {
+                    manager.update_stage(
+                        &spawned_job_id,
+                        "validating_invariants",
+                        90,
+                        "Validating artifact invariants",
+                    );
+                    manager.emit_progress(&app_handle, &spawned_job_id);
+
+                    if manager.is_canceled(&spawned_job_id) {
+                        manager.update_canceled(&spawned_job_id, "Job canceled before completion");
+                        manager.emit_failed(&app_handle, &spawned_job_id);
+                        return;
+                    }
+
+                    match serde_json::to_value(artifact) {
+                        Ok(output) => {
+                            manager.update_succeeded(&spawned_job_id, output);
+                            manager.assert_snapshot_invariant(&spawned_job_id);
+                            manager.emit_completed(&app_handle, &spawned_job_id);
+                        }
+                        Err(err) => {
+                            manager.update_failed(
+                                &spawned_job_id,
+                                serde_json::json!({
+                                    "kind": "internal_error",
+                                    "message": format!("Failed to serialize artifact: {}", err),
+                                    "retryable": false
+                                }),
+                            );
+                            manager.emit_failed(&app_handle, &spawned_job_id);
+                        }
+                    }
+                }
+                Err(err) => {
+                    manager.update_failed(
+                        &spawned_job_id,
+                        serde_json::json!({
+                            "kind": err.code,
+                            "message": err.message,
+                            "retryable": false,
+                            "field_paths": err.field_paths,
+                            "context": err.context
+                        }),
+                    );
+                    manager.assert_snapshot_invariant(&spawned_job_id);
+                    manager.emit_failed(&app_handle, &spawned_job_id);
+                }
+            }
+        });
+
+        Ok(JobHandle { job_id })
+    }
+
     pub fn get_job(&self, job_id: &str) -> Option<JobSnapshot> {
         self.jobs
             .read()
@@ -397,6 +529,17 @@ impl JobManager {
                     .and_then(Value::as_str)
                     .map(str::to_string);
                 snapshot.error = Some(error);
+            }
+        }
+    }
+
+    fn update_stage(&self, job_id: &str, stage: &str, progress_pct: u8, message: &str) {
+        if let Ok(mut jobs) = self.jobs.write() {
+            if let Some(snapshot) = jobs.get_mut(job_id) {
+                snapshot.status = JobStatus::Running;
+                snapshot.stage = stage.to_string();
+                snapshot.progress_pct = progress_pct.min(99);
+                snapshot.message = Some(message.to_string());
             }
         }
     }
@@ -534,5 +677,32 @@ mod tests {
             ..ok
         };
         assert!(validate_job_snapshot(&bad).is_err());
+    }
+
+    #[test]
+    fn cancel_mock_analytics_during_generating_data() {
+        let manager = JobManager::new();
+        let job_id = "job-generating-data".to_string();
+        {
+            let mut jobs = manager.jobs.write().expect("lock");
+            jobs.insert(
+                job_id.clone(),
+                JobSnapshot {
+                    job_id: job_id.clone(),
+                    tool_name: "analytics::mock_pipeline".to_string(),
+                    status: JobStatus::Running,
+                    progress_pct: 40,
+                    stage: "generating_data".to_string(),
+                    message: Some("Generating deterministic mock analytics data".to_string()),
+                    output: None,
+                    error: None,
+                },
+            );
+        }
+
+        manager.cancel_job(&job_id).expect("cancel should succeed");
+        let snapshot = manager.get_job(&job_id).expect("snapshot should exist");
+        assert_eq!(snapshot.status, JobStatus::Canceled);
+        assert_eq!(snapshot.stage, "canceled");
     }
 }

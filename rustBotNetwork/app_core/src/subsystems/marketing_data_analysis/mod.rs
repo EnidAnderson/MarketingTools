@@ -1,21 +1,16 @@
-use serde::{Deserialize, Serialize};
-
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis`
-/// purpose: Domain boundary for market/competitor signal extraction and interpretation.
+/// purpose: Typed mock analytics subsystem for deterministic, auditable market analysis.
 /// invariants:
-///   - Raw evidence and inferred guidance are represented as separate fields.
-///   - Domain models remain transport-neutral and Rust-native.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MarketSignalPack {
-    pub topic: String,
-    pub evidence_count: usize,
-    pub inferred_notes: Vec<String>,
-}
+///   - Request and artifact payloads are schema-versioned.
+///   - Request validation and artifact validation are transport-neutral.
+///   - Orchestration does not depend on Tauri/UI types.
+pub mod contracts;
+pub mod service;
+pub mod validators;
 
-/// # NDOC
-/// component: `subsystems::marketing_data_analysis`
-/// purpose: Placeholder service boundary for future typed analysis APIs.
-pub trait MarketAnalysisService: Send + Sync {
-    fn service_name(&self) -> &'static str;
-}
+pub use contracts::{
+    AnalyticsError, AnalyticsRunMetadataV1, AnalyticsValidationReportV1, EvidenceItem,
+    GuidanceItem, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, ValidationCheck,
+};
+pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};
