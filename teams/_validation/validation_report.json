@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-02-16T21:55:54Z",
+  "generated_at_utc": "2026-02-16T21:58:52Z",
   "base_ref": "HEAD",
   "overall_status": "fail",
   "checks": [
@@ -25,7 +25,7 @@
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-031",
       "status": "fail",
       "exit_code": 31,
-      "diagnostic": "FAIL[RQ-031] missing provenance reference in 'rustBotNetwork/Cargo.toml' (decision_id or change_request_id required)"
+      "diagnostic": "FAIL[RQ-031] missing provenance reference in 'data/team_ops/archive/20260216T215229Z/manifest.json' (decision_id or change_request_id required)"
     },
     {
       "check_id": "RQ-034",
@@ -49,7 +49,7 @@
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-003",
       "status": "fail",
       "exit_code": 43,
-      "diagnostic": "DETAIL[RQ-MGR-003] handoff line 52 run_id=run_2026-02-16_003 has no appended run_registry row in same cycle"
+      "diagnostic": "DETAIL[RQ-MGR-003] handoff line 54 run_id=run_2026-02-16_004 has no appended run_registry row in same cycle"
     },
     {
       "check_id": "RQ-MGR-004",

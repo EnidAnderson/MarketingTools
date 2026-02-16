@@ -56,7 +56,7 @@ pub fn generate_simulated_google_ads_rows(
 
         for (campaign_idx, &campaign_name) in CAMPAIGN_NAMES.iter().enumerate() {
             let campaign_id = format!("{}", campaign_idx + 1);
-            let campaign_resource_name =
+            let campaign_resourceName =
                 format!("customers/123456789/campaigns/{}", campaign_id);
             let campaign_status = if rng.gen_bool(0.9) {
                 "ENABLED".to_string()
@@ -65,64 +65,64 @@ pub fn generate_simulated_google_ads_rows(
             };
 
             let campaign_res = CampaignResource {
-                resource_name: campaign_resource_name.clone(),
+                resourceName: campaign_resourceName.clone(),
                 id: campaign_id.clone(),
                 name: campaign_name.to_string(),
                 status: campaign_status.clone(),
             };
 
-            for (ad_group_idx, &ad_group_name) in AD_GROUP_NAMES.iter().enumerate() {
-                let ad_group_id = format!("{}.{}", campaign_id, ad_group_idx + 1);
-                let ad_group_resource_name =
-                    format!("customers/123456789/adGroups/{}", ad_group_id);
-                let ad_group_status = if rng.gen_bool(0.9) {
+            for (adGroup_idx, &adGroup_name) in AD_GROUP_NAMES.iter().enumerate() {
+                let adGroup_id = format!("{}.{}", campaign_id, adGroup_idx + 1);
+                let adGroup_resourceName =
+                    format!("customers/123456789/adGroups/{}", adGroup_id);
+                let adGroup_status = if rng.gen_bool(0.9) {
                     "ENABLED".to_string()
                 } else {
                     "PAUSED".to_string()
                 };
 
-                let ad_group_res = AdGroupResource {
-                    resource_name: ad_group_resource_name.clone(),
-                    id: ad_group_id.clone(),
-                    name: ad_group_name.to_string(),
-                    status: ad_group_status.clone(),
-                    campaign_resource_name: campaign_resource_name.clone(),
+                let adGroup_res = AdGroupResource {
+                    resourceName: adGroup_resourceName.clone(),
+                    id: adGroup_id.clone(),
+                    name: adGroup_name.to_string(),
+                    status: adGroup_status.clone(),
+                    campaignResourceName: campaign_resourceName.clone(),
                 };
 
                 for (keyword_idx, &keyword_text) in KEYWORD_TEXTS.iter().enumerate() {
                     let impressions: u64 = rng.gen_range(500..5000);
                     let clicks: u64 = rng.gen_range(10..impressions / 20);
-                    let cost_micros: u64 = (clicks as u64) * rng.gen_range(500_000..2_500_000); // 0.5 to 2.5 currency units
+                    let costMicros: u64 = (clicks as u64) * rng.gen_range(500_000..2_500_000); // 0.5 to 2.5 currency units
                     let conversions: f64 = rng.gen_range(0.0..clicks as f64 / 50.0);
-                    let conversions_value: f64 = conversions * rng.gen_range(20.0..100.0);
-                    let quality_score: u32 = rng.gen_range(1..10);
+                    let conversionsValue: f64 = conversions * rng.gen_range(20.0..100.0);
+                    let qualityScore: u32 = rng.gen_range(1..10);
 
                     let metrics_data = MetricsData {
                         impressions,
                         clicks,
-                        cost_micros,
+                        costMicros,
                         conversions,
-                        conversions_value,
+                        conversionsValue,
                         ctr: (clicks as f64 / impressions as f64) * 100.0,
-                        average_cpc: cost_micros as f64 / clicks as f64 / 1_000_000.0,
+                        averageCpc: costMicros as f64 / clicks as f64 / 1_000_000.0,
                     };
 
-                    let match_type = MATCH_TYPES[rng.gen_range(0..MATCH_TYPES.len())];
-                    let criterion_id = format!("{}", rng.gen_range(10000..99999));
+                    let matchType = MATCH_TYPES[rng.gen_range(0..MATCH_TYPES.len())];
+                    let criterionId = format!("{}", rng.gen_range(10000..99999));
 
-                    let ad_group_criterion = AdGroupCriterionResource {
-                        resource_name: format!(
+                    let adGroupCriterion = AdGroupCriterionResource {
+                        resourceName: format!(
                             "customers/123456789/adGroupCriteria/{}.{}",
-                            ad_group_id, criterion_id
+                            adGroup_id, criterionId
                         ),
-                        criterion_id: criterion_id.clone(),
+                        criterionId: criterionId.clone(),
                         status: "ENABLED".to_string(),
                         keyword: Some(KeywordData {
                             text: keyword_text.to_string(),
-                            match_type: match_type.to_string(),
+                            matchType: matchType.to_string(),
                         }),
-                        quality_score: Some(quality_score),
-                        ad_group_resource_name: ad_group_resource_name.clone(),
+                        qualityScore: Some(qualityScore),
+                        adGroupResourceName: adGroup_resourceName.clone(),
                     };
 
                     let segments_data = SegmentsData {
@@ -136,9 +136,9 @@ pub fn generate_simulated_google_ads_rows(
 
                     rows.push(GoogleAdsRow {
                         campaign: Some(campaign_res.clone()),
-                        ad_group: Some(ad_group_res.clone()),
-                        keyword_view: None, // Not directly querying keyword_view resource
-                        ad_group_criterion: Some(ad_group_criterion),
+                        adGroup: Some(adGroup_res.clone()),
+                        keywordView: None, // Not directly querying keywordView resource
+                        adGroupCriterion: Some(adGroupCriterion),
                         metrics: Some(metrics_data),
                         segments: Some(segments_data),
                     });
@@ -171,7 +171,7 @@ pub fn process_google_ads_rows_to_report(
     let mut ad_group_metrics_map: HashMap<String, (String, String, String, ReportMetrics)> =
         HashMap::new(); // id -> (campaign_id, name, status, metrics)
     let mut keyword_metrics_map: HashMap<String, (String, String, String, String, ReportMetrics, Option<u32>)> =
-        HashMap::new(); // id -> (campaign_id, ad_group_id, text, type, metrics, quality_score)
+        HashMap::new(); // id -> (campaign_id, adGroup_id, text, type, metrics, qualityScore)
 
     for row in rows {
         let campaign_id = row
@@ -190,51 +190,51 @@ pub fn process_google_ads_rows_to_report(
             .map(|c| c.status.clone())
             .unwrap_or_default();
 
-        let ad_group_id = row
-            .ad_group
+        let adGroup_id = row
+            .adGroup
             .as_ref()
             .map(|ag| ag.id.clone())
             .unwrap_or_default();
-        let ad_group_name = row
-            .ad_group
+        let adGroup_name = row
+            .adGroup
             .as_ref()
             .map(|ag| ag.name.clone())
             .unwrap_or_default();
-        let ad_group_status = row
-            .ad_group
+        let adGroup_status = row
+            .adGroup
             .as_ref()
             .map(|ag| ag.status.clone())
             .unwrap_or_default();
 
         let keyword_id = row
-            .ad_group_criterion
+            .adGroupCriterion
             .as_ref()
-            .map(|agc| agc.criterion_id.clone())
+            .map(|agc| agc.criterionId.clone())
             .unwrap_or_default();
         let keyword_text = row
-            .ad_group_criterion
+            .adGroupCriterion
             .as_ref()
             .and_then(|agc| agc.keyword.as_ref())
             .map(|kw| kw.text.clone())
             .unwrap_or_default();
-        let match_type = row
-            .ad_group_criterion
+        let matchType = row
+            .adGroupCriterion
             .as_ref()
             .and_then(|agc| agc.keyword.as_ref())
-            .map(|kw| kw.match_type.clone())
+            .map(|kw| kw.matchType.clone())
             .unwrap_or_default();
-        let quality_score = row
-            .ad_group_criterion
+        let qualityScore = row
+            .adGroupCriterion
             .as_ref()
-            .and_then(|agc| agc.quality_score);
+            .and_then(|agc| agc.qualityScore);
 
         if let Some(metrics) = row.metrics {
             let processed_metrics = calculate_report_metrics(
                 metrics.impressions,
                 metrics.clicks,
-                metrics.cost_micros,
+                metrics.costMicros,
                 metrics.conversions,
-                metrics.conversions_value,
+                metrics.conversionsValue,
             );
 
             // Aggregate total metrics
@@ -250,22 +250,22 @@ pub fn process_google_ads_rows_to_report(
 
             // Aggregate ad group metrics
             let (ag_c_id, ag_name, ag_status, ag_metrics) = ad_group_metrics_map
-                .entry(ad_group_id.clone())
-                .or_insert((campaign_id.clone(), ad_group_name.clone(), ad_group_status.clone(), ReportMetrics::default()));
+                .entry(adGroup_id.clone())
+                .or_insert((campaign_id.clone(), adGroup_name.clone(), adGroup_status.clone(), ReportMetrics::default()));
             *ag_c_id = campaign_id.clone();
-            *ag_name = ad_group_name.clone();
-            *ag_status = ad_group_status.clone();
+            *ag_name = adGroup_name.clone();
+            *ag_status = adGroup_status.clone();
             *ag_metrics = aggregate_report_metrics(ag_metrics, &processed_metrics);
 
             // Aggregate keyword metrics
-            let (kw_c_id, kw_ag_id, kw_text, kw_type, kw_metrics, kw_quality_score) = keyword_metrics_map
+            let (kw_c_id, kw_ag_id, kw_text, kw_type, kw_metrics, kw_qualityScore) = keyword_metrics_map
                 .entry(keyword_id.clone())
-                .or_insert((campaign_id.clone(), ad_group_id.clone(), keyword_text.clone(), match_type.clone(), ReportMetrics::default(), quality_score));
+                .or_insert((campaign_id.clone(), adGroup_id.clone(), keyword_text.clone(), matchType.clone(), ReportMetrics::default(), qualityScore));
             *kw_c_id = campaign_id.clone();
-            *kw_ag_id = ad_group_id.clone();
+            *kw_ag_id = adGroup_id.clone();
             *kw_text = keyword_text.clone();
-            *kw_type = match_type.clone();
-            *kw_quality_score = quality_score;
+            *kw_type = matchType.clone();
+            *kw_qualityScore = qualityScore;
             *kw_metrics = aggregate_report_metrics(kw_metrics, &processed_metrics);
         }
     }
@@ -415,15 +415,15 @@ mod tests {
 
         let first_row = rows.first().unwrap();
         assert!(first_row.campaign.is_some());
-        assert!(first_row.ad_group.is_some());
-        assert!(first_row.ad_group_criterion.is_some());
+        assert!(first_row.adGroup.is_some());
+        assert!(first_row.adGroupCriterion.is_some());
         assert!(first_row.metrics.is_some());
         assert!(first_row.segments.is_some());
 
         let metrics = first_row.metrics.as_ref().unwrap();
         assert!(metrics.impressions > 0);
         assert!(metrics.clicks > 0);
-        assert!(metrics.cost_micros > 0);
+        assert!(metrics.costMicros > 0);
     }
 
     #[test]

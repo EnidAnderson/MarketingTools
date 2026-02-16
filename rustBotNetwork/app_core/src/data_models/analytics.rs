@@ -229,7 +229,7 @@ pub struct NormalizedKpiNarrative {
     pub attribution_window: AttributionWindowMetadata,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustedAnalyticsReportArtifact {
     pub report: AnalyticsReport,
     pub narratives: Vec<NormalizedKpiNarrative>,

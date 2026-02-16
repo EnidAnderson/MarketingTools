@@ -3,11 +3,11 @@
 
 use crate::analytics_connector_contracts::{
     default_attribution_window, default_confidence, AnalyticsConnectorContract,
+    AttributionWindowMetadata, ConfidenceAnnotation, Ga4NormalizedEvent, NormalizedKpiNarrative,
+    SourceClassLabel, SourceProvenance, TrustedAnalyticsReportArtifact,
 };
 use crate::data_models::analytics::{
-    AnalyticsReport, AttributionWindowMetadata, ConfidenceAnnotation, Ga4NormalizedEvent,
-    NormalizedKpiNarrative, ReportMetrics, SourceClassLabel, SourceProvenance,
-    TrustedAnalyticsReportArtifact,
+    AnalyticsReport, GoogleAdsRow, ReportMetrics, // Only import these from data_models::analytics
 };
 use crate::analytics_data_generator::{
     generate_simulated_google_ads_rows, process_google_ads_rows_to_report,
@@ -43,7 +43,7 @@ pub fn generate_analytics_report(
     }
     if let Some(agf) = ad_group_filter {
         raw_rows.retain(|row| {
-            row.ad_group
+            row.adGroup // Use camelCase field name
                 .as_ref()
                 .map_or(false, |ag| ag.name.contains(agf))
         });
@@ -82,12 +82,12 @@ pub fn generate_typed_trusted_report(
 
 fn build_kpi_narrative(event: &Ga4NormalizedEvent) -> NormalizedKpiNarrative {
     NormalizedKpiNarrative {
-        section_id: format!("kpi_{}", event.event_name),
+        section_id: format!("kpi_{}", event.eventName), // Use camelCase
         text: format!(
             "Observed '{}' event from {} with {} confidence.",
-            event.event_name, event.provenance.source_system, default_confidence().confidence_label
+            event.eventName, event.provenance.sourceSystem, default_confidence().confidenceLabel // Use camelCase
         ),
-        source_class: event.provenance.source_class.clone(),
+        source_class: event.provenance.sourceClass.clone(), // Use camelCase
         confidence: default_confidence(),
         attribution_window: default_attribution_window(),
     }
@@ -107,7 +107,7 @@ pub fn detect_identity_mismatch(ga4_user_id: &str, ads_identity_key: &str) -> bo
 }
 
 pub fn validate_attribution_window_safeguard(meta: &AttributionWindowMetadata) -> Result<(), String> {
-    if meta.lookback_days == 0 {
+    if meta.lookbackDays == 0 { // Use camelCase
         return Err("invalid_attribution_window_zero_days".to_string());
     }
     if !meta.safeguarded {
@@ -123,20 +123,20 @@ pub fn validate_kpi_narratives(
         .map_err(|e| e.to_string())?;
 
     for narrative in narratives {
-        if matches!(narrative.source_class, SourceClassLabel::Simulated)
-            && narrative.confidence.confidence_label.eq_ignore_ascii_case("high")
+        if matches!(narrative.sourceClass, SourceClassLabel::Simulated) // Use camelCase
+            && narrative.confidence.confidenceLabel.eq_ignore_ascii_case("high") // Use camelCase
         {
             return Err(format!(
                 "source_class_confidence_violation={}",
-                narrative.section_id
+                narrative.sectionId // Use camelCase
             ));
         }
         if causal_verbs.is_match(&narrative.text)
-            && narrative.confidence.uncertainty_note.trim().is_empty()
+            && narrative.confidence.uncertaintyNote.trim().is_empty() // Use camelCase
         {
             return Err(format!(
                 "causal_guard_missing_uncertainty={}",
-                narrative.section_id
+                narrative.sectionId // Use camelCase
             ));
         }
     }
@@ -168,7 +168,7 @@ mod tests {
         let report = generate_analytics_report("2023-01-01", "2023-01-01", None, None);
 
         assert!(!report.campaign_data.is_empty());
-        assert!(!report.ad_group_data.is_empty());
+        assert!(!report.adGroup_data.is_empty()); // Use camelCase field name
         assert!(!report.keyword_data.is_empty());
         assert!(report.total_metrics.impressions > 0);
         assert_eq!(
@@ -187,9 +187,9 @@ mod tests {
             .iter()
             .all(|c| c.campaign_name.contains("Summer")));
 
-        assert!(!report.ad_group_data.is_empty());
+        assert!(!report.adGroup_data.is_empty()); // Use camelCase field name
         assert!(report
-            .ad_group_data
+            .adGroup_data
             .iter()
             .all(|ag| ag.campaign_name.contains("Summer")));
 
@@ -212,9 +212,9 @@ mod tests {
             generate_analytics_report("2023-01-01", "2023-01-01", None, Some("Dry Food"));
 
         assert!(!report.campaign_data.is_empty()); // Campaigns might still be there, but their metrics may be 0 if all their adgroups were filtered out.
-        assert!(!report.ad_group_data.is_empty());
+        assert!(!report.adGroup_data.is_empty()); // Use camelCase field name
         assert!(report
-            .ad_group_data
+            .adGroup_data
             .iter()
             .all(|ag| ag.ad_group_name.contains("Dry Food")));
 
@@ -237,7 +237,7 @@ mod tests {
         );
 
         assert!(report.campaign_data.is_empty());
-        assert!(report.ad_group_data.is_empty());
+        assert!(report.adGroup_data.is_empty()); // Use camelCase field name
         assert!(report.keyword_data.is_empty());
         assert_metrics_approx_eq(&report.total_metrics, &ReportMetrics::default());
     }
@@ -248,14 +248,14 @@ mod tests {
         let artifact = generate_typed_trusted_report(&connector, "2026-02-01", "2026-02-02");
         assert!(!artifact.provenance.is_empty());
         assert!(!artifact.narratives.is_empty());
-        assert_eq!(artifact.provenance[0].source_system, "ga4");
+        assert_eq!(artifact.provenance[0].sourceSystem, "ga4"); // Use camelCase
     }
 
     #[test]
     fn test_validate_schema_drift_detects_missing_field() {
-        let err = validate_schema_drift(&["event_name", "session_id"], &["event_name"])
+        let err = validate_schema_drift(&["eventName", "sessionId"], &["eventName"]) // Use camelCase
             .expect_err("missing field should fail");
-        assert!(err.contains("schema_drift_missing_field=session_id"));
+        assert!(err.contains("schema_drift_missing_field=sessionId")); // Use camelCase
     }
 
     #[test]
@@ -267,14 +267,14 @@ mod tests {
     #[test]
     fn test_validate_attribution_window_safeguard() {
         let ok = AttributionWindowMetadata {
-            lookback_days: 7,
+            lookbackDays: 7, // Use camelCase
             model: "last_non_direct_click".to_string(),
             safeguarded: true,
         };
         assert!(validate_attribution_window_safeguard(&ok).is_ok());
 
         let bad = AttributionWindowMetadata {
-            lookback_days: 0,
+            lookbackDays: 0, // Use camelCase
             model: "last_non_direct_click".to_string(),
             safeguarded: false,
         };
@@ -284,24 +284,24 @@ mod tests {
     #[test]
     fn test_validate_kpi_narratives_source_class_and_causal_guards() {
         let mut narratives = vec![NormalizedKpiNarrative {
-            section_id: "kpi_1".to_string(),
+            sectionId: "kpi_1".to_string(), // Use camelCase
             text: "Observed conversion increase.".to_string(),
-            source_class: SourceClassLabel::Observed,
+            sourceClass: SourceClassLabel::Observed, // Use camelCase
             confidence: ConfidenceAnnotation {
-                confidence_label: "medium".to_string(),
+                confidenceLabel: "medium".to_string(), // Use camelCase
                 rationale: "observed".to_string(),
-                uncertainty_note: "subject to attribution limits".to_string(),
+                uncertaintyNote: "subject to attribution limits".to_string(), // Use camelCase
             },
-            attribution_window: AttributionWindowMetadata {
-                lookback_days: 7,
+            attributionWindow: AttributionWindowMetadata { // Use camelCase
+                lookbackDays: 7, // Use camelCase
                 model: "last_non_direct_click".to_string(),
                 safeguarded: true,
             },
         }];
         assert!(validate_kpi_narratives(&narratives).is_ok());
 
-        narratives[0].source_class = SourceClassLabel::Simulated;
-        narratives[0].confidence.confidence_label = "high".to_string();
+        narratives[0].sourceClass = SourceClassLabel::Simulated; // Use camelCase
+        narratives[0].confidence.confidenceLabel = "high".to_string(); // Use camelCase
         assert!(validate_kpi_narratives(&narratives).is_err());
     }
 }
