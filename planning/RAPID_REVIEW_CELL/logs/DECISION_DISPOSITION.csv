@@ -1,2 +1,0 @@
-row_id,ts_utc,review_run_id,artifact_id,artifact_version,outcome,claim_ids_considered,required_caveats,blocking_reasons,follow_up_owner,reviewer_id,supersedes_row_id
-1,2026-02-10T00:00:00Z,rrc_2026-02-10_001,artifact_001,v1,approved_with_caveat,"claim_001","clarify non-therapeutic scope",,marketing_ops,review_cell,

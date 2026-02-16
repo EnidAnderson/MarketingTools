@@ -1,7 +1,0 @@
-run_id,created_utc,status,current_phase,owner,summary,supersedes_run_id
-run_2026-02-10_001,2026-02-10T22:35:20Z,active,black,team_lead,green outstanding requests completed; handoff advanced to black,run_2026-02-10_001
-run_2026-02-10_001,2026-02-10T22:45:06Z,completed,qa_fixer,qa_fixer,grey synthesis and qa control bundle completed; open requests superseded,run_2026-02-10_001
-run_2026-02-10_001,2026-02-10T23:07:21Z,active,black,team_lead,"green completed blue-issued transition tasks (CR-0031-BLUE/CR-0038-BLUE/CR-0045-BLUE); handed off follow-on contracts",run_2026-02-10_001
-run_2026-02-10_001,2026-02-10T23:11:23Z,active,black,team_lead,"green proactive scope-creep pass completed for usability under adversarial controls; handed to black/white/grey",run_2026-02-10_001
-run_2026-02-10_001,2026-02-10T23:14:21Z,active,black,team_lead,"green completed open green queue and pushed granular operator-integration support package to black/white/grey",run_2026-02-10_001
-run_2026-02-10_001,2026-02-10T23:20:07Z,active,grey,grey,"qa_fixer handed extended validator bundle to grey for synthesis and prioritization",run_2026-02-10_001

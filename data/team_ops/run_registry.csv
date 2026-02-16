@@ -1,4 +1,0 @@
-run_id,created_utc,status,current_phase,owner,summary,supersedes_run_id
-run_2026-02-10_001,2026-02-10T23:20:07Z,active,grey,grey,qa_fixer handed extended validator bundle to grey for synthesis and prioritization,run_2026-02-10_001
-run_2026-02-10_001,2026-02-16T21:52:44Z,active,black,team_lead,"green completed GA dataflow marketer-usability package and handed off granular downstream requests",run_2026-02-10_001
-run_2026-02-16_001,2026-02-16T21:54:22Z,active,black,team_lead,"green completed annotation-template package and handed off governance/validator follow-ons",run_2026-02-16_001

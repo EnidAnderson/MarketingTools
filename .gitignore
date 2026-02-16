@@ -47,6 +47,20 @@ src-tauri/CAMPAIGNS/
 temp_tauri_scaffold/
 .git-nested-backups/
 
+# Share code, not planning/governance artifacts
+planning/
+REPORTS/
+pipeline/
+qa_fixer/
+data/team_ops/
+MEMORY.md
+PLANNING.md
+VISION.md
+WORKFLOW.md
+PERSONAS.md
+GEMINI.md
+output.md
+
 # Ignore OS generated files
 .DS_Store
 Thumbs.db

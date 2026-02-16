@@ -1,3 +1,0 @@
-rule_id,rule,enforced_by,status,last_review_utc
-AUTH-001,"Only qa_fixer may edit code/config/schema","teams/shared/OPERATING_DOCTRINE.md",active,2026-02-10T00:00:00Z
-AUTH-002,"Non-QA teams are analysis/request only","teams/shared/OPERATING_DOCTRINE.md",active,2026-02-10T00:00:00Z

@@ -1,3 +1,0 @@
-run_id,created_utc,status,current_phase,owner,summary,supersedes_run_id
-run_2026-02-10_001,2026-02-10T00:00:00Z,initialized,blue,team_lead,initial pipeline scaffold,
-run_2026-02-10_001,2026-02-10T22:15:00Z,blocked_missing_stages,white,team_lead,cycle blocked: missing green/black stages before white->grey progression,run_2026-02-10_001

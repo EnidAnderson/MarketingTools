@@ -1,2 +1,0 @@
-row_id,ts_utc,review_run_id,artifact_id,artifact_version,claim_id,claim_kind,source_excerpt_ref,normalized_claim,conditions,boundaries,severity_if_false,owner,supersedes_row_id
-1,2026-02-10T00:00:00Z,rrc_2026-02-10_001,artifact_001,v1,claim_001,explicit,"line:12","Product contains probiotic strain X","when fed as directed","does not imply medical treatment",high,marketing,
