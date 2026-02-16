@@ -98,7 +98,10 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::env;
+    use std::sync::{Mutex, MutexGuard};
     use tokio; // Import tokio
+
+    static SMTP_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     // Helper to snapshot and restore environment variables for test isolation
     struct TestEnvGuard {
@@ -112,6 +115,10 @@ mod tests {
         }
 
         fn set_vars(&self, vars_to_set: &HashMap<&str, &str>) {
+            env::remove_var("SMTP_HOST");
+            env::remove_var("SMTP_PORT");
+            env::remove_var("SMTP_USERNAME");
+            env::remove_var("SMTP_PASSWORD");
             for (key, value) in vars_to_set {
                 env::set_var(key, value);
             }
@@ -132,9 +139,19 @@ mod tests {
         }
     }
 
+    fn smtp_test_guard() -> (MutexGuard<'static, ()>, TestEnvGuard) {
+        let lock = SMTP_TEST_MUTEX.lock().expect("smtp test lock poisoned");
+        let env_guard = TestEnvGuard::new();
+        env::remove_var("SMTP_HOST");
+        env::remove_var("SMTP_PORT");
+        env::remove_var("SMTP_USERNAME");
+        env::remove_var("SMTP_PASSWORD");
+        (lock, env_guard)
+    }
+
     #[test]
     fn test_is_available_true() {
-        let _guard = TestEnvGuard::new();
+        let (_lock, _guard) = smtp_test_guard();
         let mut vars_to_set = HashMap::new();
         vars_to_set.insert("SMTP_HOST", "smtp.test.com");
         vars_to_set.insert("SMTP_PORT", "587");
@@ -148,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_is_available_false_missing_host() {
-        let _guard = TestEnvGuard::new();
+        let (_lock, _guard) = smtp_test_guard();
         let mut vars_to_set = HashMap::new();
         // Missing SMTP_HOST
         vars_to_set.insert("SMTP_PORT", "587");
@@ -162,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_is_available_false_missing_username() {
-        let _guard = TestEnvGuard::new();
+        let (_lock, _guard) = smtp_test_guard();
         let mut vars_to_set = HashMap::new();
         vars_to_set.insert("SMTP_HOST", "smtp.test.com");
         vars_to_set.insert("SMTP_PORT", "587");
@@ -177,7 +194,7 @@ mod tests {
     #[tokio::test] // Changed to tokio::test
     async fn test_run_missing_to_email() {
         // Added async
-        let _guard = TestEnvGuard::new();
+        let (_lock, _guard) = smtp_test_guard();
         let mut vars_to_set = HashMap::new();
         vars_to_set.insert("SMTP_HOST", "smtp.test.com");
         vars_to_set.insert("SMTP_PORT", "587");

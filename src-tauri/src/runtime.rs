@@ -432,25 +432,27 @@ impl JobManager {
             canceled.insert(job_id.to_string());
         }
 
-        let mut jobs = self
-            .jobs
-            .write()
-            .map_err(|_| "Failed to acquire write lock for jobs".to_string())?;
+        {
+            let mut jobs = self
+                .jobs
+                .write()
+                .map_err(|_| "Failed to acquire write lock for jobs".to_string())?;
 
-        let Some(snapshot) = jobs.get_mut(job_id) else {
-            return Err(format!("Job '{}' not found.", job_id));
-        };
+            let Some(snapshot) = jobs.get_mut(job_id) else {
+                return Err(format!("Job '{}' not found.", job_id));
+            };
 
-        if matches!(snapshot.status, JobStatus::Queued | JobStatus::Running) {
-            snapshot.status = JobStatus::Canceled;
-            snapshot.progress_pct = snapshot.progress_pct.min(99);
-            snapshot.stage = "canceled".to_string();
-            snapshot.message = Some("Cancellation requested".to_string());
-            snapshot.error = Some(serde_json::json!({
-                "kind": "canceled",
-                "message": "Job canceled by user",
-                "retryable": false
-            }));
+            if matches!(snapshot.status, JobStatus::Queued | JobStatus::Running) {
+                snapshot.status = JobStatus::Canceled;
+                snapshot.progress_pct = snapshot.progress_pct.min(99);
+                snapshot.stage = "canceled".to_string();
+                snapshot.message = Some("Cancellation requested".to_string());
+                snapshot.error = Some(serde_json::json!({
+                    "kind": "canceled",
+                    "message": "Job canceled by user",
+                    "retryable": false
+                }));
+            }
         }
         self.assert_snapshot_invariant(job_id);
 

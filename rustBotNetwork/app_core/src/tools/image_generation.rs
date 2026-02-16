@@ -81,7 +81,10 @@ mod tests {
     use crate::tools::generation_budget_manager as budget_manager_mock;
     use std::io::Write;
     use std::path::{Path, PathBuf as StdPathBuf};
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::tempdir;
+
+    static TEST_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     // Helper to create a dummy api_costs.json
     fn create_dummy_api_costs_file(dir: &Path, content: &str) -> StdPathBuf {
@@ -102,8 +105,18 @@ mod tests {
     // Base64 encoded 1x1 transparent PNG
     const DUMMY_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
+    fn test_guard() -> MutexGuard<'static, ()> {
+        let guard = TEST_ENV_MUTEX.lock().expect("test lock poisoned");
+        std::env::remove_var("STABILITY_API_BASE");
+        std::env::remove_var("STABILITY_API_KEY");
+        budget_manager_mock::set_test_api_costs_file_path(None);
+        budget_manager_mock::set_test_budget_file_path(None);
+        guard
+    }
+
     #[test]
     fn test_generate_image_success() {
+        let _guard = test_guard();
         let server = Server::run();
         std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
 
@@ -161,6 +174,7 @@ mod tests {
 
     #[test]
     fn test_generate_image_no_api_key() {
+        let _guard = test_guard();
         std::env::remove_var("STABILITY_API_KEY");
 
         let temp_dir_instance = tempdir().unwrap();
@@ -177,6 +191,7 @@ mod tests {
 
     #[test]
     fn test_generate_image_budget_exceeded() {
+        let _guard = test_guard();
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
             temp_dir_instance.path(),
@@ -205,6 +220,7 @@ mod tests {
 
     #[test]
     fn test_generate_image_api_error() {
+        let _guard = test_guard();
         let server = Server::run();
         std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
         server.expect(
@@ -249,6 +265,7 @@ mod tests {
 
     #[test]
     fn test_generate_image_no_image_data_in_response() {
+        let _guard = test_guard();
         let server = Server::run();
         std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
         server.expect(
