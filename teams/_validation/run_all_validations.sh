@@ -77,7 +77,7 @@ checks = [
         "cmd": [f"{root}/teams/_validation/check_review_artifact_contract.sh"],
     },
     {
-        "id": "CR-BLACK-0005/0006/0007|CR-WHITE-0004..0012/0014/0015/0016/0017",
+        "id": "CR-BLACK-0005..0015|CR-WHITE-0004..0012/0014/0015/0016/0017/0022/0023/0024/0025/0026|CR-GREEN-0019/0020/0024|CR-RED-0007/0008|CR-GREY-0008/0009/0010/0011",
         "name": "check_extended_contracts",
         "rule_ref": "planning/QA_EXECUTION_MATRIX_2026-02-11.md",
         "cmd": [f"{root}/teams/_validation/check_extended_contracts.sh"],

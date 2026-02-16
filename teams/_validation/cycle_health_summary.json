@@ -1,6 +1,6 @@
 {
-  "duplicate_request_id_count": 24,
-  "generated_at_utc": "2026-02-16T21:58:52Z",
+  "duplicate_request_id_count": 56,
+  "generated_at_utc": "2026-02-16T22:18:45Z",
   "runs": [
     {
       "block_reasons": [
@@ -26,60 +26,31 @@
     {
       "block_reasons": [
         "[\"TEAM_LEAD_THRESHOLD_DECISION_PENDING\"]",
-        "[\"TEAM_LEAD_HIGH_CONFIDENCE_CORROBORATION_DECISION_PENDING\"]"
+        "[\"TEAM_LEAD_HIGH_CONFIDENCE_CORROBORATION_DECISION_PENDING\"]",
+        "[\"CRITICAL_FEED_REGISTRY_TEAM_LEAD_APPROVAL_REQUIRED\"]",
+        "[\"TEAM_LEAD_DUAL_THRESHOLD_DEFAULT_PENDING\"]"
       ],
       "current_phase": "black",
       "run_id": "run_2026-02-16_001",
       "stage_completion_map": {
-        "black->white": 2,
+        "black->white": 3,
         "blue->red": 1,
-        "green->black": 1,
-        "grey->qa_fixer": 2,
-        "red->green": 1,
+        "green->black": 2,
+        "grey->qa_fixer": 4,
+        "red->green": 2,
         "white->grey": 2
       },
       "status": "active"
     }
   ],
   "schema_version": "1",
-  "unresolved_request_count": 37,
+  "unresolved_request_count": 6,
   "unresolved_request_ids": [
-    "CR-BLACK-0008",
-    "CR-BLACK-0009",
-    "CR-BLACK-0010",
-    "CR-BLACK-0011",
-    "CR-BLACK-0012",
-    "CR-BLACK-0013",
-    "CR-BLACK-0014",
-    "CR-BLACK-0015",
     "CR-BLUE-0080",
     "CR-BLUE-0086",
     "CR-BLUE-0087",
-    "CR-BLUE-0088",
-    "CR-BLUE-0089",
-    "CR-BLUE-0091",
-    "CR-BLUE-0092",
     "CR-BLUE-0093",
-    "CR-GREEN-0019",
-    "CR-GREEN-0020",
-    "CR-GREEN-0023",
-    "CR-GREEN-0024",
-    "CR-GREY-0007",
-    "CR-GREY-0008",
-    "CR-GREY-0009",
-    "CR-GREY-0010",
-    "CR-GREY-0011",
-    "CR-RED-0001",
-    "CR-RED-0002",
-    "CR-RED-0005",
-    "CR-RED-0006",
-    "CR-RED-0007",
-    "CR-RED-0008",
-    "CR-WHITE-0019",
-    "CR-WHITE-0022",
-    "CR-WHITE-0023",
-    "CR-WHITE-0024",
-    "CR-WHITE-0025",
-    "CR-WHITE-0026"
+    "CR-GREEN-0025",
+    "CR-WHITE-0019"
   ]
 }

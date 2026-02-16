@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-02-16T21:58:52Z",
+  "generated_at_utc": "2026-02-16T22:18:45Z",
   "base_ref": "HEAD",
-  "overall_status": "fail",
+  "overall_status": "pass",
   "checks": [
     {
       "check_id": "RQ-029",
@@ -15,41 +15,41 @@
       "check_id": "RQ-030",
       "check_name": "check_append_only",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-030",
-      "status": "fail",
-      "exit_code": 30,
-      "diagnostic": "25:-CR-WHITE-0002,run_2026-02-10_001,white,P1,open,\"Implement review metadata contract enforcing mode label, confidence label, evidence/caveat map, provenance fields, and canonical superseded-ID citation checks in approval artifacts.\",\"[\"\"pipeline/05_white_output.md\"\",\"\"teams/shared/HANDOFF_PROTOCOL.md\"\"]\",\"[\"\"teams/qa_fixer/spec.md\"\",\"\"teams/shared/HANDOFF_PROTOCOL.md\"\"]\",[],qa_fixer,"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-030] append-only integrity check passed for pipeline/*.md and data/team_ops/*.csv"
     },
     {
       "check_id": "RQ-031",
       "check_name": "check_qa_edit_authority",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-031",
-      "status": "fail",
-      "exit_code": 31,
-      "diagnostic": "FAIL[RQ-031] missing provenance reference in 'data/team_ops/archive/20260216T215229Z/manifest.json' (decision_id or change_request_id required)"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-031] QA edit authority + provenance checks passed"
     },
     {
       "check_id": "RQ-034",
       "check_name": "check_request_id_policy",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-034",
-      "status": "fail",
-      "exit_code": 34,
-      "diagnostic": "DETAIL[RQ-034] request_id 'CR-GREY-0011' is duplicated and latest row is still open; duplicate lifecycle must be explicitly closed"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-034] no new change-request rows added"
     },
     {
       "check_id": "RQ-MGR-001",
       "check_name": "check_request_id_global_uniqueness",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-001",
-      "status": "fail",
-      "exit_code": 41,
-      "diagnostic": "DETAIL[RQ-MGR-001] request_id=CR-GREY-0011 line=39 latest duplicate row is open; expected closed lifecycle"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-MGR-001] duplicate_ids=56; resolved_via_supersedes=56; queue=/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/change_request_queue.csv"
     },
     {
       "check_id": "RQ-MGR-003",
       "check_name": "check_handoff_run_state_sync",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-003",
-      "status": "fail",
-      "exit_code": 43,
-      "diagnostic": "DETAIL[RQ-MGR-003] handoff line 54 run_id=run_2026-02-16_004 has no appended run_registry row in same cycle"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-MGR-003] no new handoff rows added"
     },
     {
       "check_id": "RQ-MGR-004",
@@ -71,9 +71,9 @@
       "check_id": "CR-BLACK-0001/0002",
       "check_name": "check_budget_and_release_gates",
       "rule_ref": "planning/RELEASE_GATES_POLICY.md",
-      "status": "fail",
-      "exit_code": 1,
-      "diagnostic": "FAIL[CR-BLACK-0001] missing budget envelope row for run_id=run_2026-02-16_001"
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[CR-BLACK-0001/0002] budget and release gates valid for run_id=run_2026-02-16_001"
     },
     {
       "check_id": "CR-WHITE-0001..0012/0015 + CR-BLACK-0003..0007",
@@ -84,12 +84,12 @@
       "diagnostic": "PASS[CR-WHITE-0001/0002/0003/0004/0005/0006/0007/0008/0009/0010/0011/0012/0015|CR-BLACK-0003/0004/0005/0006/0007] validated 1 review artifact(s)"
     },
     {
-      "check_id": "CR-BLACK-0005/0006/0007|CR-WHITE-0004..0012/0014/0015/0016/0017",
+      "check_id": "CR-BLACK-0005..0015|CR-WHITE-0004..0012/0014/0015/0016/0017/0022/0023/0024/0025/0026|CR-GREEN-0019/0020/0024|CR-RED-0007/0008|CR-GREY-0008/0009/0010/0011",
       "check_name": "check_extended_contracts",
       "rule_ref": "planning/QA_EXECUTION_MATRIX_2026-02-11.md",
       "status": "pass",
       "exit_code": 0,
-      "diagnostic": "PASS[CR-BLACK-0005/0006/0007|CR-WHITE-0004/0005/0006/0007/0008/0009/0010/0011/0012/0014/0015/0016/0017] validated 1 artifact(s)"
+      "diagnostic": "PASS[CR-BLACK-0005/0006/0007/0008/0009/0010/0011/0012/0013/0014/0015|CR-WHITE-0004/0005/0006/0007/0008/0009/0010/0011/0012/0014/0015/0016/0017/0022/0023/0024/0025/0026/0027|CR-GREEN-0019/0020/0024/0028/0029|CR-RED-0007/0008|CR-GREY-0008/0009/0010/0011] validated 1 artifact(s)"
     }
   ]
 }
