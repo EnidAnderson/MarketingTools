@@ -548,3 +548,211 @@ White fulfilled CR-0075-BLUE, CR-0078-BLUE, and CR-GREEN-0014 with a unified fal
 - No fallback-state policy ownership changes.
 - No execution-gate implementation by White.
 - No strategy rewrite.
+
+---
+
+- run_id: run_2026-02-16_001
+- timestamp_utc: 2026-02-16T21:52:00Z
+- definitions: |
+    | kpi_id | metric | canonical definition | required caveat |
+    |---|---|---|---|
+    | KPI-001 | sessions | Count of GA4 sessions within stated property/time window after ingestion validation. | "Session counts may be incomplete if ingestion status is partial." |
+    | KPI-002 | engaged_sessions | Sessions meeting GA4 engagement criteria for the same scope/window as sessions. | "Engagement reflects GA4 rule set; rule changes break comparability." |
+    | KPI-003 | conversion_rate | Conversions divided by eligible sessions/users under declared denominator policy. | "Rate depends on denominator policy and attribution window." |
+    | KPI-004 | cpa | Spend divided by attributed conversions under declared attribution model/window. | "CPA is model/window dependent and not standalone causal proof." |
+    | KPI-005 | roas | Attributed revenue divided by spend for stated channel/window/model. | "ROAS is attribution-sensitive and must include uncertainty bounds." |
+    | KPI-006 | revenue | Observed commerce revenue from validated source records in stated period. | "Revenue excludes simulated signals from outcome totals." |
+    | KPI-007 | attributed_conversions | Conversions assigned by chosen attribution model/window across sources. | "Attributed conversions indicate allocation, not deterministic causality." |
+- fact_checks:
+    - Current code path is still synthetic for analytics rows; reporting language must prohibit production-causality claims until observed ingestion paths are active.
+    - GA4/Ads/Velo/Wix source boundaries need explicit source-class labels to prevent observed/simulated leakage in reporting narratives.
+- terminology_corrections:
+    - Correlation vs causation wording rules:
+      - allowed: `associated with`, `aligned with`, `co-occurs with`, `may indicate`.
+      - disallowed unless causal guard satisfied: `caused`, `proved`, `drove`, `guaranteed impact`.
+    - Source-class labeling contract is mandatory per metric block:
+      - `observed`, `scraped_first_party`, `simulated`, `connector_derived`.
+    - Confidence-label semantics:
+      - `low`: evidence incomplete or ingestion partial; action limited/review-only.
+      - `medium`: observed evidence present but uncertainty/confound risk remains.
+      - `high`: observed evidence + method disclosure + uncertainty bounds + no red ingestion flags.
+    - Report annotation rules (required fields):
+      - `missing_data_note` when any source partition is absent.
+      - `delayed_conversion_note` when attribution window is still open.
+      - `partial_ingestion_note` when any connector/source freshness or authenticity check is non-pass.
+- change_requests:
+    - CR-WHITE-0016: qa_fixer add validator enforcing source-class labels (`observed|scraped_first_party|simulated|connector_derived`) for every KPI narrative block.
+    - CR-WHITE-0017: qa_fixer add correlation/causation phrase-class validator with hard-fail on causal verbs unless causal-guard fields are present.
+    - CR-WHITE-0018: black define threshold semantics for when `partial_ingestion_note` forces `action_review_only` vs `action_blocked`.
+    - CR-WHITE-0019: red define abuse tests for denominator-policy drift and attribution-window switching that inflate KPI narratives.
+    - CR-WHITE-0020: green define operator-facing report annotation UX copy for missing data, delayed conversions, and partial ingestion states.
+    - CR-WHITE-0021: grey synthesize KPI semantics + confidence rules + annotation contract into one QA sequencing brief for GA dataflow cycle.
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+
+1. Summary (<= 300 words).
+White prompt execution complete for GA4/Ads/Velo/Wix dataflow cycle. This addendum establishes canonical KPI semantics, phrase-class guardrails for attribution claims, confidence-label criteria tied to evidence quality, and mandatory report annotations for missing data, delayed conversions, and partial ingestion. The package is explicitly designed to prevent causal overstatement while analytics ingestion maturity is still early.
+
+2. Numbered findings.
+1. KPI comparability fails without declared denominator, window, and model assumptions.
+2. Attribution language must separate allocation logic from causal proof.
+3. Confidence labels require evidence + uncertainty criteria, not style-level confidence.
+4. Missing/partial ingestion must be visible in every decision-grade report.
+
+3. Open questions (if any).
+- Should `high` confidence require minimum dual-source observed corroboration, or can one validated source suffice?
+
+4. Explicit non-goals.
+- No growth strategy recommendations.
+- No implementation design details.
+- No code edits.
+
+---
+
+- run_id: run_2026-02-16_002
+- timestamp_utc: 2026-02-16T21:54:17Z
+- definitions: |
+    | lang_id | marketer-facing label | canonical meaning | required caveat | prohibited phrasing |
+    |---|---|---|---|---|
+    | MK-OBS-001 | observed performance | Measured behavior from validated GA4/Ads/Velo/Wix observed-source records in declared window. | "Observed in this window/scope; not a guarantee of repeat effect." | "proved", "guaranteed", "always" |
+    | MK-INF-001 | inferred signal | Model-assisted interpretation from observed + assumptions. | "Inference depends on model/window assumptions and uncertainty." | "directly caused" |
+    | MK-CTX-001 | context signal | Scraped/connector context used to inform interpretation, not direct customer behavior. | "Context supports interpretation but is not behavior measurement." | "customer behavior proved by context" |
+    | MK-CHG-001 | what_changed_why.reason | Required reason taxonomy: `new_observed_data`, `window_matured`, `quality_flag_changed`, `model_assumption_changed`, `attribution_reallocated`, `manual_correction`. | "Reason code + one-sentence operator action delta." | Free-form causal certainty statements |
+    | MK-ATTR-001 | attribution uncertainty | Allocation uncertainty statement tied to chosen model/window and confound risk. | "Attribution allocates credit under model assumptions; causal certainty is bounded." | "channel X caused Y" without causal guard |
+    | MK-FRESH-001 | freshness lag | Time-lag between event occurrence and complete ingestion/attribution availability. | "Recent period may be incomplete due to ingestion/attribution lag." | "latest period is complete" when lag present |
+- fact_checks:
+    - CR-BLUE-0079 scope is satisfied by observed/inferred/context terminology and non-technical caveat language.
+    - CR-BLUE-0083 scope is satisfied by lifecycle communication pack for pre-launch, in-flight, post-campaign readouts.
+    - CR-GREEN-0016 scope is satisfied by what_changed_why taxonomy + prohibited causal-overstatement classes.
+    - CR-GREEN-0021 scope is satisfied by attribution-uncertainty and freshness-lag templates bound to action guidance.
+- terminology_corrections:
+    - Lifecycle communication strategy pack:
+      - `pre_launch`: "Signal confidence is provisional; next safe action is limited test scope."
+      - `in_flight`: "Observed trend noted; maintain current action until lag window closes or uncertainty decreases."
+      - `post_campaign`: "Outcome summary includes attribution uncertainty and any lag-adjusted revisions."
+    - Required `what_changed_why` section format:
+      - `reason_code`, `evidence_reference`, `confidence_delta`, `action_delta`, `remaining_uncertainty`.
+    - Attribution uncertainty template:
+      - "Credit allocation changed because [reason_code]; confidence is [label] due to [uncertainty]."
+    - Freshness-lag template:
+      - "Data freshness lag is [duration]; treat recent metrics as preliminary and avoid causal conclusions."
+- change_requests:
+    - CR-WHITE-0022: qa_fixer implement validator for `what_changed_why` taxonomy fields and prohibited causal-overstatement phrase classes.
+    - CR-WHITE-0023: qa_fixer implement lifecycle communication template checks (`pre_launch`,`in_flight`,`post_campaign`) with required attribution-uncertainty and freshness-lag caveats.
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/03_green_output.md
+    - pipeline/05_white_output.md
+
+1. Summary (<= 300 words).
+White fulfilled CR-BLUE-0079, CR-BLUE-0083, CR-GREEN-0016, and CR-GREEN-0021 in a single marketer-facing language pack. The addendum defines observed/inferred/context terminology, non-technical caveat wording, a normalized `what_changed_why` reason taxonomy, and lifecycle confidence communications. It also standardizes attribution-uncertainty and freshness-lag explanations tied to explicit action guidance, preventing causal overstatement in executive/marketer readouts.
+
+2. Numbered findings.
+1. Non-technical readers need explicit distinction between observed performance and inference.
+2. `what_changed_why` sections are inconsistent without reason-code and action-delta structure.
+3. Attribution and freshness caveats must be mandatory in all lifecycle phases.
+4. Causal-overstatement risk is highest in summary headlines and revision notes.
+
+3. Open questions (if any).
+- Should `manual_correction` reason_code require mandatory owner signoff in report annotations?
+
+4. Explicit non-goals.
+- No growth strategy recommendations.
+- No implementation design details.
+- No code edits.
+
+---
+
+- run_id: run_2026-02-16_003
+- timestamp_utc: 2026-02-16T21:55:17Z
+- definitions: |
+    | ann_id | annotation field | mandatory semantics | prohibited phrasing |
+    |---|---|---|---|
+    | AN-001 | action_state | Literal state only: `action_blocked`, `action_limited`, `action_review_only`, `action_approved`. | "soft approved", "conditionally approved" for non-approved states |
+    | AN-002 | approval_scope | Explicit permitted scope (`none`, `internal_only`, `owned_channel_only`, `full`) tied to action_state. | Missing scope or vague "limited publish" |
+    | AN-003 | evidence_status | `complete`, `partial`, `insufficient` with source-class references. | "looks good" or confidence-only justification |
+    | AN-004 | caveat_class | Required caveat class set: `attribution_uncertainty`, `freshness_lag`, `partial_ingestion`, `model_assumption`. | Unclassified caveat prose |
+    | AN-005 | decision_permission | Explicit binary `execute_allowed=true|false` consistent with action_state. | Conflicting permission with state label |
+- fact_checks:
+    - CR-GREEN-0022 requests mandatory annotation semantics and prohibited phrasing rules for constrained states; AN-001..AN-005 satisfy this scope.
+- terminology_corrections:
+    - Constrained-state prohibition rules:
+      - If `action_state` is `action_limited` or `action_review_only`, banned terms include `approved`, `cleared`, `ready to launch`, `go live`.
+    - Required constrained-state line:
+      - "This state is not approval; execution is constrained to [approval_scope]."
+    - Consistency invariant:
+      - `execute_allowed=true` allowed only when `action_state=action_approved` and `evidence_status=complete`.
+- change_requests:
+    - CR-WHITE-0024: qa_fixer implement annotation semantic-consistency validator for AN-001..AN-005 plus prohibited constrained-state phrase detection.
+- references:
+    - pipeline/03_green_output.md
+    - pipeline/05_white_output.md
+    - teams/white/spec.md
+
+1. Summary (<= 300 words).
+White fulfilled CR-GREEN-0022 by defining mandatory annotation-field semantics and prohibited phrasing rules that prevent constrained states from being interpreted as approved outcomes. The addendum introduces explicit state/permission/evidence/caveat contracts and one consistency invariant that blocks conflicting labels.
+
+2. Numbered findings.
+1. Ambiguity comes primarily from approval-adjacent language in non-approved states.
+2. Annotation fields need fixed semantics, not free-form prose, for reliable operator interpretation.
+3. Permission-state mismatch is a frequent source of accidental bypass.
+
+3. Open questions (if any).
+- Should AN validation run at `draft` as warning and at `approved` as hard fail?
+
+4. Explicit non-goals.
+- No policy ownership changes.
+- No implementation code edits by White.
+- No strategy recommendations.
+
+---
+
+- run_id: run_2026-02-16_004
+- timestamp_utc: 2026-02-16T21:56:01Z
+- definitions: |
+    | guard_id | contract element | rule | fail condition |
+    |---|---|---|---|
+    | KP-ANN-001 | kpi_block.source_class | Every KPI block must declare one of: `observed`, `modeled`, `scraped_first_party`, `connector_derived`, `simulated`. | Missing/ambiguous source class |
+    | KP-ANN-002 | kpi_block.confidence_scope | Confidence label must be scoped to the same metric/window/model declaration as the claim sentence. | Label at document scope only |
+    | KP-ANN-003 | kpi_block.caveat_scope | Caveat sentence must be adjacent to claim sentence and reference active uncertainty factor. | Footnote-only caveat or unrelated caveat |
+    | PH-CAUS-001 | causal_phrase_threshold_guard | If `modeled_share > threshold` OR `attribution_uncertainty > threshold`, causal verbs are disallowed. | Any causal verb without guard override |
+    | NS-STATE-001 | constrained_state_narrative | Non-technical reports must explicitly state whether content is internal operational readout vs externally publishable claim. | State omitted or approval-implying wording in constrained states |
+- fact_checks:
+    - CR-RED-0003 is satisfied by KP-ANN-001..003 annotation and scope-alignment rules.
+    - CR-RED-0004 is satisfied by PH-CAUS-001 threshold-aware phrase guard.
+    - CR-BLUE-0090 is satisfied by NS-STATE-001 non-technical constrained-state narrative contract.
+- terminology_corrections:
+    - Allowed non-causal alternatives when thresholds are breached: `associated with`, `aligned with`, `pattern suggests`.
+    - Prohibited threshold-breached phrases: `caused`, `drove`, `proved`, `responsible for`.
+    - Mandatory constrained-state sentence:
+      - "This is an internal operational readout, not an externally publishable performance claim." (for `action_blocked|action_limited|action_review_only`)
+    - Mandatory publishable-state sentence:
+      - "This summary is externally publishable within declared caveats and confidence scope." (only for `action_approved`)
+- change_requests:
+    - CR-WHITE-0025: qa_fixer implement KPI-block annotation/scope validator (KP-ANN-001..003) and threshold-aware causal phrase guard (PH-CAUS-001).
+    - CR-WHITE-0026: qa_fixer implement constrained-state narrative classifier enforcing internal-vs-external readability contract (NS-STATE-001).
+- references:
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/05_white_output.md
+
+1. Summary (<= 300 words).
+White fulfilled CR-RED-0003, CR-RED-0004, and CR-BLUE-0090 by adding annotation semantics, threshold-aware causal phrase guards, and a non-technical constrained-state narrative contract. This closes ambiguity where KPI claims can appear approved or causal without scope-aligned confidence/caveat language.
+
+2. Numbered findings.
+1. KPI misread risk is highest when source class and confidence scope are not tied to each claim block.
+2. Causal-overstatement risk spikes under high modeled-share or attribution uncertainty.
+3. Non-technical readers need explicit internal-vs-external publication status language.
+
+3. Open questions (if any).
+- Should phrase-threshold guard use one global threshold or per-channel thresholds?
+
+4. Explicit non-goals.
+- No implementation design.
+- No strategy recommendations.
+- No code edits.

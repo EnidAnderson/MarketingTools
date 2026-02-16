@@ -539,3 +539,329 @@ To keep supporting Blue proactively, Black also issued three implementation-sequ
 - No executable edits.
 - No lexical policy authoring.
 - No Grey synthesis artifact production.
+
+---
+
+- run_id: run_2026-02-10_001
+- team_id: black
+- timestamp_utc: 2026-02-10T23:20:07Z
+- input_refs:
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/06_grey_output.md
+    - planning/BLUE_MASTER_CONTRACT_MAP_2026-02-11.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+- output_summary: |
+    Black fulfilled open threshold-translation requests by defining hard gate semantics for adversarial measurement risks and fallback-state enforcement, with explicit non-bypass and escalation ownership.
+- hard_constraints:
+    - HC-BLACK-023 (hard)
+      Scope: CR-0060-BLUE.
+      Hard limit: attribution-window divergence above tolerance forces `action_limited` and mandatory uncertainty escalation.
+      Block threshold: deterministic causal phrasing with low attribution confidence.
+      Warn threshold: attribution variance above tolerance but below block threshold.
+      Owner role: Product Steward.
+      Enforcement path: decision gate before publish/action.
+    - HC-BLACK-024 (hard)
+      Scope: CR-0068-BLUE.
+      Hard limit: high-impact actions require minimum evidence thresholds per risk class (metric gaming, delayed conversion, bot contamination, confounds, identity mismatch).
+      Block threshold: any class below threshold in active decision set.
+      Warn threshold: threshold met but unresolved caveat alignment.
+      Owner role: Team Lead.
+      Enforcement path: high-impact action validator.
+    - HC-BLACK-025 (hard)
+      Scope: CR-0074-BLUE + CR-GREEN-0010.
+      Hard limit: fallback states are non-bypass:
+      - `action_blocked`: no execution/publish.
+      - `action_limited`: bounded owned-channel scope only.
+      - `action_review_only`: review artifacts only, no execution.
+      Block threshold: action scope exceeds state envelope.
+      Warn threshold: state transition lacks trust-delta explanation.
+      Owner role: Team Lead.
+      Enforcement path: state transition gate + role escalation protocol.
+    - HC-BLACK-026 (hard)
+      Scope: CR-GREEN-0013 + CR-GREY-0003.
+      Hard limit: quantitative integration-state thresholds:
+      - connector authenticity triplet must pass,
+      - freshness skew within declared tolerance,
+      - schema drift fail-closed,
+      - provenance incidents = 0 for `approved`.
+      Block threshold: any gate fail in approved path.
+      Warn threshold: advisory degradation conditions in limited path.
+      Owner role: Security Steward (authenticity), Product Steward (decision use).
+      Enforcement path: connector + rollout validators prior to decision use.
+- tradeoff_warnings:
+    - Non-bypass fallback semantics reduce misuse but increase short-term operator friction.
+    - Quantitative thresholds improve auditability while constraining ad-hoc response speed.
+- cost_or_resource_limits:
+    - Blocked states must not consume high-impact spend paths.
+- fulfilled_requests:
+    - CR-0060-BLUE
+    - CR-0068-BLUE
+    - CR-0074-BLUE
+    - CR-GREEN-0010
+    - CR-GREEN-0013
+    - CR-GREY-0003
+- change_requests:
+    - None.
+- risks_or_open_questions:
+    - Open: none.
+- done_criteria:
+    - all six request IDs mapped to hard constraints with owner + threshold + enforcement path.
+- references:
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/06_grey_output.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+
+1. Summary (<= 300 words).
+Black fulfilled the remaining open Black-assigned control-translation requests by codifying explicit threshold semantics for attribution, measurement-integrity, fallback-state non-bypass enforcement, and integration authenticity/freshness gates. These controls provide deterministic block/warn outcomes and owner-role accountability.
+
+2. Numbered findings.
+1. Fallback states now have explicit non-bypass enforcement envelopes.
+2. High-impact action eligibility now depends on quantified evidence thresholds.
+3. Connector and rollout gating now has clear authenticity/freshness/provenance thresholds.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No executable edits.
+- No strategic rewrite.
+
+---
+
+- run_id: run_2026-02-16_001
+- team_id: black
+- timestamp_utc: 2026-02-16T21:52:26Z
+- input_refs:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/BUDGET_GUARDRAILS_STANDARD.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+- output_summary: |
+    Black GA dataflow constraints package sets hard and advisory limits for ingestion, normalization, attribution, and reporting so the pipeline can shift from synthetic analytics to decision-safe GA4/Ads/Velo/Wix operations with deterministic gates.
+- hard_constraints:
+    - HC-GA-BLACK-001 (hard) Ingestion freshness SLAs by source class.
+      Limits:
+      - `observed` (GA4, Google Ads): max staleness 24h for decision use, 6h target for in-flight optimization.
+      - `connector_derived` (Velo/Wix): max staleness 24h.
+      - `scraped_first_party`: max staleness 12h for context-only use; cannot drive causal claims.
+      - `simulated`: never eligible as measured-outcome evidence.
+      Block threshold: staleness > SLA for source class in approved/recommendation path.
+      Warn threshold: staleness between target and hard SLA.
+      Owner role: Team Lead.
+      Enforcement path: ingestion validator before confidence scoring.
+    - HC-GA-BLACK-002 (hard) Schema-drift fail-closed.
+      Limits: all ingestion adapters must carry schema_version and pass typed contract validation; drift => quarantine.
+      Block threshold: unknown schema version or contract mismatch.
+      Warn threshold: additive non-breaking field drift with explicit compatibility marker.
+      Owner role: Platform Architect.
+      Enforcement path: connector contract gate before normalization.
+    - HC-GA-BLACK-003 (hard) Identity-resolution confidence gate for high-impact recommendations.
+      Limits: high-impact recommendation requires identity_resolution_confidence >= 0.90 and duplicate-rate <= 2%.
+      Block threshold: below confidence floor or above duplicate-rate cap.
+      Warn threshold: confidence 0.90-0.94 with mandatory caveat.
+      Owner role: Product Steward.
+      Enforcement path: recommendation eligibility gate.
+    - HC-GA-BLACK-004 (hard) Source-class separation in normalization.
+      Limits: `observed/scraped/simulated/connector_derived` must remain explicitly tagged through warehouse/reporting joins.
+      Block threshold: mixed source rows without per-row source_class and caveat mapping.
+      Warn threshold: mixed rows with source labels but missing caveat sentence.
+      Owner role: QA/Validation.
+      Enforcement path: normalization + report artifact validators.
+    - HC-GA-BLACK-005 (hard) Attribution integrity bounds.
+      Limits: attribution reports must publish window, model assumptions, and confidence label; short/long window delta > 20% forces limited state.
+      Block threshold: deterministic causal phrasing when confidence < high or assumptions missing.
+      Warn threshold: high variance windows with uncertainty note present.
+      Owner role: Product Steward.
+      Enforcement path: attribution publish gate.
+    - HC-GA-BLACK-006 (hard) Reporting publish gate.
+      Limits: report must include provenance tuple (run_id, source hashes, extraction timestamps), freshness summary, and caveat section.
+      Block threshold: any mandatory section missing or prohibited implication scan hits > 0.
+      Warn threshold: all sections present but caveat-scope mismatch.
+      Owner role: Team Lead.
+      Enforcement path: release evidence gate.
+- advisory_constraints:
+    - AC-GA-BLACK-001 (advisory) Runtime SLO: scheduled refresh pipeline <= 20 minutes p95, ad-hoc report <= 5 minutes p95.
+    - AC-GA-BLACK-002 (advisory) Retry budget: max 2 retries per connector run before review_only fallback.
+- budget_and_runtime_constraints:
+    - Per-run cap for scheduled refresh + reporting jobs must be declared before execution.
+    - Daily cap per workflow and monthly cap per subsystem are mandatory.
+    - Exceeded cap transitions run to `blocked_budget_cap_exceeded`.
+    - Cost warnings at >=80% of daily cap, hard block at 100%.
+- change_requests:
+    - CR-BLACK-0008
+      Statement: Implement source-class freshness SLA validator with block/warn routing by class.
+      Acceptance criteria:
+      - Enforces SLA thresholds from HC-GA-BLACK-001.
+      - Emits deterministic block/warn state and owner.
+      - Persists staleness evidence per source in append-only artifact.
+    - CR-BLACK-0009
+      Statement: Implement schema-drift fail-closed validator with quarantine output state.
+      Acceptance criteria:
+      - Blocks unknown schema_version and contract mismatch.
+      - Allows additive drift only with explicit compatibility marker.
+      - Produces connector-level quarantine log row.
+    - CR-BLACK-0010
+      Statement: Implement high-impact identity-confidence gate validator.
+      Acceptance criteria:
+      - Blocks recommendation when confidence <0.90 or duplicate-rate >2%.
+      - Requires caveat for marginal confidence band.
+      - Appends decision-state evidence row.
+    - CR-BLACK-0011
+      Statement: Implement source-class separation validator through normalization and report outputs.
+      Acceptance criteria:
+      - Fails mixed rows lacking source_class tag.
+      - Fails mixed rows lacking caveat mapping.
+      - Validates observed/scraped/simulated separation in report artifacts.
+    - CR-BLACK-0012
+      Statement: Implement attribution integrity validator (window delta + assumption presence + confidence gate).
+      Acceptance criteria:
+      - Blocks deterministic-causal claims below high confidence.
+      - Triggers limited state for window delta >20%.
+      - Persists attribution assumption bundle.
+    - CR-BLACK-0013
+      Statement: Implement GA reporting publish-gate validator for provenance/freshness/caveat completeness.
+      Acceptance criteria:
+      - Blocks report publish when mandatory sections missing.
+      - Blocks on prohibited implication hits.
+      - Emits pass/fail evidence entry.
+    - CR-BLACK-0014
+      Statement: Implement cost/runtime guardrail checks for scheduled refresh and report jobs.
+      Acceptance criteria:
+      - Enforces 80% warn and 100% block budget thresholds.
+      - Enforces runtime SLO metrics and breach alerts.
+      - Applies blocked state on cap exceedance.
+    - CR-BLACK-0015
+      Statement: Implement retry-budget and fallback-state validator for ingestion connectors.
+      Acceptance criteria:
+      - Limits retries to max 2 before review_only fallback.
+      - Records fallback reason and escalation owner.
+      - Prevents fallback-state bypass into approved action.
+- risks_or_open_questions:
+    - Should owned-channel internal drafts be allowed when report publish gate is blocked but data is review_only?
+- done_criteria:
+    - Hard/advisory constraints defined with thresholds, owners, and enforcement paths.
+    - 8 constraint-bound requests issued for QA implementation.
+    - Includes required SLA, schema-drift fail-closed, identity-confidence gate, and cost guardrails.
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/BUDGET_GUARDRAILS_STANDARD.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+
+1. Summary (<= 300 words).
+The GA dataflow objective is blocked by data-engineering reality, not governance readiness: current analytics paths remain synthetic and missing GA4-grade contracts. Black constraints therefore force fail-closed ingestion, strict source-class separation, explicit attribution assumptions, and evidence-complete reporting before decision/publish use. These controls convert review findings into enforceable thresholds with accountable owners.
+
+The hard posture is: stale or drifted inputs do not enter approved recommendations; high-impact actions require strong identity confidence; mixed-source outputs cannot masquerade as measured truth; and cost/runtime overruns trigger deterministic blocked states. Advisory limits preserve throughput discipline without weakening safety boundaries.
+
+This package issues eight QA-implementable requests to operationalize the controls: freshness validator, schema-drift quarantine, identity-confidence gate, source-class separation checker, attribution integrity checks, reporting publish gate, budget/runtime controls, and retry/fallback non-bypass enforcement.
+
+2. Numbered findings.
+1. Data freshness and provenance must be first-class eligibility gates, not report metadata.
+2. Schema validity alone is insufficient; drift must fail closed with quarantine.
+3. Identity-confidence gating is mandatory for high-impact recommendations.
+4. Attribution uncertainty must force limited state when variance exceeds bound.
+5. Reporting publish requires complete provenance/freshness/caveat evidence.
+
+3. Open questions (if any).
+- Should review_only reports be distributable internally when publish gate blocks external release?
+
+4. Explicit non-goals.
+- No strategy rewrite.
+- No UX-only recommendation set.
+- No code edits by Black.
+
+---
+
+- run_id: run_2026-02-16_001
+- team_id: black
+- timestamp_utc: 2026-02-16T21:54:35Z
+- input_refs:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+- output_summary: |
+    Black closure addendum for CR-BLUE-0082, CR-GREEN-0017, and CR-WHITE-0018: defines non-negotiable Tier-1 observed aggregation gates and explicit partial-ingestion mapping to `action_review_only` vs `action_blocked`, including publish restrictions.
+- hard_constraints:
+    - HC-GA-BLACK-007 (hard)
+      Scope: CR-BLUE-0082.
+      Hard limit: Tier-1 observed aggregation decision contract minimums for `approved`:
+      - freshness SLA met for all required observed feeds,
+      - provenance tuple complete per feed,
+      - confidence downgrade logic applied on any integrity breach,
+      - source-class contamination absent in measured-outcome claims.
+      Block threshold: any required observed feed missing or stale beyond hard SLA; provenance tuple incomplete.
+      Warn threshold: SLA warning band exceeded but below block bound with caveat present.
+      Owner role: Team Lead.
+      Enforcement path: pre-decision aggregation contract validator.
+    - HC-GA-BLACK-008 (hard)
+      Scope: CR-WHITE-0018.
+      Hard limit: partial-ingestion threshold semantics:
+      - `action_review_only` when 1..N non-critical feeds are degraded but core observed decision set remains present and caveated.
+      - `action_blocked` when any critical feed is missing, schema-invalid, or authenticity-failed.
+      Block threshold: critical-feed fail or unresolved authenticity triplet fail.
+      Warn threshold: non-critical feed degradation with fallback caveat correctly attached.
+      Owner role: Product Steward.
+      Enforcement path: ingestion completeness classifier + state mapper.
+    - HC-GA-BLACK-009 (hard)
+      Scope: CR-GREEN-0017.
+      Hard limit: fallback state to action/publish mapping for Tier-1 observed reports:
+      - `action_blocked`: no execution, no publish.
+      - `action_limited`: owned-channel internal-only summary; no external publication.
+      - `action_review_only`: analyst/reviewer scope only; no campaign activation.
+      - `approved`: full action scope within declared caveats.
+      Block threshold: any state used outside allowed action/publish envelope.
+      Warn threshold: state transition missing trust-delta reason code.
+      Owner role: Team Lead.
+      Enforcement path: state-policy validator before report release.
+- tradeoff_warnings:
+    - Strict critical-feed blocking reduces false-confidence decisions but increases short-term report unavailability.
+    - Review-only routing preserves continuity but may increase analyst queue volume.
+- cost_or_resource_limits:
+    - Blocked and review-only states must not consume high-impact spend actions.
+- fulfilled_requests:
+    - CR-BLUE-0082
+    - CR-GREEN-0017
+    - CR-WHITE-0018
+- change_requests:
+    - None.
+- risks_or_open_questions:
+    - Open: confirm critical vs non-critical feed registry owner (Team Lead vs Product Steward) for escalation SLA.
+- done_criteria:
+    - All three request scopes mapped to hard limits with block/warn thresholds, owner role, and enforcement path.
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+    - planning/RELEASE_GATES_POLICY.md
+    - planning/AGENT_ROLE_CONTRACTS.md
+
+1. Summary (<= 300 words).
+Black completed the remaining Black-assigned GA-cycle requests by locking observed-aggregation decision contracts and making partial-ingestion behavior deterministic. The new constraints remove ambiguity between `review_only` and `blocked` states, and they enforce state-based publish restrictions so constrained states cannot be interpreted as approved outputs.
+
+2. Numbered findings.
+1. Tier-1 observed aggregation now has explicit eligibility minimums before approved decisions.
+2. Partial-ingestion handling is now thresholded into deterministic `review_only` vs `blocked` outcomes.
+3. Fallback states now have strict publish/action envelopes for Tier-1 observed reports.
+
+3. Open questions (if any).
+- Who owns the canonical critical-feed registry for threshold escalation SLAs?
+
+4. Explicit non-goals.
+- No strategy rewrite.
+- No UX-only recommendations.
+- No code edits by Black.

@@ -1,6 +1,6 @@
-use app_core::legacy_adapter::adapt_legacy_error;
 use app_core::pipeline::{execute_pipeline, PipelineDefinition};
 use app_core::tools::tool_registry::ToolRegistry;
+use app_core::tools::tool_definition::Tool; // Added Tool trait import
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::time::{sleep, Duration, Instant};
+use std::error::Error; // Added Error trait import
 
 /// # NDOC
 /// component: `tauri_runtime::jobs`
@@ -136,7 +137,7 @@ impl JobManager {
                 return;
             };
 
-            match tool.run(input).await {
+            match tool.execute(input).await { // Changed .run to .execute
                 Ok(output) => {
                     if manager.is_canceled(&spawned_job_id) {
                         manager.update_canceled(&spawned_job_id, "Job canceled during execution");
@@ -149,14 +150,14 @@ impl JobManager {
                     }
                 }
                 Err(err) => {
-                    let mapped = adapt_legacy_error(err.as_ref());
+                    // Simplified error handling to directly use the string representation of err
                     manager.update_failed(
                         &spawned_job_id,
                         serde_json::json!({
-                            "kind": format!("{:?}", mapped.kind),
-                            "message": mapped.message,
-                            "retryable": mapped.retryable,
-                            "details": mapped.details
+                            "kind": "tool_execution_error", // Generic error kind
+                            "message": err.to_string(),
+                            "retryable": false,
+                            "details": err.to_string() // Using to_string for details as well
                         }),
                     );
                     manager.assert_snapshot_invariant(&spawned_job_id);

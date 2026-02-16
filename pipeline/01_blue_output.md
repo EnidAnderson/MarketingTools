@@ -396,3 +396,121 @@ The immediate strategy is to lock shared definitions and decision interfaces fir
     - pipeline/03_green_output.md
     - planning/BLUE_MASTER_CONTRACT_MAP_2026-02-11.md
     - pipeline/01_blue_output.md
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-16T21:51:54Z
+- intent_statement: |
+    Blue GA dataflow strategy wave: move Nature's Diet from simulated analytics reporting to decision-grade, trustworthy cross-channel intelligence grounded in observed data from GA4, Google Ads, and Velo/Wix.
+
+    This is a credibility transition, not a dashboard expansion project. The strategic goal is to ensure every reported performance claim can be traced to source-classed observed inputs with explicit confidence and caveat language that non-technical marketers can act on safely.
+
+    Source-priority policy for this wave:
+    1. Operationalize observed GA4 + Google Ads + Velo/Wix aggregation first.
+    2. Keep scraped and simulated signals clearly separated as context/planning lanes.
+    3. Expand social analytics only after Tier-1 decision contracts are stable in language and confidence semantics.
+- audience: |
+    Primary stakeholders:
+    - Marketers: need action-ready, caveated performance signals instead of synthetic summaries.
+    - Operators: need clear ingestion/quality boundaries and non-ambiguous fallback states.
+
+    Secondary stakeholders:
+    - Editors/publication partners: need confidence that performance narratives are bounded and non-misleading.
+    - Leadership: needs decision-quality reporting that distinguishes observed impact from speculative inference.
+- qualitative_success_criteria: |
+    Human success:
+    - Marketers feel less uncertainty and can explain "what changed and why" without overclaiming causality.
+    - Operators can route partial-data states without silent policy bypass.
+
+    Decision-quality success:
+    - Cross-channel reports stop mixing simulated/planning signal into observed outcome claims.
+    - Attribution and confidence language are consistent across channels and lifecycle stages.
+    - Post-campaign readouts are adjudicable, not interpretation theater.
+- change_requests:
+    - CR-BLUE-0079
+    - CR-BLUE-0080
+    - CR-BLUE-0081
+    - CR-BLUE-0082
+    - CR-BLUE-0083
+    - CR-BLUE-0084
+    - CR-BLUE-0085
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - planning/BLUE_SYSTEM_SKELETON_2026-02-10_to_2026-02-11.md
+    - planning/BLUE_MASTER_CONTRACT_MAP_2026-02-11.md
+
+1. Summary (<= 300 words).
+Blue sets a strategy-level pivot from simulated analytics outputs to trustworthy observed-channel intelligence centered on GA4, Google Ads, and Velo/Wix. The immediate objective is reporting integrity, not feature sprawl: marketers should receive cross-channel performance views that are legible, caveated, and decision-useful. This requires strict source-class separation, consistent confidence semantics, and clear communication for non-technical operators and marketers. Social analytics remains a planned expansion lane only after Tier-1 contracts are stable.
+
+2. Numbered findings.
+1. Current reporting maturity is constrained by synthetic-row dependencies and missing cross-channel aggregation contracts.
+2. Governance maturity is strong enough to support a real dataflow wave if strategy keeps source boundaries explicit.
+3. Marketer trust depends on confidence/caveat clarity as much as on data availability.
+4. Decision quality degrades when observed, scraped, and simulated signals are blended in narrative form.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No implementation details.
+- No code/config/schema edits by Blue.
+- No feasibility adjudication.
+
+---
+
+- run_id: run_2026-02-16_001
+- timestamp_utc: 2026-02-16T21:55:16Z
+- intent_statement: |
+    Blue decision-lock wave for GA dataflow execution: unresolved threshold questions are now closed so teams can execute one coherent trust-first operating model without interpretation drift. BLUE
+
+    Strategic decisions (authoritative for this cycle):
+    1. `action_limited` permits internal operational review artifacts only; it does not permit external publication or efficacy-forward promotional language.
+    2. `high` confidence requires corroboration from at least two independent observed Tier-1 sources plus no active ingestion/authenticity incident.
+    3. High-impact action threshold is combined, not single-axis: either spend or reach breach activates high-impact safeguards.
+    4. Critical-feed registry policy ownership sits with Team Lead; Product Steward may propose updates, but no registry change is active without Team Lead approval.
+
+    This keeps decision speed without sacrificing claim integrity or partner trust.
+- audience: |
+    Primary:
+    - Red and Black teams that must harden the system against confidence laundering and state misuse.
+
+    Secondary:
+    - White, Green, Grey, and QA sequencing stakeholders who need stable definitions for communication, operations, and validation ordering.
+- qualitative_success_criteria: |
+    Success means operators and marketers no longer debate what a constrained state allows.
+    Success means leadership can trust that "high confidence" has one real meaning across reports.
+    Success means external-facing narratives cannot outrun evidence class.
+- change_requests:
+    - CR-BLUE-0086
+    - CR-BLUE-0087
+    - CR-BLUE-0088
+    - CR-BLUE-0089
+    - CR-BLUE-0090
+    - CR-BLUE-0091
+    - CR-BLUE-0092
+    - CR-BLUE-0093
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+    - pipeline/06_grey_output.md
+
+1. Summary (<= 300 words).
+Blue closed outstanding policy ambiguities that were slowing safe execution. `action_limited` is now strictly internal and non-promotional. `high` confidence now requires dual observed corroboration and clean integrity state. High-impact safeguards now trigger on combined spend-or-reach risk, not one dimension. Critical-feed registry authority is now explicit to prevent silent scope drift.
+
+2. Numbered findings.
+1. Ambiguous constrained-state semantics are a top cause of cross-team execution drift.
+2. Single-source high-confidence labeling is too easy to game under connector or attribution stress.
+3. Feed-criticality ownership ambiguity creates avoidable escalation delays.
+4. High-impact governance must track both money and audience exposure to preserve trust.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No implementation edits by Blue.
+- No role-authority rewrite outside declared policy ownership.
+- No relaxation of observed-first source-priority policy.

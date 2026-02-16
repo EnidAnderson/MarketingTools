@@ -2,12 +2,12 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Nature's Diet Marketing",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.naturesdiet.marketing",
   "build": {
-    "frontendDist": "../frontend",
+    "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "cd /Volumes/EnidsAssets/NaturesDietMarketingTeam/frontend && npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "cd ../frontend && npm run dev",
+    "beforeBuildCommand": "cd /Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/frontend && npm run build"
   },
   "app": {
     "windows": [

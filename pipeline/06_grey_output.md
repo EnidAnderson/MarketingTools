@@ -338,3 +338,229 @@ Grey fulfilled CR-GREEN-0015 by producing a phased operator integration playbook
 - No executable edits.
 - No authority model changes.
 - No suppression of unresolved dependencies.
+
+---
+
+- run_id: run_2026-02-10_001
+- team_id: grey
+- timestamp_utc: 2026-02-16T18:00:00Z
+- input_refs:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+- integrated_directive: |
+    GA dataflow upgrade implementation sequence for QA (execution-ready):
+    Phase 1: Foundational data contracts (must complete first)
+    - Implement typed ingestion contracts covering GA4 events/traffic source metadata, Google Ads performance rows, and Velo/Wix signals.
+    - Enforce source-class separation (`observed`, `scraped_first_party`, `simulated`, `connector_derived`) with provenance and freshness fields at row level.
+    - Bind confidence label eligibility to source integrity and caveat requirements.
+
+    Phase 2: Connector and ingestion gates
+    - Implement connector contract validators with fail-closed routing for schema drift, freshness breaches, replay/sender authenticity failures, and semantic mismatch indicators.
+    - Route non-compliant connector payloads to advisory-only path with deterministic reason codes and escalation owner.
+
+    Phase 3: Attribution and confidence controls
+    - Enforce attribution-window metadata and confidence downgrade logic when evidence sufficiency, identity quality, or freshness synchronization requirements are not met.
+    - Require explicit uncertainty/caveat linkage before any approved action-level or publication-lane output.
+
+    Phase 4: Reporting surfaces and decision artifacts
+    - Materialize decision-grade reporting outputs that include provenance lineage, freshness windows, attribution assumptions, confidence labels, and source-class separation.
+    - Block report states that blend simulated/scraped signals into measured-outcome claims without explicit downgrade and caveat.
+
+    Phase 5: Fail-safe rollback and recovery
+    - If ingestion integrity or attribution confidence degrades, transition to fallback states (`action_blocked` or `action_limited`) and disable external publication path.
+    - Preserve previous known-good reporting surface until validator pass is restored; emit rollback reason and escalation owner.
+- preserved_disagreements:
+    - Throughput vs trust: strict fail-closed ingestion controls will reduce velocity during connector instability.
+    - Freshness pressure vs claim safety: fast scrape/connector updates improve recency but increase drift risk without synchronized normalization checks.
+    - Reporting immediacy vs confidence integrity: delaying publication for reconciliation reduces speed but protects measurement truth.
+- prioritized_requests:
+    - CR-GREY-0007 (qa_fixer) P1: Implement foundational typed GA4/Google Ads/Velo/Wix data contracts with provenance/freshness/source-class fields.
+      Acceptance criteria:
+      - Contracts include required provenance/freshness/source-class fields.
+      - Ingestion path rejects unlabeled or structurally incomplete records.
+      - Contract validation evidence is persisted in append-only QA log.
+      Provenance refs: planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md, pipeline/04_black_output.md, pipeline/05_white_output.md
+
+    - CR-GREY-0008 (qa_fixer) P1: Implement connector fail-closed validators and advisory-only routing for non-compliant payloads.
+      Acceptance criteria:
+      - Replay/authenticity/freshness/schema failures block decision influence.
+      - Advisory-only routing emits deterministic reason codes.
+      - Escalation owner is attached to each blocked connector event.
+      Provenance refs: planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md, pipeline/02_red_output.md, pipeline/04_black_output.md
+
+    - CR-GREY-0009 (qa_fixer) P1: Implement attribution-window + confidence downgrade controls tied to evidence sufficiency and identity quality.
+      Acceptance criteria:
+      - Low-confidence conditions force `limited` or `review_only` states.
+      - Causal overstatement without required caveat fails validation.
+      - Report artifacts include attribution assumptions and uncertainty note.
+      Provenance refs: pipeline/02_red_output.md, pipeline/05_white_output.md, planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+
+    - CR-GREY-0010 (qa_fixer) P1: Implement decision-grade reporting surfaces with explicit observed/scraped/simulated separation.
+      Acceptance criteria:
+      - Reporting output includes source-class partitions.
+      - Simulated/scraped signals cannot appear as measured outcome evidence without downgrade + caveat.
+      - Output includes freshness and provenance lineage fields.
+      Provenance refs: planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md, pipeline/03_green_output.md, pipeline/05_white_output.md
+
+    - CR-GREY-0011 (qa_fixer) P1: Implement rollback path for ingestion/attribution degradation.
+      Acceptance criteria:
+      - Degradation trigger transitions to fallback state and disables external publication.
+      - Last known-good report remains active until validator recovery.
+      - Rollback event logs reason, owner, and recovery checkpoint.
+      Provenance refs: pipeline/03_green_output.md, pipeline/04_black_output.md, planning/RELEASE_GATES_POLICY.md
+- dependencies_and_blockers:
+    - Dependencies:
+      - Existing White lexicon/metadata contracts remain authoritative for caveat/label semantics.
+      - Existing Black gate constraints remain authoritative for block/warn policy and owner escalation.
+    - Blockers:
+      - Final high-impact action threshold values still require Team Lead + Product Steward confirmation.
+      - If connector authenticity triplet policy is not finalized, Phase 2 must stay blocked for production influence.
+- open_questions:
+    - Should high-impact action threshold be spend-only, reach-only, or combined before automatic block is enforced?
+    - Is `action_limited` allowed for owned-channel publication by default, or always escalation-gated?
+    - What is the mandatory reconciliation window for delayed conversion before confidence can be promoted?
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+
+1. Summary (<= 300 words).
+Grey synthesized upstream direction and the 2026-02-16 GA dataflow review into one QA-ready implementation plan. Sequence is explicit: foundational data contracts first, then connector gates, then attribution/confidence controls, then reporting surfaces, then rollback/recovery path. The plan preserves existing policy authority (White semantics, Black gates) and does not suppress unresolved threshold decisions. Five P1 QA requests are defined with acceptance criteria and provenance refs.
+
+2. Numbered findings.
+1. Current analytics reporting remains non-production because synthetic generation and mock adapters dominate the path.
+2. Governance controls are already mature enough to enforce a safe implementation wave once typed contracts/connectors are implemented.
+3. Risk concentration is at ingestion integrity and attribution confidence; rollback semantics must be treated as first-class.
+
+3. Open questions (if any).
+- Team Lead decisions required on high-impact threshold definition and publication behavior under `action_limited`.
+
+4. Explicit non-goals.
+- No code edits by Grey.
+- No suppression of unresolved safety tradeoffs.
+- No strategy rewrite outside upstream outputs.
+
+---
+
+- run_id: run_2026-02-10_001
+- team_id: grey
+- timestamp_utc: 2026-02-16T22:05:00Z
+- input_refs:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+- integrated_directive: |
+    Fulfillment synthesis for CR-BLUE-0084, CR-BLUE-0085, and CR-GREEN-0018:
+
+    Phase A (Pilot): Tier-1 observed aggregation only
+    - Use GA4 + Google Ads + Velo/Wix observed lanes as decision floor.
+    - Keep scraped/simulated lanes visible but non-outcome-support only.
+    - Require source-class labels, confidence label, caveat bundle, and gate-state visibility before narrative interpretation.
+
+    Phase B (Stabilize): Gate-backed workflow hardening
+    - Enforce fallback-state semantics in report consumption (`action_blocked`, `action_limited`, `action_review_only`, `action_approved`).
+    - Enforce connector/authenticity/freshness gating and confidence downgrade behavior when integrity degrades.
+    - Require "what changed and why" section with reason taxonomy and action-scope binding.
+
+    Phase C (Scale): Controlled expansion
+    - Add social analytics only after Tier-1 stability criteria and continuity checks are satisfied.
+    - Preserve source-priority governance narrative for leadership: observed first, social second, scraped/simulated bounded support lanes.
+
+    Fail-safe rollback
+    - On ingestion/attribution degradation, fall back to `action_blocked`/`action_limited`, suppress external publication lane, and keep last known-good reporting baseline.
+- preserved_disagreements:
+    - Speed vs trust: aggressive observed-first gatekeeping lowers launch velocity but improves decision truth.
+    - Freshness vs stability: fast updates can increase confidence drift unless continuity and caveat checks are enforced.
+    - Usability vs strictness: compact operator path reduces friction but must not weaken non-bypass control semantics.
+- prioritized_requests:
+    - QA sequence order:
+      1. Foundational source-class and contract validators.
+      2. Connector/freshness/authenticity + fallback-state enforcement.
+      3. Report-surface consumption constraints and trust-delta sections.
+      4. Social-lane expansion only after Tier-1 stabilization criteria pass.
+- open_questions:
+    - Should `action_limited` allow owned-channel publication by default or require escalation?
+    - Should "what changed and why" be hard-required for all Tier-1 reports before approval?
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+
+1. Summary (<= 300 words).
+Grey integrated Blue’s GA dataflow strategic wave with Green’s workflow contract into a phased rollout that is execution-ready for QA sequencing. The directive locks source-priority governance (observed first), applies fallback-state and quality-gate semantics before narrative reporting, and keeps social expansion dependency-gated behind Tier-1 stabilization. Tradeoffs are preserved explicitly, and rollback behavior is defined for ingestion or attribution degradation.
+
+2. Numbered findings.
+1. CR-BLUE-0084 synthesis is complete as a phased GA integration directive with dependency-aware QA order.
+2. CR-BLUE-0085 source-priority governance narrative is complete and tied to operational phase gates.
+3. CR-GREEN-0018 rollout guidance is complete with pilot -> stabilize -> scale sequencing and unresolved tradeoffs preserved.
+
+3. Open questions (if any).
+- Team Lead decision is required on publication permissions under `action_limited`.
+
+4. Explicit non-goals.
+- No code edits by Grey.
+- No suppression of unresolved control tradeoffs.
+- No architectural invention outside upstream outputs.
+
+---
+
+- run_id: run_2026-02-16_001
+- team_id: grey
+- timestamp_utc: 2026-02-16T22:06:00Z
+- input_refs:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/04_black_output.md
+    - pipeline/05_white_output.md
+- integrated_directive: |
+    Fulfillment synthesis for CR-WHITE-0021:
+
+    QA sequencing brief for KPI semantics + confidence + annotation contract:
+    1) Validate KPI semantic contract fields first (`sessions`, `engaged_sessions`, `conversion_rate`, `cpa`, `roas`, `revenue`, `attributed_conversions`) with denominator/window/model caveat requirements.
+    2) Enforce phrase-class guardrails second (association wording allowed; causal verbs blocked unless causal-guard fields are present).
+    3) Enforce source-class labeling third (`observed|scraped_first_party|simulated|connector_derived`) on every KPI narrative block.
+    4) Enforce confidence-label semantics fourth (`low|medium|high`) tied to evidence completeness, uncertainty bounds, and ingestion integrity.
+    5) Enforce required report annotations fifth (`missing_data_note`, `delayed_conversion_note`, `partial_ingestion_note`) with fallback-state compatibility checks.
+    6) If partial ingestion or confidence conflict is detected, force `action_review_only` or `action_blocked` according to Black threshold semantics.
+- preserved_disagreements:
+    - Strict causal-verb blocking improves safety but may reduce perceived narrative confidence for marketers.
+    - Annotation density improves transparency but may reduce report readability unless templates stay compact.
+- prioritized_requests:
+    - Apply validators in sequence: KPI semantics -> phrase-class -> source labels -> confidence rules -> annotation contract.
+- open_questions:
+    - Should high confidence require dual observed-source corroboration, or can one validated observed source suffice?
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/05_white_output.md
+    - pipeline/04_black_output.md
+
+1. Summary (<= 300 words).
+Grey completed CR-WHITE-0021 by producing a QA-first sequencing brief that integrates White KPI semantics, confidence rules, and annotation contract into one deterministic validation order. The brief preserves causal-language and readability tradeoffs while keeping fallback-state behavior tied to Black threshold semantics.
+
+2. Numbered findings.
+1. KPI semantic validation must precede confidence and narrative gating to prevent downstream ambiguity.
+2. Causal-language controls are only reliable when tied to explicit guard fields and annotation requirements.
+3. Annotation contract enforcement is required to keep partial ingestion and delayed conversion states visible.
+
+3. Open questions (if any).
+- Team Lead decision needed on minimum observed-source corroboration for `high` confidence.
+
+4. Explicit non-goals.
+- No executable edits.
+- No policy ownership changes.
+- No suppression of unresolved threshold questions.

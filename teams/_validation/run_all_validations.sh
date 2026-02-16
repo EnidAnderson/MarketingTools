@@ -41,16 +41,46 @@ checks = [
         "cmd": [f"{root}/teams/_validation/check_request_id_policy.sh", base_ref],
     },
     {
+        "id": "RQ-MGR-001",
+        "name": "check_request_id_global_uniqueness",
+        "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-001",
+        "cmd": [f"{root}/teams/_validation/check_request_id_global_uniqueness.sh"],
+    },
+    {
+        "id": "RQ-MGR-003",
+        "name": "check_handoff_run_state_sync",
+        "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-003",
+        "cmd": [f"{root}/teams/_validation/check_handoff_run_state_sync.sh", base_ref],
+    },
+    {
+        "id": "RQ-MGR-004",
+        "name": "check_stage_output_format",
+        "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-004",
+        "cmd": [f"{root}/teams/_validation/check_stage_output_format.sh"],
+    },
+    {
+        "id": "RQ-MGR-005",
+        "name": "generate_cycle_health_summary",
+        "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-005",
+        "cmd": [f"{root}/teams/_validation/generate_cycle_health_summary.sh"],
+    },
+    {
         "id": "CR-BLACK-0001/0002",
         "name": "check_budget_and_release_gates",
         "rule_ref": "planning/RELEASE_GATES_POLICY.md",
         "cmd": [f"{root}/teams/_validation/check_budget_and_release_gates.sh"],
     },
     {
-        "id": "CR-WHITE-0001/0002/0003",
+        "id": "CR-WHITE-0001..0012/0015 + CR-BLACK-0003..0007",
         "name": "check_review_artifact_contract",
         "rule_ref": "planning/REVIEW_METADATA_CONTRACT_v1.md",
         "cmd": [f"{root}/teams/_validation/check_review_artifact_contract.sh"],
+    },
+    {
+        "id": "CR-BLACK-0005/0006/0007|CR-WHITE-0004..0012/0014/0015/0016/0017",
+        "name": "check_extended_contracts",
+        "rule_ref": "planning/QA_EXECUTION_MATRIX_2026-02-11.md",
+        "cmd": [f"{root}/teams/_validation/check_extended_contracts.sh"],
     },
 ]
 

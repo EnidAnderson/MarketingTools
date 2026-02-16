@@ -1,0 +1,38 @@
+{
+  "persona_name": "my_test_persona",
+  "description": "Default description for my_test_persona persona.",
+  "modules": {
+    "identity": {
+      "role_identity": "Default Role Identity.",
+      "alias": "my_test_persona Alias"
+    },
+    "personality": {
+      "complementary_personality": "Default Complementary Personality.",
+      "tone": "Default Tone."
+    },
+    "abilities": {
+      "authority": [
+        "Default Authority."
+      ],
+      "non_authority": [
+        "Default Non-Authority."
+      ],
+      "quality_bar": [
+        "Default Quality Bar."
+      ]
+    },
+    "interaction": {
+      "inputs": [
+        "Default Input."
+      ],
+      "outputs": [
+        "Default Output."
+      ],
+      "required_output_format": [
+        "Default Output Format."
+      ]
+    },
+    "tools": []
+  },
+  "version": "1.0"
+}

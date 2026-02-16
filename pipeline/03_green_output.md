@@ -282,3 +282,120 @@ Green completed CR-0076-BLUE, CR-GREY-0001, CR-GREY-0002, and CR-GREY-0006 by co
 - No executable edits.
 - No bypass of provenance/authenticity controls.
 - No change to team authority boundaries.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-16T21:52:44Z
+- ux_friction_findings:
+    - GF-016: Marketers cannot reliably distinguish observed GA4/Ads/Velo/Wix facts from inferred narrative, so "performance change" is over-read as causal proof.
+    - GF-017: Operators lack a first-time transition path from simulated analytics habits to observed-data workflow, causing continuity breaks and rerun churn.
+    - GF-018: Attribution uncertainty and freshness lag are presented as technical caveats, not decision-facing explanations, leading to noisy metric overreaction.
+    - GF-019: Fallback states (`action_blocked`, `action_limited`, `action_review_only`) exist but are not yet embedded into marketer report consumption flow.
+- onboarding_improvements:
+    - First-time marketer workflow (ingest -> report consumption):
+      - step 1 `ingest_status`: display source-class tiles (observed/scraped/simulated) with freshness timestamps and confidence tier.
+      - step 2 `quality_gate`: show gate outcome and required state (`action_blocked|action_limited|action_review_only|action_approved`) before any narrative summary.
+      - step 3 `what_changed_why`: require side-by-side section with prior cycle baseline and explicit reason tags (signal shift, attribution-window shift, freshness lag, or unresolved uncertainty).
+      - step 4 `decision_view`: present recommended action scope aligned to current state and confidence/caveat bundle.
+      - step 5 `consumption_check`: marketer confirms understanding via three prompts: what changed, why it changed, and what not to claim.
+    - GA4/Ads interpretation onboarding fixes:
+      - show attribution uncertainty as "possible contribution range" not singular effect sentence.
+      - show freshness lag as "data recency gap" with expected update window and hold/review guidance.
+      - pin source-priority banner: Tier-1 observed first; scraped/simulated are non-outcome support lanes.
+- messaging_improvements:
+    - Confidence/caveat display rules:
+      - `action_blocked`: no outcome narrative; only integrity failure + remediation path.
+      - `action_limited`: allow directional summary with mandatory uncertainty sentence and explicit non-causal warning.
+      - `action_review_only`: internal interpretation only; suppress external/promo phrasing.
+      - `action_approved`: bounded narrative allowed, still requiring attribution and freshness caveats when present.
+    - "What changed and why" report section design:
+      - fields: `changed_metric`, `prior_value`, `current_value`, `source_class`, `confidence_delta`, `primary_reason`, `caveat_impact`, `allowed_action_scope`.
+      - reason taxonomy: `observed_shift`, `window_reallocation`, `freshness_skew`, `identity_resolution_change`, `confound_indicator`.
+    - Human-readable explanation snippets:
+      - attribution uncertainty: "Multiple channels likely contributed; this report estimates contribution range, not a single proven cause."
+      - freshness lag: "Some sources are newer than others; wait for recency alignment before escalating spend decisions."
+- change_requests:
+    - CR-GREEN-0016
+    - CR-GREEN-0017
+    - CR-GREEN-0018
+    - CR-GREEN-0019
+    - CR-GREEN-0020
+    - CR-GREEN-0021
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/02_red_output.md
+    - pipeline/03_green_output.md
+    - pipeline/05_white_output.md
+    - teams/green/spec.md
+
+1. Summary (<= 300 words).
+Green fulfilled CR-BLUE-0081 by designing a first-time marketer/operator journey contract for the GA4/Ads/Velo/Wix transition from simulated interpretation to observed cross-channel decision workflow. The design makes source class, gate state, confidence, and caveats visible before narrative interpretation. It introduces a required "what changed and why" section with explicit reason taxonomy and action-scope binding. Fallback states are integrated directly into report consumption to reduce policy theater and overreaction to noisy metrics. To support implementation sequencing, Green issued six granular requests across White, Black, Grey, and QA lanes.
+
+2. Numbered findings.
+1. Source-class ambiguity is the highest driver of misleading marketer interpretation.
+2. Report UX must lead with state + confidence + caveat, not polished summary copy.
+3. Attribution uncertainty and freshness lag need plain-language decision guidance.
+4. Fallback-state semantics must be visible at consumption time, not hidden in backend gates.
+
+3. Open questions (if any).
+- Should `action_limited` default to budget-hold for high-impact campaigns until freshness skew resolves?
+- Should Grey enforce "what changed and why" as a release-critical section for all Tier-1 reports?
+
+4. Explicit non-goals.
+- No safety override recommendations.
+- No code/config/schema edits.
+- No causal certainty wording.
+
+---
+
+- run_id: run_2026-02-16_001
+- timestamp_utc: 2026-02-16T21:54:22Z
+- ux_friction_findings:
+    - GF-020: Report consumers misread partial-ingestion and delayed-conversion conditions as definitive underperformance or success.
+    - GF-021: Missing-data annotations are inconsistent across channels, creating false comparisons in executive and marketer reviews.
+    - GF-022: Operators lack standardized "safe wording" for constrained states, so narrative confidence drifts under deadline pressure.
+- onboarding_improvements:
+    - Add report-annotation scaffold required in every Tier-1 readout:
+      - `data_completeness_note`
+      - `attribution_window_note`
+      - `freshness_alignment_note`
+      - `allowed_action_scope_note`
+    - Require a one-click annotation picker bound to state:
+      - `action_blocked` -> incident/remediation template only
+      - `action_limited` -> directional-only template + no-causal warning
+      - `action_review_only` -> internal-only interpretation template
+      - `action_approved` -> bounded-performance template with caveats if present
+- messaging_improvements:
+    - Operator-facing report annotation templates (CR-WHITE-0020 fulfillment):
+      - missing data: "This report excludes one or more required observed sources. Use for monitoring context only until ingestion is complete."
+      - delayed conversions: "Conversion effects may mature after this window; treat current lift as provisional pending delayed-window reconciliation."
+      - partial ingestion: "Only a subset of Tier-1 sources is available. Decisions are constrained to limited scope until source alignment is restored."
+      - freshness skew: "Source update times are not aligned; confidence is reduced until recency windows converge."
+      - mixed source caveat: "Observed signals drive outcome interpretation; scraped/simulated inputs are context-only for this view."
+- change_requests:
+    - CR-GREEN-0022
+    - CR-GREEN-0023
+    - CR-GREEN-0024
+- references:
+    - pipeline/05_white_output.md
+    - pipeline/03_green_output.md
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - teams/green/spec.md
+
+1. Summary (<= 300 words).
+Green fulfilled CR-WHITE-0020 by publishing standardized operator-facing annotation templates for missing data, delayed conversions, partial ingestion, and freshness skew. The package binds each template to action-state semantics so constrained states cannot be narrated like approved outcomes. This reduces interpretation drift under real campaign pressure and keeps non-technical marketer consumption aligned with confidence/caveat boundaries.
+
+2. Numbered findings.
+1. Annotation inconsistency is a primary driver of overreaction to noisy or incomplete data.
+2. State-bound template selection is necessary to keep constrained reports from sounding approved.
+3. Delayed-conversion and freshness language must explicitly signal provisional interpretation.
+
+3. Open questions (if any).
+- Should White enforce these templates as mandatory fields in all Tier-1 readouts or only when a constrained state is active?
+
+4. Explicit non-goals.
+- No safety override recommendations.
+- No code/config/schema edits.
+- No causal overstatement language.

@@ -21,7 +21,8 @@ from pathlib import Path
 
 root, base_ref, queue_path = sys.argv[1], sys.argv[2], sys.argv[3]
 queue_rel = "data/team_ops/change_request_queue.csv"
-pattern = re.compile(r"^CR-(BLUE|RED|GREEN|BLACK|WHITE|GREY)-([0-9]{4})$")
+canonical_pattern = re.compile(r"^CR-(BLUE|RED|GREEN|BLACK|WHITE|GREY)-([0-9]{4})$")
+legacy_pattern = re.compile(r"^CR-([0-9]{4})-(BLUE|RED|GREEN|BLACK|WHITE|GREY)$")
 proc = subprocess.run(
     ["git", "-C", root, "diff", "--unified=0", "--no-color", base_ref, "--", queue_rel],
     capture_output=True,
@@ -91,13 +92,19 @@ for line_no in added_line_numbers:
 
     request_id = row[req_idx].strip()
     source_team = row[src_idx].strip().lower()
-    match = pattern.match(request_id)
-    if not match:
+    canonical_match = canonical_pattern.match(request_id)
+    legacy_match = legacy_pattern.match(request_id)
+    if not canonical_match and not legacy_match:
         errors.append(
             f"line {line_no}: request_id '{request_id}' must match CR-<TEAM>-NNNN (TEAM in BLUE|RED|GREEN|BLACK|WHITE|GREY)"
         )
         continue
-    id_team = match.group(1).lower()
+    # Transitional support: legacy CR-NNNN-TEAM ids remain valid while migration
+    # is in-progress; new canonical ids should use CR-TEAM-NNNN.
+    if canonical_match:
+        id_team = canonical_match.group(1).lower()
+    else:
+        id_team = legacy_match.group(2).lower()
     if id_team != source_team:
         errors.append(
             f"line {line_no}: request_id team '{id_team}' does not match source_team '{source_team}'"
@@ -115,7 +122,22 @@ with open(queue_path, "r", encoding="utf-8", newline="") as f:
 
 for rid in added_request_ids:
     if all_ids.count(rid) > 1:
-        errors.append(f"request_id '{rid}' is not globally unique in queue")
+        dup_rows = []
+        with open(queue_path, "r", encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f):
+                if (row.get("request_id") or "").strip() == rid:
+                    dup_rows.append(row)
+        latest = dup_rows[-1]
+        latest_status = (latest.get("status") or "").strip().lower()
+        latest_supersedes = (latest.get("supersedes_request_id") or "").strip()
+        if latest_status == "open":
+            errors.append(
+                f"request_id '{rid}' is duplicated and latest row is still open; duplicate lifecycle must be explicitly closed"
+            )
+        elif not latest_supersedes:
+            errors.append(
+                f"request_id '{rid}' is duplicated and latest row is missing supersedes_request_id lineage"
+            )
 
 if errors:
     print("FAIL[RQ-034] change request ID policy violations detected", file=sys.stderr)

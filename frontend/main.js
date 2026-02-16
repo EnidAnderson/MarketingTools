@@ -8,6 +8,67 @@ document.addEventListener('DOMContentLoaded', () => {
     let availableTools = [];
     let eventUnsubs = [];
 
+    // Define a default sample dashboard configuration
+    const defaultSampleDashboard = {
+        dashboard_name: "Marketing Performance Overview",
+        description: "A sample dashboard showing key marketing metrics.",
+        date_range_preset: "last_30_days",
+        filters: {},
+        widgets: [
+            {
+                id: "total_metrics_summary",
+                type: "summary",
+                title: "Overall Performance Summary",
+                data_source: "total_metrics",
+                metrics: ["impressions", "clicks", "cost", "conversions", "roas"]
+            },
+            {
+                id: "clicks_by_campaign_bar",
+                type: "bar",
+                title: "Clicks by Campaign",
+                data_source: "campaign_data",
+                metrics: ["clicks"],
+                dimension: "campaign_name",
+                limit: 5,
+                sort_by: "clicks",
+                sort_order: "desc",
+                chart_options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: 'Clicks per Campaign' }
+                    }
+                }
+            },
+            {
+                id: "roas_by_adgroup_table",
+                type: "table",
+                title: "Top Ad Groups by ROAS",
+                data_source: "ad_group_data",
+                metrics: ["ad_group_name", "roas", "cpa", "conversions"],
+                limit: 10,
+                sort_by: "roas",
+                sort_order: "desc"
+            },
+            {
+                id: "cost_trend_line",
+                type: "line",
+                title: "Cost Trend Over Time",
+                data_source: "campaign_data", // Would need date dimension for this
+                metrics: ["cost"],
+                dimension: "date",
+                chart_options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: 'Cost Over Time' }
+                    }
+                }
+            }
+        ]
+    };
+
+
     setupEventListeners();
     initialize();
 
@@ -16,6 +77,16 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTools();
         if (availableTools.length > 0) {
             selectTool(availableTools[0]);
+        }
+        await loadSavedDashboard(); // Attempt to load saved config first
+        if (currentDashboardConfig) {
+             await renderDashboard(currentDashboardConfig);
+        } else {
+            // If no saved config, load default sample dashboard
+            dashboardConfigJson.value = JSON.stringify(defaultSampleDashboard, null, 2);
+            currentDashboardConfig = defaultSampleDashboard;
+            console.log(`Loaded default sample dashboard: ${currentDashboardConfig.dashboard_name}`);
+            await renderDashboard(currentDashboardConfig);
         }
     }
 
@@ -443,6 +514,148 @@ document.addEventListener('DOMContentLoaded', () => {
             appendOutput(`- ${step.step_id} [${step.status}] (${step.duration_ms}ms)${errorMessage}`);
         }
     }
+
+    // --- Dashboard Configuration Logic ---
+    const dashboardConfigJson = document.getElementById('dashboardConfigJson');
+    const loadDashboardConfigButton = document.getElementById('loadDashboardConfigButton');
+    const saveDashboardConfigButton = document.getElementById('saveDashboardConfigButton');
+
+    let currentDashboardConfig = null; // Stores the currently loaded dashboard config
+
+    if (loadDashboardConfigButton) {
+        loadDashboardConfigButton.addEventListener('click', () => {
+            try {
+                const config = JSON.parse(dashboardConfigJson.value);
+                // Basic validation (more robust validation will happen in Rust backend)
+                if (!config.dashboard_name || !Array.isArray(config.widgets)) {
+                    alert('Invalid Dashboard Configuration: Missing dashboard_name or widgets array.');
+                    return;
+                }
+                currentDashboardConfig = config;
+                alert(`Dashboard '${config.dashboard_name}' loaded successfully!`);
+                // TODO: Call renderDashboard(currentDashboardConfig) here in the next step
+            } catch (error) {
+                alert(`Error loading dashboard configuration: ${error.message}`);
+            }
+        });
+    }
+
+    if (saveDashboardConfigButton) {
+        saveDashboardConfigButton.addEventListener('click', () => {
+            if (currentDashboardConfig) {
+                try {
+                    localStorage.setItem('savedDashboardConfig', JSON.stringify(currentDashboardConfig));
+                    alert(`Dashboard '${currentDashboardConfig.dashboard_name}' saved to local storage.`);
+                } catch (error) {
+                    alert(`Error saving dashboard configuration: ${error.message}`);
+                }
+            } else {
+                alert('No dashboard loaded to save.');
+            }
+        });
+    }
+
+    // Attempt to load a previously saved dashboard on initialize
+    async function loadSavedDashboard() {
+        try {
+            const savedConfig = localStorage.getItem('savedDashboardConfig');
+            if (savedConfig) {
+                const config = JSON.parse(savedConfig);
+                dashboardConfigJson.value = JSON.stringify(config, null, 2);
+                currentDashboardConfig = config;
+                console.log(`Loaded saved dashboard: ${config.dashboard_name}`);
+                // TODO: Call renderDashboard(currentDashboardConfig) here in the next step
+            }
+        } catch (error) {
+            console.error('Error loading saved dashboard:', error);
+            localStorage.removeItem('savedDashboardConfig'); // Clear corrupted data
+        }
+    }
+    initialize(); // Call initialize after loadSavedDashboard is defined.
+    // --- End Dashboard Configuration Logic ---
+
+    // --- Google Ads Analytics Report Logic ---
+    const generateReportButton = document.getElementById('generateReportButton');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const campaignFilterInput = document.getElementById('campaignFilter');
+    const adGroupFilterInput = document.getElementById('adGroupFilter');
+    const analyticsReportOutput = document.getElementById('analyticsReportOutput');
+
+    if (generateReportButton) {
+        generateReportButton.addEventListener('click', async () => {
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            const campaignFilter = campaignFilterInput.value || null;
+            const adGroupFilter = adGroupFilterInput.value || null;
+
+            analyticsReportOutput.textContent = 'Generating report...';
+
+            try {
+                const report = await window.__TAURI__.core.invoke('generate_analytics_report_command', {
+                    startDate,
+                    endDate,
+                    campaignFilter,
+                    adGroupFilter,
+                });
+                displayAnalyticsReport(report);
+            } catch (error) {
+                analyticsReportOutput.textContent = `Error generating report: ${error}`;
+            }
+        });
+    }
+
+    function displayAnalyticsReport(report) {
+        let output = `Report Name: ${report.report_name}\n`;
+        output += `Date Range: ${report.date_range}\n\n`;
+
+        output += `--- Total Metrics ---\n`;
+        output += `Impressions: ${report.total_metrics.impressions}\n`;
+        output += `Clicks: ${report.total_metrics.clicks}\n`;
+        output += `Cost: $${report.total_metrics.cost.toFixed(2)}\n`;
+        output += `Conversions: ${report.total_metrics.conversions.toFixed(2)}\n`;
+        output += `Conversions Value: $${report.total_metrics.conversions_value.toFixed(2)}\n`;
+        output += `CTR: ${report.total_metrics.ctr.toFixed(2)}%\n`;
+        output += `CPC: $${report.total_metrics.cpc.toFixed(2)}\n`;
+        output += `CPA: $${report.total_metrics.cpa.toFixed(2)}\n`;
+        output += `ROAS: ${report.total_metrics.roas.toFixed(2)}\n\n`;
+
+        output += `--- Campaign Data ---\n`;
+        if (report.campaign_data && report.campaign_data.length > 0) {
+            report.campaign_data.forEach(campaign => {
+                output += `Campaign: ${campaign.campaign_name} (ID: ${campaign.campaign_id})\n`;
+                output += `  Impressions: ${campaign.metrics.impressions}, Clicks: ${campaign.metrics.clicks}, Cost: $${campaign.metrics.cost.toFixed(2)}\n`;
+            });
+        } else {
+            output += `No campaign data found.\n`;
+        }
+        output += `\n`;
+
+        output += `--- Ad Group Data ---\n`;
+        if (report.ad_group_data && report.ad_group_data.length > 0) {
+            report.ad_group_data.forEach(adGroup => {
+                output += `Ad Group: ${adGroup.ad_group_name} (ID: ${adGroup.ad_group_id}, Campaign: ${adGroup.campaign_name})\n`;
+                output += `  Impressions: ${adGroup.metrics.impressions}, Clicks: ${adGroup.metrics.clicks}, Cost: $${adGroup.metrics.cost.toFixed(2)}\n`;
+            });
+        } else {
+            output += `No ad group data found.\n`;
+        }
+        output += `\n`;
+
+        output += `--- Keyword Data ---\n`;
+        if (report.keyword_data && report.keyword_data.length > 0) {
+            report.keyword_data.forEach(keyword => {
+                output += `Keyword: ${keyword.keyword_text} (Type: ${keyword.match_type}, Ad Group: ${keyword.ad_group_name})\n`;
+                output += `  Impressions: ${keyword.metrics.impressions}, Clicks: ${keyword.metrics.clicks}, Cost: $${keyword.metrics.cost.toFixed(2)}\n`;
+            });
+        } else {
+            output += `No keyword data found.\n`;
+        }
+        output += `\n`;
+
+        analyticsReportOutput.textContent = output;
+    }
+    // --- End Google Ads Analytics Report Logic ---
 
     window.addEventListener('beforeunload', () => {
         eventUnsubs.forEach((unsub) => {

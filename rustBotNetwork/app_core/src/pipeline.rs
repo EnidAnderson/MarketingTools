@@ -1,10 +1,12 @@
 use crate::contracts::ToolError;
 use crate::invariants::{ensure_json_pointer, ensure_non_empty_trimmed, ensure_range_usize};
 use crate::tools::tool_registry::ToolRegistry;
+use crate::tools::tool_definition::Tool; // Added Tool trait import
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::error::Error; // Added Error trait import
 
 /// # NDOC
 /// component: `pipeline`
@@ -91,9 +93,9 @@ pub struct PipelineRunResult {
     pub campaign_id: Option<String>,
     pub governance_refs: Option<PipelineGovernanceRefs>,
     pub started_at: String,
-    pub finished_at: String,
-    pub succeeded: bool,
-    pub steps: Vec<PipelineStepResult>,
+    pub finished_at: String, // Reverted to type String
+    pub succeeded: bool,     // Reverted to type bool
+    pub steps: Vec<PipelineStepResult>, // Reverted to type Vec
 }
 
 /// # NDOC
@@ -111,7 +113,7 @@ pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<Pipeline
     let mut step_results = Vec::new();
     let mut run_succeeded = true;
 
-    let registry = ToolRegistry::new();
+    let registry = ToolRegistry::new(); // ToolRegistry already has a new() method
 
     for step in &definition.steps {
         let step_started = Utc::now();
@@ -159,9 +161,9 @@ pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<Pipeline
             break;
         };
 
-        match tool.run(resolved_input.clone()).await {
-            Ok(output) => {
-                step_outputs.insert(step.id.clone(), output.clone());
+        match tool.execute(resolved_input.clone()).await {
+            Ok(output_value) => {
+                step_outputs.insert(step.id.clone(), output_value.clone());
                 step_results.push(PipelineStepResult {
                     step_id: step.id.clone(),
                     tool: step.tool.clone(),
@@ -170,7 +172,7 @@ pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<Pipeline
                     finished_at: Utc::now().to_rfc3339(),
                     duration_ms: (Utc::now() - step_started).num_milliseconds().max(0) as u64,
                     resolved_input,
-                    output: Some(output),
+                    output: Some(output_value),
                     error: None,
                 });
             }

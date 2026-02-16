@@ -643,3 +643,186 @@ Red fulfilled CR-WHITE-0013 by publishing a normalized trigger catalog for activ
     - if identity_resolution_confidence_below_threshold for high_impact_action then blocked by black
     - if fallback_state_action_scope_exceeds_allowed_envelope then blocked by black
     - if trust_delta_prompt_low_information_or_contradictory then review_only by white
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T23:20:07Z
+- risk_findings:
+    - R-RED-043 | Severity: Misleading
+      Failure Description: Attribution windows can be tuned to over-credit near-term campaign effects while hiding long-window reversal.
+      How It Slipped Through: Window-selection controls are not tied to uncertainty escalation.
+      Blast Radius: Budget allocation and executive reporting.
+      Mitigation Recommendation: Bind short-vs-long window divergence thresholds to mandatory `limited` state.
+    - R-RED-044 | Severity: Production Risk
+      Failure Description: Temporal leakage across stale Tier-1 and fresh scraped context creates false trend narratives.
+      How It Slipped Through: Cross-source recency skew is tracked weakly and not enforced before confidence updates.
+      Blast Radius: In-flight optimization and post-campaign interpretation.
+      Mitigation Recommendation: Enforce recency skew trigger with owner escalation.
+    - R-RED-045 | Severity: Production Risk
+      Failure Description: Connector poisoning can preserve schema validity while altering metric semantics pre-labeling.
+      How It Slipped Through: Schema validation passes without semantic invariance checks.
+      Blast Radius: Tier-1 decision integrity.
+      Mitigation Recommendation: Add semantic integrity triggers and quarantine state.
+    - R-RED-046 | Severity: Brand Risk
+      Failure Description: Synthetic feedback can recursively bias interpretation of future observed signals.
+      How It Slipped Through: Feedback loop containment boundaries are under-specified.
+      Blast Radius: Learning loop quality and narrative trust.
+      Mitigation Recommendation: Trigger containment when synthetic influence exceeds bounded ratio.
+    - R-RED-047 | Severity: Legal Risk
+      Failure Description: Editorial trust signals can launder promotional certainty in publication lanes.
+      How It Slipped Through: Publication credibility language lacks causal/efficacy separation controls.
+      Blast Radius: External claim safety and partner trust.
+      Mitigation Recommendation: Block publication-lane claims exceeding evidence class.
+    - R-RED-048 | Severity: Misleading
+      Failure Description: Vanity metric optimization can improve dashboard optics while degrading decision quality.
+      How It Slipped Through: KPI success criteria omit decision-quality guard metrics.
+      Blast Radius: Optimization governance and resource allocation.
+      Mitigation Recommendation: Require anti-vanity triggers tied to action eligibility.
+    - R-RED-049 | Severity: Misleading
+      Failure Description: Delayed-conversion fallout can be hidden by short-window reporting.
+      How It Slipped Through: Reconciliation cadence is not mandatory for high-impact actions.
+      Blast Radius: Campaign truthfulness and long-term ROI.
+      Mitigation Recommendation: Enforce delayed-window reconciliation before continued high-impact spend.
+    - R-RED-050 | Severity: Production Risk
+      Failure Description: Bot/spam contamination can pass coarse checks and distort performance narratives.
+      How It Slipped Through: Traffic quality signals are not strict gating inputs.
+      Blast Radius: Measurement integrity.
+      Mitigation Recommendation: Gate confidence promotion on contamination triage results.
+    - R-RED-051 | Severity: Misleading
+      Failure Description: Seasonality/confound shocks can be misattributed to campaign effects.
+      How It Slipped Through: Confound notes are optional instead of trigger-bound.
+      Blast Radius: Decision logic and retrospective analysis.
+      Mitigation Recommendation: Require uncertainty escalation when confound indicators exceed threshold.
+    - R-RED-052 | Severity: Production Risk
+      Failure Description: Cross-platform identity mismatch can fabricate lift through duplicate/fragmented entities.
+      How It Slipped Through: Identity resolution confidence is not enforced before action scaling.
+      Blast Radius: Lift measurement and targeting decisions.
+      Mitigation Recommendation: Block high-impact actions under low identity-resolution confidence.
+- abuse_cases:
+    - AB-RED-035: Channel credit inflated by narrowing attribution window right before review.
+    - AB-RED-036: Scrape update narrative overrides stale observed behavior trend in decision memo.
+    - AB-RED-037: Schema-valid connector payload shifts null policy and inflates metric.
+    - AB-RED-038: Synthetic planning outputs recursively drive prioritization of weak observed cohorts.
+    - AB-RED-039: Editorial acceptance cited as efficacy proof in external-facing summary.
+- hazard_flags:
+    - HF-RED-023: No mandatory divergence trigger for short/long attribution windows.
+    - HF-RED-024: No hard gate for identity-resolution confidence on high-impact actions.
+- change_requests:
+    - None (fulfillment package).
+- references:
+    - planning/BLUE_MASTER_CONTRACT_MAP_2026-02-11.md
+    - pipeline/02_red_output.md
+    - pipeline/05_white_output.md
+    - planning/MARKET_ANALYSIS_SUITE_ARCHITECTURE.md
+
+1. Summary (<= 300 words).
+Red fulfilled the remaining Blue adversarial ticket wave for attribution manipulation, temporal leakage, connector poisoning, synthetic-loop recursion, publication-lane confidence laundering, metric gaming, delayed-conversion masking, bot contamination, confound laundering, and cross-platform identity mismatch. Each risk now has explicit failure semantics and mitigation direction suitable for Black threshold translation and QA gating.
+
+2. Numbered findings.
+1. Window and timing controls are the highest-risk hidden manipulator of campaign conclusions.
+2. Schema-valid does not mean semantically safe for connector-derived metrics.
+3. Publication trust and metric dashboards are frequent laundering surfaces for overconfidence.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No implementation edits.
+- No authority reassignment.
+- No strategy override.
+
+---
+
+- run_id: run_2026-02-16_001
+- timestamp_utc: 2026-02-16T21:54:52Z
+- risk_findings:
+    - R-GA-RED-001 | Severity: Legal Risk | Blast Radius: reporting trust + budget + partner credibility
+      Failure Description: GA4 conversion events can drift semantically (same event name, changed trigger scope), making trend continuity appear valid while KPI meaning changes.
+      How It Slipped Through: Event-name stability is treated as semantic stability.
+    - R-GA-RED-002 | Severity: Misleading | Blast Radius: budget + reporting trust
+      Failure Description: Session-source contamination (last non-direct overrides, consent-mode fills) can over-credit paid channels in blended reports.
+      How It Slipped Through: Source labeling is accepted without uncertainty penalty.
+    - R-GA-RED-003 | Severity: Legal Risk | Blast Radius: partner credibility + reporting trust
+      Failure Description: Consent-mode blind spots can create modeled uplift interpreted as observed user behavior.
+      How It Slipped Through: Modeled vs observed not hard-separated in narrative blocks.
+    - R-GA-RED-004 | Severity: Production Risk | Blast Radius: budget + reporting trust
+      Failure Description: GA4 user/session identity and Google Ads click IDs can mismatch, fabricating attributed lift via duplicate joins.
+      How It Slipped Through: Join success is treated as identity correctness.
+    - R-GA-RED-005 | Severity: Production Risk | Blast Radius: budget
+      Failure Description: Wix/Velo order IDs can backfill late while Ads click attribution windows are closed, creating asymmetric credit.
+      How It Slipped Through: Window alignment checks are advisory only.
+    - R-GA-RED-006 | Severity: Misleading | Blast Radius: reporting trust
+      Failure Description: Denominator-policy drift (users vs sessions vs eligible sessions) inflates conversion narratives between cycles.
+      How It Slipped Through: KPI label persists while denominator silently changes.
+    - R-GA-RED-007 | Severity: Production Risk | Blast Radius: reporting trust + budget
+      Failure Description: Attribution-window switching (7-day to 1-day) is used opportunistically to polish performance snapshots.
+      How It Slipped Through: No trigger tied to window-change impact.
+    - R-GA-RED-008 | Severity: Brand Risk | Blast Radius: partner credibility
+      Failure Description: Publication-facing summaries cite “GA verified” while confidence caveats are buried in footnotes.
+      How It Slipped Through: Presence checks pass despite scope mismatch.
+    - R-GA-RED-009 | Severity: Production Risk | Blast Radius: budget
+      Failure Description: Connector replay with valid schema re-injects stale high-performing payloads into decision windows.
+      How It Slipped Through: Replay/freshness not bound to action eligibility.
+    - R-GA-RED-010 | Severity: Misleading | Blast Radius: reporting trust
+      Failure Description: Cross-source freshness skew (fresh scrape + stale GA4 export) creates synthetic trend inflections.
+      How It Slipped Through: Freshness is checked per-source, not across-source.
+    - R-GA-RED-011 | Severity: Legal Risk | Blast Radius: partner credibility + reporting trust
+      Failure Description: Source-class laundering converts `scraped_first_party` context into observed-performance language.
+      How It Slipped Through: Source class not required per KPI paragraph.
+    - R-GA-RED-012 | Severity: Brand Risk | Blast Radius: budget + reporting trust
+      Failure Description: Confidence labels remain unchanged after identity-join quality degradation, preserving false certainty.
+      How It Slipped Through: Confidence recalculation not required on join-quality drift.
+- abuse_cases:
+    - AB-GA-RED-001: Operator changes denominator to eligible sessions while keeping KPI title “conversion rate”, inflating campaign success.
+    - AB-GA-RED-002: Analyst narrows attribution window before leadership readout, then restores default post-review.
+    - AB-GA-RED-003: Replay of last week’s high-ROAS payload passes schema checks and biases spend allocation.
+    - AB-GA-RED-004: Publication summary frames modeled consent recovery as observed uplift.
+    - AB-GA-RED-005: Source-class tags removed in export layer, allowing scraped signals to appear observed.
+- normalized_trigger_catalog:
+    - if ga4_event_semantics_changed and event_name_unchanged then review_only by white
+    - if session_source_confidence_below_threshold and paid_channel_claim_present then limited by black
+    - if consent_mode_modeled_share_gt_threshold and observed_language_present then review_only by white
+    - if identity_join_confidence_below_threshold for high_impact_action then blocked by black
+    - if denominator_policy_changed and kpi_label_unchanged then review_only by white
+    - if attribution_window_changed and delta_impact_gt_threshold then limited by black
+    - if connector_replay_detected or freshness_window_failed then blocked by black
+    - if cross_source_freshness_skew_gt_tolerance then limited by black
+    - if source_class_missing_in_kpi_block then review_only by white
+    - if publication_lane_claim_exceeds_evidence_class then blocked by black
+- change_requests:
+    - CR-RED-0001
+    - CR-RED-0002
+    - CR-RED-0003
+    - CR-RED-0004
+    - CR-RED-0005
+    - CR-RED-0006
+    - CR-RED-0007
+    - CR-RED-0008
+- references:
+    - planning/reports/GOOGLE_ANALYTICS_DATAFLOW_REVIEW_2026-02-16.md
+    - pipeline/01_blue_output.md
+    - pipeline/05_white_output.md
+
+1. Summary (<= 300 words).
+Red fulfilled CR-BLUE-0080 and CR-WHITE-0019 for the GA dataflow cycle. Highest-risk failure class is semantic correctness drift under structurally valid pipelines: event meanings, attribution windows, denominator policies, and source classes can change while dashboards remain professional-looking. GA4-specific concerns include event semantics drift, session-source contamination, and consent-mode modeled-data overinterpretation. Cross-platform identity mismatches (GA4 sessions/users vs Ads click IDs vs site order identity) remain a major lift-fabrication vector. This package includes triggerable normalized cues and owner states plus downstream requests for Black/White/Grey/QA hardening lanes.
+
+2. Numbered findings.
+1. Event-name continuity is not semantic continuity.
+2. Source attribution confidence is routinely overstated in blended channel narratives.
+3. Modeled consent recovery can be misreported as observed behavior.
+4. Identity join success can hide duplicate/fragmented attribution.
+5. Window/denominator changes are high-impact manipulation vectors.
+6. Schema-valid replay remains a poisoning vector.
+7. Cross-source freshness skew can fabricate trend claims.
+8. Source-class omission enables observed/scraped laundering.
+9. Confidence labels can be stale under join-quality drift.
+10. Publication trust signals can launder certainty.
+
+3. Open questions (if any).
+- None.
+
+4. Explicit non-goals.
+- No implementation edits.
+- No strategy rewrite.
+- No architecture redesign.

@@ -2,6 +2,39 @@
 
 Append-only.
 
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-11T00:35:00Z
+- decision_id: DEC-0001
+- implemented_requests:
+  - CR-WHITE-0004
+  - CR-WHITE-0005
+  - CR-WHITE-0006
+  - CR-WHITE-0007
+  - CR-WHITE-0008
+  - CR-WHITE-0009
+  - CR-WHITE-0010
+  - CR-WHITE-0011
+  - CR-WHITE-0012
+  - CR-WHITE-0014
+  - CR-WHITE-0015
+  - CR-BLACK-0005
+  - CR-BLACK-0006
+  - CR-BLACK-0007
+- artifacts:
+  - teams/_validation/check_review_artifact_contract.sh
+  - teams/_validation/run_all_validations.sh
+  - data/team_ops/review_artifacts/run_2026-02-10_001_asset_0001.json
+  - qa_fixer/QA_EXECUTION_MATRIX.md
+  - data/team_ops/change_request_queue.csv
+- validation_commands:
+  - teams/_validation/check_review_artifact_contract.sh
+- validation_result: pass
+- residual_risk:
+  - Remaining non-qa_fixer Blue requests assigned to red/black/white/grey remain open in queue.
+  - Runtime enforcement outside review-artifact validation still depends on broader team validator coverage.
+
 ## Entry template
 - run_id:
 - timestamp_utc:
@@ -200,3 +233,100 @@ Append-only.
 - residual_risks:
     - Historical queue IDs remain mixed-format in legacy rows; active superseding rows now carry deterministic lineage.
     - Validator coverage currently targets JSON review payloads in `data/team_ops/review_artifacts/`.
+
+---
+
+- run_id: run_2026-02-10_001
+- timestamp_utc: 2026-02-10T23:20:07Z
+- request_ids_implemented:
+    - CR-BLACK-0005
+    - CR-BLACK-0006
+    - CR-BLACK-0007
+    - CR-WHITE-0004
+    - CR-WHITE-0005
+    - CR-WHITE-0006
+    - CR-WHITE-0007
+    - CR-WHITE-0008
+    - CR-WHITE-0009
+    - CR-WHITE-0010
+    - CR-WHITE-0011
+    - CR-WHITE-0012
+    - CR-WHITE-0014
+    - CR-WHITE-0015
+- decision_and_change_refs:
+    - decision_id: DEC-0001
+    - change_request_id: CR-BLACK-0005
+    - change_request_id: CR-BLACK-0006
+    - change_request_id: CR-BLACK-0007
+    - change_request_id: CR-WHITE-0004
+    - change_request_id: CR-WHITE-0005
+    - change_request_id: CR-WHITE-0006
+    - change_request_id: CR-WHITE-0007
+    - change_request_id: CR-WHITE-0008
+    - change_request_id: CR-WHITE-0009
+    - change_request_id: CR-WHITE-0010
+    - change_request_id: CR-WHITE-0011
+    - change_request_id: CR-WHITE-0012
+    - change_request_id: CR-WHITE-0014
+    - change_request_id: CR-WHITE-0015
+- files_changed:
+    - teams/_validation/check_extended_contracts.sh
+    - teams/_validation/run_all_validations.sh
+    - teams/_validation/README.md
+    - teams/schemas/review_artifact.schema.json
+    - data/team_ops/review_artifacts/run_2026-02-10_001_asset_0001.json
+    - planning/HIGH_IMPACT_ACTION_POLICY.md
+    - planning/QA_EXECUTION_MATRIX_2026-02-11.md
+- rationale: |
+    Implemented extended machine-checkable validator coverage for fallback-state semantics, source/analytics-path terminology, lifecycle confidence policy, continuity templates, causal/metric anti-overstatement checks, connector authenticity triplet, social rollout thresholds, and high-impact action block behavior; added QA execution matrix and policy file.
+- verification_evidence:
+    - bash teams/_validation/check_extended_contracts.sh
+    - bash teams/_validation/run_all_validations.sh HEAD (extended checks pass; existing legacy governance checks still determine overall status)
+- residual_risks:
+    - Overall validation suite remains fail if pre-existing pipeline-order or append-only baseline checks fail.
+
+1. Summary (<= 300 words).
+QA implemented the extended contract validation bundle requested by Blue/White/Black, including schema-aligned artifact checks, high-impact action policy enforcement hooks, and executable matrix mapping for closure evidence.
+
+2. Numbered findings.
+1. Extended validator coverage is now machine-checkable for CR-WHITE-0004..0015 and CR-BLACK-0005..0007.
+2. Residual governance failures come from legacy flow/state mismatches outside the new validator contract.
+
+3. Open questions (if any).
+- Should `qa_fixer -> grey` handoffs remain allowed as explicit synthesis loops, or be blocked by strict phase finality?
+
+4. Explicit non-goals.
+- No architecture redesign.
+- No policy ownership reassignment.
+- No destructive rewrite of historical append-only logs.
+
+---
+
+- run_id: run_2026-02-16_001
+- timestamp_utc: 2026-02-16T10:30:00Z
+- request_ids_implemented:
+    - CR-WHITE-0016
+    - CR-WHITE-0017
+- decision_and_change_refs:
+    - decision_id: DEC-0003
+    - change_request_id: CR-WHITE-0016
+    - change_request_id: CR-WHITE-0017
+- files_changed:
+    - rustBotNetwork/app_core/src/data_models/analytics.rs
+    - rustBotNetwork/app_core/src/analytics_connector_contracts.rs
+    - rustBotNetwork/app_core/src/analytics_reporter.rs
+    - rustBotNetwork/app_core/src/lib.rs
+    - teams/_validation/check_extended_contracts.sh
+    - teams/schemas/review_artifact.schema.json
+    - data/team_ops/review_artifacts/run_2026-02-10_001_asset_0001.json
+    - teams/_validation/run_all_validations.sh
+    - data/team_ops/change_request_queue.csv
+- rationale: |
+    Implemented the GA dataflow QA wave as additive, typed hardening: added connector-contract interfaces and GA4-normalized report artifact types with provenance/freshness/confidence metadata, plus deterministic safeguards for schema drift, identity mismatch, and attribution window checks. Added CR-WHITE-0016/0017 validator enforcement for source-class labels per KPI narrative and causal-phrase guard fields.
+- verification_evidence:
+    - cargo +stable test -p app_core analytics_reporter
+    - bash teams/_validation/check_extended_contracts.sh
+    - bash teams/_validation/run_all_validations.sh HEAD
+- residual_risks:
+    - Connector contract currently uses simulated connector implementation; production adapters still need live ingestion wiring for GA4/Ads/Velo/Wix endpoints.
+    - Attribution safeguards are validator-level and typed-model-level; no external warehouse orchestration is added in this change.

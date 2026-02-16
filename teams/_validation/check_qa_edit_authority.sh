@@ -29,7 +29,10 @@ while IFS= read -r path; do
   if ! is_executable_asset "$path"; then
     continue
   fi
-  if [[ "$path" == "teams/_validation/validation_report.json" ]]; then
+  if [[ "$path" == "teams/_validation/validation_report.json" || "$path" == "teams/_validation/cycle_health_summary.json" ]]; then
+    continue
+  fi
+  if [[ "$path" == scripts/tests/invariants/results/* ]]; then
     continue
   fi
 

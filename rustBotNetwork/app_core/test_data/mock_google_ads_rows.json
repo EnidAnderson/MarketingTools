@@ -1,0 +1,197 @@
+[
+  {
+    "campaign": {
+      "resourceName": "customers/123456789/campaigns/1",
+      "id": "1",
+      "name": "Summer Pet Food Promo",
+      "status": "ENABLED"
+    },
+    "adGroup": {
+      "resourceName": "customers/123456789/adGroups/1.1",
+      "id": "1.1",
+      "name": "Dry Food",
+      "status": "ENABLED",
+      "campaignResourceName": "customers/123456789/campaigns/1"
+    },
+    "adGroupCriterion": {
+      "resourceName": "customers/123456789/adGroupCriteria/1.1.1",
+      "criterionId": "1.1.1",
+      "status": "ENABLED",
+      "keyword": {
+        "text": "healthy dog food",
+        "matchType": "EXACT"
+      },
+      "qualityScore": 7,
+      "adGroupResourceName": "customers/123456789/adGroups/1.1"
+    },
+    "metrics": {
+      "clicks": 100,
+      "impressions": 1000,
+      "costMicros": 50000000,
+      "conversions": 5.0,
+      "conversionsValue": 250.0,
+      "ctr": 10.0,
+      "averageCpc": 0.5
+    },
+    "segments": {
+      "date": "2023-01-01",
+      "device": "MOBILE"
+    }
+  },
+  {
+    "campaign": {
+      "resourceName": "customers/123456789/campaigns/1",
+      "id": "1",
+      "name": "Summer Pet Food Promo",
+      "status": "ENABLED"
+    },
+    "adGroup": {
+      "resourceName": "customers/123456789/adGroups/1.1",
+      "id": "1.1",
+      "name": "Dry Food",
+      "status": "ENABLED",
+      "campaignResourceName": "customers/123456789/campaigns/1"
+    },
+    "adGroupCriterion": {
+      "resourceName": "customers/123456789/adGroupCriteria/1.1.2",
+      "criterionId": "1.1.2",
+      "status": "ENABLED",
+      "keyword": {
+        "text": "grain-free cat food",
+        "matchType": "BROAD"
+      },
+      "qualityScore": 6,
+      "adGroupResourceName": "customers/123456789/adGroups/1.1"
+    },
+    "metrics": {
+      "clicks": 50,
+      "impressions": 800,
+      "costMicros": 30000000,
+      "conversions": 2.0,
+      "conversionsValue": 100.0,
+      "ctr": 6.25,
+      "averageCpc": 0.6
+    },
+    "segments": {
+      "date": "2023-01-01",
+      "device": "DESKTOP"
+    }
+  },
+  {
+    "campaign": {
+      "resourceName": "customers/123456789/campaigns/2",
+      "id": "2",
+      "name": "New Puppy Essentials",
+      "status": "ENABLED"
+    },
+    "adGroup": {
+      "resourceName": "customers/123456789/adGroups/2.1",
+      "id": "2.1",
+      "name": "Treats",
+      "status": "ENABLED",
+      "campaignResourceName": "customers/123456789/campaigns/2"
+    },
+    "adGroupCriterion": {
+      "resourceName": "customers/123456789/adGroupCriteria/2.1.1",
+      "criterionId": "2.1.1",
+      "status": "ENABLED",
+      "keyword": {
+        "text": "best puppy treats",
+        "matchType": "EXACT"
+      },
+      "qualityScore": 9,
+      "adGroupResourceName": "customers/123456789/adGroups/2.1"
+    },
+    "metrics": {
+      "clicks": 200,
+      "impressions": 2500,
+      "costMicros": 100000000,
+      "conversions": 10.0,
+      "conversionsValue": 750.0,
+      "ctr": 8.0,
+      "averageCpc": 0.5
+    },
+    "segments": {
+      "date": "2023-01-01",
+      "device": "MOBILE"
+    }
+  },
+    {
+    "campaign": {
+      "resourceName": "customers/123456789/campaigns/1",
+      "id": "1",
+      "name": "Summer Pet Food Promo",
+      "status": "ENABLED"
+    },
+    "adGroup": {
+      "resourceName": "customers/123456789/adGroups/1.1",
+      "id": "1.1",
+      "name": "Dry Food",
+      "status": "ENABLED",
+      "campaignResourceName": "customers/123456789/campaigns/1"
+    },
+    "adGroupCriterion": {
+      "resourceName": "customers/123456789/adGroupCriteria/1.1.1",
+      "criterionId": "1.1.1",
+      "status": "ENABLED",
+      "keyword": {
+        "text": "healthy dog food",
+        "matchType": "EXACT"
+      },
+      "qualityScore": 7,
+      "adGroupResourceName": "customers/123456789/adGroups/1.1"
+    },
+    "metrics": {
+      "clicks": 120,
+      "impressions": 1100,
+      "costMicros": 60000000,
+      "conversions": 6.0,
+      "conversionsValue": 300.0,
+      "ctr": 10.91,
+      "averageCpc": 0.5
+    },
+    "segments": {
+      "date": "2023-01-02",
+      "device": "MOBILE"
+    }
+  },
+  {
+    "campaign": {
+      "resourceName": "customers/123456789/campaigns/2",
+      "id": "2",
+      "name": "New Puppy Essentials",
+      "status": "ENABLED"
+    },
+    "adGroup": {
+      "resourceName": "customers/123456789/adGroups/2.1",
+      "id": "2.1",
+      "name": "Treats",
+      "status": "ENABLED",
+      "campaignResourceName": "customers/123456789/campaigns/2"
+    },
+    "adGroupCriterion": {
+      "resourceName": "customers/123456789/adGroupCriteria/2.1.1",
+      "criterionId": "2.1.1",
+      "status": "ENABLED",
+      "keyword": {
+        "text": "best puppy treats",
+        "matchType": "EXACT"
+      },
+      "qualityScore": 9,
+      "adGroupResourceName": "customers/123456789/adGroups/2.1"
+    },
+    "metrics": {
+      "clicks": 210,
+      "impressions": 2600,
+      "costMicros": 110000000,
+      "conversions": 11.0,
+      "conversionsValue": 800.0,
+      "ctr": 8.08,
+      "averageCpc": 0.52
+    },
+    "segments": {
+      "date": "2023-01-02",
+      "device": "DESKTOP"
+    }
+  }
+]

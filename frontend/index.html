@@ -10,6 +10,36 @@
     <h1>Marketing Tool Playground</h1>
 
     <div class="container">
+        <div class="dashboard-config-section">
+            <h2>Dashboard Configuration</h2>
+            <textarea id="dashboardConfigJson" rows="10" cols="80" placeholder="Paste Dashboard JSON Configuration here"></textarea><br>
+            <button id="loadDashboardConfigButton">Load Dashboard</button>
+            <button id="saveDashboardConfigButton">Save Dashboard</button>
+        </div>
+
+        <div class="analytics-report-section">
+            <h2>Google Ads Analytics Report</h2>
+            <div class="report-inputs">
+                <label for="startDate">Start Date:</label>
+                <input type="date" id="startDate" value="2023-01-01"><br>
+
+                <label for="endDate">End Date:</label>
+                <input type="date" id="endDate" value="2023-01-31"><br>
+
+                <label for="campaignFilter">Campaign Filter (optional):</label>
+                <input type="text" id="campaignFilter" placeholder="e.g., Summer Pet Food Promo"><br>
+
+                <label for="adGroupFilter">Ad Group Filter (optional):</label>
+                <input type="text" id="adGroupFilter" placeholder="e.g., Dry Food"><br>
+
+                <button id="generateReportButton">Generate Analytics Report</button>
+            </div>
+            <div class="report-display" id="analyticsReportDisplay">
+                <h3>Report Output</h3>
+                <pre id="analyticsReportOutput"></pre>
+            </div>
+        </div>
+
         <div class="tool-list">
             <h2>Available Tools</h2>
             <ul id="tools-sidebar">
@@ -28,6 +58,7 @@
         </div>
     </div>
 
+    <script src="./node_modules/chart.js/dist/chart.umd.js"></script>
     <script type="module" src="main.js"></script>
 </body>
 </html>

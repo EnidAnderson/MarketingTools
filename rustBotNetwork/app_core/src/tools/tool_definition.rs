@@ -1,5 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
+use async_trait::async_trait;
+use std::error::Error;
 
 #[derive(Debug, Serialize)]
 pub struct ParameterDefinition {
@@ -49,3 +51,12 @@ pub struct ToolDefinition {
     pub input_examples: Vec<Value>,
     pub output_schema: Option<Value>,
 }
+
+#[async_trait]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> String;
+    fn description(&self) -> String;
+    fn metadata(&self) -> ToolDefinition;
+    async fn execute(&self, args: Value) -> Result<Value, Box<dyn Error + Send + Sync>>;
+}
+

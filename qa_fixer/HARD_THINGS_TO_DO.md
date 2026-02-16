@@ -1,44 +1,44 @@
 # Hard Things To Do
 
-Last updated: 2026-02-10  
+Last updated: 2026-02-11  
 Owner: qa_fixer
 
 Provenance:
 - `decision_id=DEC-0002`
 - `decision_id=DEC-0003`
 
-These are blocked/non-trivial items that are not simple edits.
+These are non-trivial items and follow-ups (not currently hard-blocked).
 
-## 1. Resolve real pipeline-order violation in handoff logs
+## 1. Request-ID migration without violating append-only controls
 
-- Current validator failure: expected `green -> black`, observed `white -> grey`.
-- Why hard: this is a process-state/data integrity issue across teams, not a local code patch.
-- Needed: either backfill missing stage handoffs with authoritative superseding rows, or invalidate/reopen later-stage handoffs.
+- Status: `RESOLVED` (2026-02-10)
+- Outcome:
+  - append-only-safe queue replay completed,
+  - `RQ-034` validator updated for controlled legacy transition + canonical enforcement on malformed IDs.
 - Artifacts involved:
-  - `data/team_ops/handoff_log.csv`
-  - `pipeline/03_green_output.md`
-  - `pipeline/04_black_output.md`
-  - `pipeline/06_grey_output.md`
+  - `data/team_ops/change_request_queue.csv`
+  - `teams/_validation/check_request_id_policy.sh`
+  - `teams/_validation/check_append_only.sh`
 
-## 2. Enforce provenance refs for all executable-asset edits
+## 2. Append-only integrity recovery after multi-writer queue rewrites
 
-- Current validator failure flags files changed without embedded `decision_id`/`change_request_id`.
-- Why hard: many existing code/config files predate this requirement and adding metadata uniformly needs a standard format and migration plan.
-- Needed: define canonical provenance annotation style per file type (`.rs`, `.json`, `.yml`, `.sh`, etc.), then run staged rollout.
-- Candidate policy doc update:
-  - `teams/shared/OPERATING_DOCTRINE.md`
-  - `teams/qa_fixer/spec.md`
+- Status: `RESOLVED` (2026-02-10)
+- Outcome:
+  - queue normalized back to `HEAD` baseline + append-only deltas,
+  - `RQ-030` now passing.
 
-## 3. Merge concurrent validator evolution safely
+## 3. Formalize qa_fixer-to-grey loop semantics
 
-- `teams/_validation/run_all_validations.sh` now includes `RQ-034` checks from parallel edits.
-- Why hard: shared script is a multi-writer contention point; accidental rule drift can break CI.
-- Needed: establish single-writer branch policy or staged merge protocol for `_validation`.
+- Status: `OPEN (policy follow-up)`
+- Why hard: this is a process model decision, not only a validator tweak.
+- Needed:
+  - confirm whether `qa_fixer -> grey` remains an allowed remediation loop,
+  - encode final doctrine text if policy changes.
 
-## 4. Close remaining non-P0 governance queues with consistency checks
+## 4. De-duplicate overlapping validator implementations
 
-- Remaining request families:
-  - `RQ-017`..`RQ-020`
-  - `RQ-025`..`RQ-028`
-- Why hard: cross-document consistency, role governance, and drill/metric definitions must stay aligned with already-shipped P0 controls.
-- Needed: one consolidated acceptance report that verifies no conflicts with release gate, budget, and role-control baselines.
+- Status: `OPEN (quality follow-up)`
+- Why hard: dual validators can drift and create contradictory pass/fail results.
+- Needed:
+  - choose single source-of-truth vs layered contract model,
+  - simplify orchestration/docs accordingly.

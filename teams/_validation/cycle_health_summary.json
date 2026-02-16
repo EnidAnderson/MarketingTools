@@ -1,0 +1,85 @@
+{
+  "duplicate_request_id_count": 21,
+  "generated_at_utc": "2026-02-16T21:55:54Z",
+  "runs": [
+    {
+      "block_reasons": [
+        "[\"MISSING_STAGE_OUTPUT_GREEN\", \"MISSING_STAGE_OUTPUT_BLACK\"]",
+        "[\"MISSING_STAGE_OUTPUT_GREEN\", \"MISSING_STAGE_OUTPUT_BLACK\"]",
+        "[\"RELEASE_GATE_LOG_EMPTY\", \"BUDGET_ENVELOPE_ARTIFACT_UNDECLARED\"]",
+        "[\"TEAM_LEAD_THRESHOLD_DECISION_PENDING\"]",
+        "[\"TEAM_LEAD_PUBLICATION_STATE_DECISION_PENDING\"]"
+      ],
+      "current_phase": "black",
+      "run_id": "run_2026-02-10_001",
+      "stage_completion_map": {
+        "black->white": 6,
+        "blue->red": 10,
+        "green->black": 6,
+        "grey->qa_fixer": 3,
+        "qa_fixer->grey": 1,
+        "red->green": 2,
+        "white->grey": 13
+      },
+      "status": "active"
+    },
+    {
+      "block_reasons": [
+        "[\"TEAM_LEAD_THRESHOLD_DECISION_PENDING\"]",
+        "[\"TEAM_LEAD_HIGH_CONFIDENCE_CORROBORATION_DECISION_PENDING\"]"
+      ],
+      "current_phase": "black",
+      "run_id": "run_2026-02-16_001",
+      "stage_completion_map": {
+        "black->white": 2,
+        "green->black": 1,
+        "grey->qa_fixer": 2,
+        "red->green": 1,
+        "white->grey": 2
+      },
+      "status": "active"
+    }
+  ],
+  "schema_version": "1",
+  "unresolved_request_count": 38,
+  "unresolved_request_ids": [
+    "CR-BLACK-0008",
+    "CR-BLACK-0009",
+    "CR-BLACK-0010",
+    "CR-BLACK-0011",
+    "CR-BLACK-0012",
+    "CR-BLACK-0013",
+    "CR-BLACK-0014",
+    "CR-BLACK-0015",
+    "CR-BLUE-0080",
+    "CR-BLUE-0086",
+    "CR-BLUE-0087",
+    "CR-BLUE-0088",
+    "CR-BLUE-0089",
+    "CR-BLUE-0090",
+    "CR-BLUE-0091",
+    "CR-BLUE-0092",
+    "CR-BLUE-0093",
+    "CR-GREEN-0019",
+    "CR-GREEN-0020",
+    "CR-GREEN-0023",
+    "CR-GREEN-0024",
+    "CR-GREY-0007",
+    "CR-GREY-0008",
+    "CR-GREY-0009",
+    "CR-GREY-0010",
+    "CR-GREY-0011",
+    "CR-RED-0001",
+    "CR-RED-0002",
+    "CR-RED-0003",
+    "CR-RED-0004",
+    "CR-RED-0005",
+    "CR-RED-0006",
+    "CR-RED-0007",
+    "CR-RED-0008",
+    "CR-WHITE-0019",
+    "CR-WHITE-0022",
+    "CR-WHITE-0023",
+    "CR-WHITE-0024"
+  ]
+}

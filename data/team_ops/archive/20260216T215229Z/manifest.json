@@ -1,0 +1,51 @@
+{
+  "timestamp_utc": "2026-02-16T21:52:29+00:00",
+  "dry_run": false,
+  "active_run_ids": [
+    "run_2026-02-10_001"
+  ],
+  "active_run_statuses": [
+    "active",
+    "awaiting_input",
+    "blocked",
+    "blocked_missing_stages",
+    "in_progress",
+    "initialized",
+    "ready"
+  ],
+  "active_request_statuses": [
+    "blocked",
+    "in_progress",
+    "open",
+    "pending",
+    "ready",
+    "todo"
+  ],
+  "counts": {
+    "run_registry.csv": {
+      "before": 6,
+      "keep": 1,
+      "archive": 5
+    },
+    "change_request_queue.csv": {
+      "before": 347,
+      "keep": 0,
+      "archive": 347
+    },
+    "handoff_log.csv": {
+      "before": 37,
+      "keep": 37,
+      "archive": 0
+    },
+    "decision_log.csv": {
+      "before": 9,
+      "keep": 9,
+      "archive": 0
+    }
+  },
+  "archive_dir": "/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/archive/20260216T215229Z",
+  "archived_files": [
+    "/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/archive/20260216T215229Z/archived_rows/run_registry.csv",
+    "/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/archive/20260216T215229Z/archived_rows/change_request_queue.csv"
+  ]
+}

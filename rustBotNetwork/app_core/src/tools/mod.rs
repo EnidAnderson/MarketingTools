@@ -4,6 +4,7 @@ pub mod competitive_analysis;
 pub mod css_analyzer;
 pub mod data_validator;
 pub mod data_viz;
+pub mod echo_tool; // Added echo_tool module
 pub mod email_sender_tool;
 pub mod event_calendar_tool;
 pub mod facebook_adapter;

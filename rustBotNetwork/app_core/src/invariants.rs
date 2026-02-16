@@ -1,4 +1,5 @@
 use crate::contracts::ToolError;
+// provenance: decision_id=DEC-0003; change_request_id=CR-WHITE-0012
 
 /// # NDOC
 /// component: `app_core::invariants`
@@ -55,20 +56,21 @@ pub fn ensure_json_pointer(path: &str, field: &str) -> Result<(), ToolError> {
 mod tests {
     use super::*;
 
+    // Naming scheme: inv_global_<domain>_<nnn>_<behavior>
     #[test]
-    fn rejects_empty_string() {
+    fn inv_global_core_001_rejects_empty_trimmed_string() {
         let err = ensure_non_empty_trimmed("   ", "topic").expect_err("must fail");
         assert!(err.message.contains("topic"));
     }
 
     #[test]
-    fn validates_range() {
+    fn inv_global_core_002_validates_usize_range() {
         assert!(ensure_range_usize(5, 1, 10, "max_sources").is_ok());
         assert!(ensure_range_usize(11, 1, 10, "max_sources").is_err());
     }
 
     #[test]
-    fn validates_json_pointer() {
+    fn inv_global_core_003_validates_json_pointer_prefix() {
         assert!(ensure_json_pointer("/foo/bar", "path").is_ok());
         assert!(ensure_json_pointer("foo/bar", "path").is_err());
     }
