@@ -30,6 +30,14 @@ pub struct EvidenceItem {
     pub label: String,
     pub value: String,
     pub source_class: String,
+    #[serde(default)]
+    pub metric_key: Option<String>,
+    #[serde(default)]
+    pub observed_window: Option<String>,
+    #[serde(default)]
+    pub comparator_value: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 /// # NDOC
@@ -42,6 +50,14 @@ pub struct GuidanceItem {
     pub guidance_id: String,
     pub text: String,
     pub confidence_label: String,
+    #[serde(default)]
+    pub evidence_refs: Vec<String>,
+    #[serde(default)]
+    pub attribution_basis: Option<String>,
+    #[serde(default)]
+    pub calibration_bps: Option<u16>,
+    #[serde(default)]
+    pub calibration_band: Option<String>,
 }
 
 /// # NDOC
@@ -82,6 +98,125 @@ pub struct AnalyticsValidationReportV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Quality control check emitted for schema drift, identity resolution, and freshness SLA.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct QualityCheckV1 {
+    pub code: String,
+    pub passed: bool,
+    pub severity: String,
+    pub observed: String,
+    pub expected: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Consolidated quality control report attached to every artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AnalyticsQualityControlsV1 {
+    pub schema_drift_checks: Vec<QualityCheckV1>,
+    pub identity_resolution_checks: Vec<QualityCheckV1>,
+    pub freshness_sla_checks: Vec<QualityCheckV1>,
+    pub is_healthy: bool,
+}
+
+impl Default for AnalyticsQualityControlsV1 {
+    fn default() -> Self {
+        Self {
+            schema_drift_checks: Vec::new(),
+            identity_resolution_checks: Vec::new(),
+            freshness_sla_checks: Vec::new(),
+            is_healthy: true,
+        }
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: KPI delta between current run and recent baseline run.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct KpiDeltaV1 {
+    pub metric_key: String,
+    pub current_value: f64,
+    pub baseline_value: f64,
+    pub delta_absolute: f64,
+    pub delta_percent: Option<f64>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Baseline drift signal derived from historical runs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct DriftFlagV1 {
+    pub metric_key: String,
+    pub baseline_mean: f64,
+    pub baseline_std_dev: f64,
+    pub current_value: f64,
+    pub z_score: f64,
+    pub severity: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Anomaly flag for operator triage in dashboards.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct AnomalyFlagV1 {
+    pub metric_key: String,
+    pub reason: String,
+    pub severity: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Confidence calibration summary across historical simulated runs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ConfidenceCalibrationV1 {
+    pub sample_count: u32,
+    pub recommended_confidence_cap: String,
+    pub calibration_note: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Historical/longitudinal analysis payload for trend comparison.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct HistoricalAnalysisV1 {
+    pub baseline_run_ids: Vec<String>,
+    pub period_over_period_deltas: Vec<KpiDeltaV1>,
+    pub drift_flags: Vec<DriftFlagV1>,
+    pub anomaly_flags: Vec<AnomalyFlagV1>,
+    pub confidence_calibration: ConfidenceCalibrationV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Operator-facing KPI narrative with explicit evidence references.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct KpiAttributionNarrativeV1 {
+    pub kpi: String,
+    pub narrative: String,
+    pub evidence_ids: Vec<String>,
+    pub confidence_label: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Operator summary bundle designed for UI rendering.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct OperatorSummaryV1 {
+    pub attribution_narratives: Vec<KpiAttributionNarrativeV1>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Persistence metadata for durable artifact storage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ArtifactPersistenceRefV1 {
+    pub stored_at_utc: String,
+    pub storage_path: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Versioned artifact envelope returned by the orchestrator.
 /// invariants:
 ///   - `schema_version` is explicit at root.
@@ -97,6 +232,27 @@ pub struct MockAnalyticsArtifactV1 {
     pub uncertainty_notes: Vec<String>,
     pub provenance: Vec<SourceProvenance>,
     pub validation: AnalyticsValidationReportV1,
+    #[serde(default)]
+    pub quality_controls: AnalyticsQualityControlsV1,
+    #[serde(default)]
+    pub historical_analysis: HistoricalAnalysisV1,
+    #[serde(default)]
+    pub operator_summary: OperatorSummaryV1,
+    #[serde(default)]
+    pub persistence: Option<ArtifactPersistenceRefV1>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Durable run record for longitudinal analytics and replay.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedAnalyticsRunV1 {
+    pub schema_version: String,
+    pub request: MockAnalyticsRequestV1,
+    pub metadata: AnalyticsRunMetadataV1,
+    pub validation: AnalyticsValidationReportV1,
+    pub artifact: MockAnalyticsArtifactV1,
+    pub stored_at_utc: String,
 }
 
 /// # NDOC

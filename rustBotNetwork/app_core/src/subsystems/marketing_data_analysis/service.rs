@@ -1,6 +1,7 @@
 use super::contracts::{
-    AnalyticsError, AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem, MockAnalyticsArtifactV1,
-    MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem,
+    KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
+    QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::validators::{
     validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1,
@@ -79,6 +80,8 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         }];
         let (observed_evidence, inferred_guidance, uncertainty_notes) =
             build_evidence_and_guidance(&report, request.include_narratives);
+        let quality_controls = build_quality_controls(&report, &provenance);
+        let operator_summary = build_operator_summary(&report, &observed_evidence);
 
         let metadata = AnalyticsRunMetadataV1 {
             run_id: deterministic_run_id(&request, seed),
@@ -103,6 +106,10 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
                 is_valid: false,
                 checks: Vec::new(),
             },
+            quality_controls,
+            historical_analysis: Default::default(),
+            operator_summary,
+            persistence: None,
         };
 
         artifact.validation = validate_mock_analytics_artifact_v1(&artifact);
@@ -482,12 +489,20 @@ fn build_evidence_and_guidance(
         label: "Total Impressions".to_string(),
         value: report.total_metrics.impressions.to_string(),
         source_class: "simulated".to_string(),
+        metric_key: Some("impressions".to_string()),
+        observed_window: Some(report.date_range.clone()),
+        comparator_value: None,
+        notes: vec!["Deterministic mock aggregation across selected date window.".to_string()],
     });
     evidence.push(EvidenceItem {
         evidence_id: "ev_total_clicks".to_string(),
         label: "Total Clicks".to_string(),
         value: report.total_metrics.clicks.to_string(),
         source_class: "simulated".to_string(),
+        metric_key: Some("clicks".to_string()),
+        observed_window: Some(report.date_range.clone()),
+        comparator_value: None,
+        notes: vec!["Includes all simulated campaigns/ad groups after filters.".to_string()],
     });
 
     let mut guidance = Vec::new();
@@ -497,11 +512,19 @@ fn build_evidence_and_guidance(
             text: "Prioritize campaigns with above-median ROAS in next optimization pass."
                 .to_string(),
             confidence_label: "medium".to_string(),
+            evidence_refs: vec!["ev_total_clicks".to_string()],
+            attribution_basis: Some("roas_vs_cost_distribution".to_string()),
+            calibration_bps: Some(6500),
+            calibration_band: Some("medium".to_string()),
         });
         guidance.push(GuidanceItem {
             guidance_id: "gd_quality_improve".to_string(),
             text: "Review ad groups with low CTR for creative/keyword alignment.".to_string(),
             confidence_label: "medium".to_string(),
+            evidence_refs: vec!["ev_total_impressions".to_string()],
+            attribution_basis: Some("ctr_vs_impressions_mix".to_string()),
+            calibration_bps: Some(6200),
+            calibration_band: Some("medium".to_string()),
         });
     }
 
@@ -510,6 +533,115 @@ fn build_evidence_and_guidance(
         "Attribution assumptions are simplified for deterministic replay.".to_string(),
     ];
     (evidence, guidance, uncertainty)
+}
+
+fn build_quality_controls(
+    report: &AnalyticsReport,
+    provenance: &[SourceProvenance],
+) -> AnalyticsQualityControlsV1 {
+    let schema_drift_checks = vec![
+        QualityCheckV1 {
+            code: "schema_campaign_required_fields".to_string(),
+            passed: report
+                .campaign_data
+                .iter()
+                .all(|row| !row.campaign_id.trim().is_empty() && !row.campaign_name.trim().is_empty()),
+            severity: "high".to_string(),
+            observed: "campaign rows contain id/name".to_string(),
+            expected: "all campaign rows include stable id and name".to_string(),
+        },
+        QualityCheckV1 {
+            code: "schema_keyword_required_fields".to_string(),
+            passed: report
+                .keyword_data
+                .iter()
+                .all(|row| !row.keyword_id.trim().is_empty() && !row.keyword_text.trim().is_empty()),
+            severity: "high".to_string(),
+            observed: "keyword rows contain id/text".to_string(),
+            expected: "all keyword rows include criterion id and keyword text".to_string(),
+        },
+    ];
+    let identity_resolution_checks = vec![
+        QualityCheckV1 {
+            code: "identity_ad_group_linked_to_campaign".to_string(),
+            passed: report
+                .ad_group_data
+                .iter()
+                .all(|row| !row.campaign_id.trim().is_empty()),
+            severity: "high".to_string(),
+            observed: "ad groups include campaign_id linkage".to_string(),
+            expected: "every ad group row resolves to a campaign id".to_string(),
+        },
+        QualityCheckV1 {
+            code: "identity_keyword_linked_to_ad_group".to_string(),
+            passed: report
+                .keyword_data
+                .iter()
+                .all(|row| !row.ad_group_id.trim().is_empty()),
+            severity: "high".to_string(),
+            observed: "keywords include ad_group_id linkage".to_string(),
+            expected: "every keyword row resolves to an ad group id".to_string(),
+        },
+    ];
+    let freshness_sla_checks = provenance
+        .iter()
+        .map(|item| QualityCheckV1 {
+            code: format!("freshness_sla_{}", item.connector_id),
+            passed: item.freshness_minutes <= 60,
+            severity: "medium".to_string(),
+            observed: format!("freshness={}m", item.freshness_minutes),
+            expected: "freshness <= 60 minutes".to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    let is_healthy = schema_drift_checks
+        .iter()
+        .chain(identity_resolution_checks.iter())
+        .chain(freshness_sla_checks.iter())
+        .all(|c| c.passed);
+
+    AnalyticsQualityControlsV1 {
+        schema_drift_checks,
+        identity_resolution_checks,
+        freshness_sla_checks,
+        is_healthy,
+    }
+}
+
+fn build_operator_summary(
+    report: &AnalyticsReport,
+    evidence: &[EvidenceItem],
+) -> OperatorSummaryV1 {
+    let evidence_ids = evidence
+        .iter()
+        .map(|item| item.evidence_id.clone())
+        .collect::<Vec<_>>();
+    OperatorSummaryV1 {
+        attribution_narratives: vec![
+            KpiAttributionNarrativeV1 {
+                kpi: "ctr".to_string(),
+                narrative: format!(
+                    "CTR is {:.2}% from {} clicks on {} impressions.",
+                    report.total_metrics.ctr,
+                    report.total_metrics.clicks,
+                    report.total_metrics.impressions
+                ),
+                evidence_ids: evidence_ids.clone(),
+                confidence_label: "medium".to_string(),
+            },
+            KpiAttributionNarrativeV1 {
+                kpi: "roas".to_string(),
+                narrative: format!(
+                    "ROAS is {:.2} with conversion value {:.2} against cost {:.2}.",
+                    report.total_metrics.roas,
+                    report.total_metrics.conversions_value,
+                    report.total_metrics.cost
+                ),
+                evidence_ids,
+                confidence_label: "medium".to_string(),
+            },
+        ],
+    }
 }
 
 #[allow(dead_code)]

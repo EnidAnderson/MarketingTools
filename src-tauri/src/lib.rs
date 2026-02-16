@@ -1,14 +1,16 @@
 use app_core::image_generator::generate_image;
 use app_core::pipeline::PipelineDefinition;
-use app_core::subsystems::marketing_data_analysis::MockAnalyticsRequestV1;
+use app_core::subsystems::marketing_data_analysis::{AnalyticsRunStore, MockAnalyticsRequestV1};
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
 use app_core::tools::screenshot_tool::ScreenshotTool;
-use app_core::tools::tool_definition::ToolDefinition;
+use app_core::tools::tool_definition::{
+    ParameterDefinition, ToolComplexity, ToolDefinition, ToolUIMetadata,
+};
 use app_core::tools::tool_registry::ToolRegistry;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::AppHandle;
 use tauri::State;
 use tauri_plugin_dialog::init as init_dialog_plugin;
@@ -94,7 +96,62 @@ async fn bundle_html(path: String) -> Result<Value, String> {
 #[tauri::command]
 fn get_tools() -> Result<Vec<ToolDefinition>, String> {
     let registry = ToolRegistry::new();
-    Ok(registry.get_available_tool_definitions())
+    let mut tools = registry.get_available_tool_definitions();
+    tools.push(ToolDefinition {
+        name: "analytics::mock_pipeline".to_string(),
+        description:
+            "Deterministic mock analytics pipeline with persistence, drift checks, and narratives."
+                .to_string(),
+        ui_metadata: ToolUIMetadata {
+            category: "Analytics".to_string(),
+            display_name: "Mock Analytics Pipeline".to_string(),
+            icon: Some("analytics".to_string()),
+            complexity: ToolComplexity::Intermediate,
+            estimated_time_seconds: 4,
+            tags: vec![
+                "analytics".to_string(),
+                "mock-data".to_string(),
+                "trend-analysis".to_string(),
+            ],
+        },
+        parameters: vec![
+            ParameterDefinition {
+                name: "start_date".to_string(),
+                r#type: "string".to_string(),
+                description: "Start date in YYYY-MM-DD.".to_string(),
+                optional: false,
+            },
+            ParameterDefinition {
+                name: "end_date".to_string(),
+                r#type: "string".to_string(),
+                description: "End date in YYYY-MM-DD.".to_string(),
+                optional: false,
+            },
+            ParameterDefinition {
+                name: "profile_id".to_string(),
+                r#type: "string".to_string(),
+                description: "Profile identifier for longitudinal history grouping.".to_string(),
+                optional: false,
+            },
+            ParameterDefinition {
+                name: "seed".to_string(),
+                r#type: "integer".to_string(),
+                description: "Optional deterministic seed override.".to_string(),
+                optional: true,
+            },
+        ],
+        input_examples: vec![json!({
+            "start_date": "2026-02-01",
+            "end_date": "2026-02-07",
+            "profile_id": "marketing_default",
+            "include_narratives": true
+        })],
+        output_schema: Some(json!({
+            "type": "object",
+            "required": ["schema_version", "metadata", "report", "validation", "quality_controls", "historical_analysis"]
+        })),
+    });
+    Ok(tools)
 }
 
 /// # NDOC
@@ -312,6 +369,52 @@ fn start_mock_analytics_job(
     state.start_mock_analytics_job(&app_handle, request)
 }
 
+/// # NDOC
+/// component: `tauri_commands::get_mock_analytics_run_history`
+/// purpose: Retrieve persisted analytics runs for operator trend inspection.
+#[tauri::command]
+fn get_mock_analytics_run_history(
+    profile_id: Option<String>,
+    limit: Option<usize>,
+) -> Result<Value, String> {
+    let store = AnalyticsRunStore::default();
+    let max = limit.unwrap_or(25).min(200);
+    let maybe_profile = profile_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let runs = store
+        .list_recent(maybe_profile, max)
+        .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    serde_json::to_value(runs).map_err(|err| format!("failed to serialize run history: {err}"))
+}
+
+/// # NDOC
+/// component: `tauri_commands::get_analysis_workflows`
+/// purpose: Provide analysis workflow catalog for registry UX and discoverability.
+#[tauri::command]
+fn get_analysis_workflows() -> Result<Value, String> {
+    Ok(json!([
+        {
+            "workflow_id": "wf.analytics.mock_pipeline.v1",
+            "title": "Mock Analytics Pipeline",
+            "entrypoint": "start_mock_analytics_job",
+            "history_entrypoint": "get_mock_analytics_run_history",
+            "stages": [
+                "validating_input",
+                "generating_data",
+                "assembling_report",
+                "validating_invariants",
+                "historical_analysis",
+                "persisting_artifact",
+                "completed"
+            ],
+            "discoverability_tags": ["analytics", "trend", "drift", "anomaly", "operator"],
+            "governance_ready": true
+        }
+    ]))
+}
+
 #[tauri::command]
 async fn generate_image_command(prompt: String, campaign_dir: String) -> Result<String, String> {
     match generate_image(&prompt, &campaign_dir).await {
@@ -356,6 +459,8 @@ pub fn run() {
             get_tool_job,
             cancel_tool_job,
             start_mock_analytics_job,
+            get_mock_analytics_run_history,
+            get_analysis_workflows,
             generate_image_command,
         ])
         .run(tauri::generate_context!())

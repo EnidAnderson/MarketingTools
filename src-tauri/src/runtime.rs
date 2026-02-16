@@ -1,6 +1,7 @@
 use app_core::pipeline::{execute_pipeline, PipelineDefinition};
 use app_core::subsystems::marketing_data_analysis::{
-    DefaultMarketAnalysisService, MarketAnalysisService, MockAnalyticsRequestV1,
+    build_historical_analysis, AnalyticsRunStore, DefaultMarketAnalysisService, GuidanceItem,
+    MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -362,7 +363,7 @@ impl JobManager {
 
             let service = DefaultMarketAnalysisService::new();
             match service.run_mock_analysis(request).await {
-                Ok(artifact) => {
+                Ok(mut artifact) => {
                     manager.update_stage(
                         &spawned_job_id,
                         "validating_invariants",
@@ -375,6 +376,75 @@ impl JobManager {
                         manager.update_canceled(&spawned_job_id, "Job canceled before completion");
                         manager.emit_failed(&app_handle, &spawned_job_id);
                         return;
+                    }
+
+                    manager.update_stage(
+                        &spawned_job_id,
+                        "historical_analysis",
+                        94,
+                        "Computing longitudinal trend and drift analysis",
+                    );
+                    manager.emit_progress(&app_handle, &spawned_job_id);
+
+                    let store = AnalyticsRunStore::default();
+                    let history = match store.list_recent(Some(&artifact.request.profile_id), 64) {
+                        Ok(values) => values,
+                        Err(err) => {
+                            manager.update_failed(
+                                &spawned_job_id,
+                                serde_json::json!({
+                                    "kind": err.code,
+                                    "message": err.message,
+                                    "retryable": false,
+                                    "field_paths": err.field_paths,
+                                    "context": err.context
+                                }),
+                            );
+                            manager.emit_failed(&app_handle, &spawned_job_id);
+                            return;
+                        }
+                    };
+
+                    artifact.historical_analysis = build_historical_analysis(&artifact, &history);
+                    apply_confidence_calibration(&mut artifact.inferred_guidance, &artifact.historical_analysis.confidence_calibration.recommended_confidence_cap);
+
+                    manager.update_stage(
+                        &spawned_job_id,
+                        "persisting_artifact",
+                        98,
+                        "Persisting analytics run and artifact",
+                    );
+                    manager.emit_progress(&app_handle, &spawned_job_id);
+
+                    let to_persist = PersistedAnalyticsRunV1 {
+                        schema_version: artifact.schema_version.clone(),
+                        request: artifact.request.clone(),
+                        metadata: artifact.metadata.clone(),
+                        validation: artifact.validation.clone(),
+                        artifact: artifact.clone(),
+                        stored_at_utc: String::new(),
+                    };
+                    match store.append_run(to_persist) {
+                        Ok(saved) => {
+                            artifact.persistence = Some(app_core::subsystems::marketing_data_analysis::ArtifactPersistenceRefV1 {
+                                stored_at_utc: saved.stored_at_utc,
+                                storage_path: store.path().to_string_lossy().to_string(),
+                            });
+                        }
+                        Err(err) => {
+                            manager.update_failed(
+                                &spawned_job_id,
+                                serde_json::json!({
+                                    "kind": err.code,
+                                    "message": err.message,
+                                    "retryable": false,
+                                    "field_paths": err.field_paths,
+                                    "context": err.context
+                                }),
+                            );
+                            manager.emit_failed(&app_handle, &spawned_job_id);
+                            return;
+                        }
                     }
 
                     match serde_json::to_value(artifact) {
@@ -635,6 +705,25 @@ fn validate_job_snapshot(snapshot: &JobSnapshot) -> Result<(), String> {
         JobStatus::Queued | JobStatus::Running => {}
     }
     Ok(())
+}
+
+fn apply_confidence_calibration(guidance: &mut [GuidanceItem], cap: &str) {
+    for item in guidance.iter_mut() {
+        let normalized = item.confidence_label.to_ascii_lowercase();
+        let adjusted = match cap {
+            "low" => "low".to_string(),
+            "medium" => {
+                if normalized == "high" {
+                    "medium".to_string()
+                } else {
+                    normalized
+                }
+            }
+            _ => normalized,
+        };
+        item.confidence_label = adjusted;
+        item.calibration_band = Some(cap.to_string());
+    }
 }
 
 fn write_pipeline_manifest(path: &str, output: &Value) -> Result<(), String> {

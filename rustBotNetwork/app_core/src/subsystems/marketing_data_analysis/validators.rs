@@ -121,6 +121,32 @@ pub fn validate_mock_analytics_artifact_v1(
         "artifact must include uncertainty notes",
     ));
 
+    let high_severity_failures = artifact
+        .quality_controls
+        .schema_drift_checks
+        .iter()
+        .chain(artifact.quality_controls.identity_resolution_checks.iter())
+        .chain(artifact.quality_controls.freshness_sla_checks.iter())
+        .any(|check| !check.passed && check.severity.eq_ignore_ascii_case("high"));
+    let all_quality_checks_passed = artifact
+        .quality_controls
+        .schema_drift_checks
+        .iter()
+        .chain(artifact.quality_controls.identity_resolution_checks.iter())
+        .chain(artifact.quality_controls.freshness_sla_checks.iter())
+        .all(|check| check.passed);
+    checks.push(check(
+        "quality_controls_high_severity",
+        !high_severity_failures,
+        "quality controls cannot contain failing high severity checks",
+    ));
+
+    checks.push(check(
+        "quality_controls_consistency",
+        artifact.quality_controls.is_healthy == all_quality_checks_passed,
+        "quality control health should match quality check pass/fail aggregate",
+    ));
+
     let is_valid = checks.iter().all(|c| c.passed);
     AnalyticsValidationReportV1 { is_valid, checks }
 }
@@ -183,11 +209,19 @@ mod tests {
                 label: "x".to_string(),
                 value: "y".to_string(),
                 source_class: "simulated".to_string(),
+                metric_key: None,
+                observed_window: None,
+                comparator_value: None,
+                notes: Vec::new(),
             }],
             inferred_guidance: vec![GuidanceItem {
                 guidance_id: "g".to_string(),
                 text: "bad".to_string(),
                 confidence_label: "high".to_string(),
+                evidence_refs: Vec::new(),
+                attribution_basis: None,
+                calibration_bps: None,
+                calibration_band: None,
             }],
             uncertainty_notes: vec!["simulated".to_string()],
             provenance: vec![SourceProvenance {
@@ -201,6 +235,10 @@ mod tests {
                 is_valid: true,
                 checks: Vec::new(),
             },
+            quality_controls: Default::default(),
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
         };
 
         artifact.report.total_metrics.impressions = 1;
