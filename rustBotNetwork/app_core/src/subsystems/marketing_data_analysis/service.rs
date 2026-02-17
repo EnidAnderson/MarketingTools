@@ -1,15 +1,13 @@
 use super::contracts::{
-    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem,
-    KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
-    QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, DataQualitySummaryV1,
+    EvidenceItem, GuidanceItem, KpiAttributionNarrativeV1, MockAnalyticsArtifactV1,
+    MockAnalyticsRequestV1, OperatorSummaryV1, QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use super::validators::{
-    validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1,
-};
+use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
-    AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport, CampaignReportRow,
-    CampaignResource, Ga4NormalizedEvent, GoogleAdsRow, KeywordData, KeywordReportRow, MetricsData,
-    ReportMetrics, SegmentsData, SourceClassLabel, SourceProvenance,
+    AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport,
+    CampaignReportRow, CampaignResource, Ga4NormalizedEvent, GoogleAdsRow, KeywordData,
+    KeywordReportRow, MetricsData, ReportMetrics, SegmentsData, SourceClassLabel, SourceProvenance,
 };
 use async_trait::async_trait;
 use chrono::{Duration, NaiveDate};
@@ -31,6 +29,8 @@ const KEYWORD_TEXTS: &[&str] = &[
     "best puppy treats",
     "senior pet vitamins",
 ];
+const MIN_IDENTITY_COVERAGE_RATIO: f64 = 0.98;
+const RECONCILIATION_EPSILON: f64 = 0.01;
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::service`
@@ -81,6 +81,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         let (observed_evidence, inferred_guidance, uncertainty_notes) =
             build_evidence_and_guidance(&report, request.include_narratives);
         let quality_controls = build_quality_controls(&report, &provenance);
+        let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
 
         let metadata = AnalyticsRunMetadataV1 {
@@ -107,6 +108,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
                 checks: Vec::new(),
             },
             quality_controls,
+            data_quality,
             historical_analysis: Default::default(),
             operator_summary,
             persistence: None,
@@ -138,7 +140,11 @@ fn resolve_seed(request: &MockAnalyticsRequestV1) -> u64 {
     if let Some(v) = &request.ad_group_filter {
         hasher.update(v.as_bytes());
     }
-    hasher.update(if request.include_narratives { b"1" } else { b"0" });
+    hasher.update(if request.include_narratives {
+        b"1"
+    } else {
+        b"0"
+    });
     let digest = hasher.finalize();
     u64::from_le_bytes([
         digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
@@ -175,7 +181,11 @@ fn generate_rows(
             }
             let campaign_id = format!("{}", campaign_idx + 1);
             let campaign_resource = format!("customers/123/campaigns/{}", campaign_id);
-            let campaign_status = if rng.gen_bool(0.9) { "ENABLED" } else { "PAUSED" };
+            let campaign_status = if rng.gen_bool(0.9) {
+                "ENABLED"
+            } else {
+                "PAUSED"
+            };
             let campaign = CampaignResource {
                 resourceName: campaign_resource.clone(),
                 id: campaign_id.clone(),
@@ -191,7 +201,11 @@ fn generate_rows(
                 }
                 let ad_group_id = format!("{}.{}", campaign_id, ad_group_idx + 1);
                 let ad_group_resource = format!("customers/123/adGroups/{}", ad_group_id);
-                let ad_group_status = if rng.gen_bool(0.9) { "ENABLED" } else { "PAUSED" };
+                let ad_group_status = if rng.gen_bool(0.9) {
+                    "ENABLED"
+                } else {
+                    "PAUSED"
+                };
                 let ad_group = AdGroupResource {
                     resourceName: ad_group_resource.clone(),
                     id: ad_group_id.clone(),
@@ -218,7 +232,8 @@ fn generate_rows(
                         averageCpc: round4(cost_micros as f64 / clicks as f64 / 1_000_000.0),
                     };
 
-                    let criterion_id = format!("{}{}{}", campaign_idx + 1, ad_group_idx + 1, kw_idx + 1);
+                    let criterion_id =
+                        format!("{}{}{}", campaign_idx + 1, ad_group_idx + 1, kw_idx + 1);
                     let criterion = AdGroupCriterionResource {
                         resourceName: format!(
                             "customers/123/adGroupCriteria/{}.{}",
@@ -299,9 +314,11 @@ fn rows_to_report(
         let line = from_metrics_data(&metrics);
         total = sum_metrics(&total, &line);
 
-        let campaign_entry = campaigns
-            .entry(campaign.id.clone())
-            .or_insert((campaign.name.clone(), campaign.status.clone(), ReportMetrics::default()));
+        let campaign_entry = campaigns.entry(campaign.id.clone()).or_insert((
+            campaign.name.clone(),
+            campaign.status.clone(),
+            ReportMetrics::default(),
+        ));
         campaign_entry.0 = campaign.name.clone();
         campaign_entry.1 = campaign.status.clone();
         campaign_entry.2 = sum_metrics(&campaign_entry.2, &line);
@@ -372,30 +389,32 @@ fn rows_to_report(
 
     let keyword_data = keywords
         .into_iter()
-        .map(|(id, (campaign_id, ad_group_id, text, match_type, metrics, quality_score))| {
-            let campaign_name = campaign_data
-                .iter()
-                .find(|c| c.campaign_id == campaign_id)
-                .map(|c| c.campaign_name.clone())
-                .unwrap_or_default();
-            let ad_group_name = ad_group_data
-                .iter()
-                .find(|ag| ag.ad_group_id == ad_group_id)
-                .map(|ag| ag.ad_group_name.clone())
-                .unwrap_or_default();
-            KeywordReportRow {
-                date: "".to_string(),
-                campaign_id,
-                campaign_name,
-                ad_group_id,
-                ad_group_name,
-                keyword_id: id,
-                keyword_text: text,
-                match_type,
-                quality_score,
-                metrics: round_metrics(metrics),
-            }
-        })
+        .map(
+            |(id, (campaign_id, ad_group_id, text, match_type, metrics, quality_score))| {
+                let campaign_name = campaign_data
+                    .iter()
+                    .find(|c| c.campaign_id == campaign_id)
+                    .map(|c| c.campaign_name.clone())
+                    .unwrap_or_default();
+                let ad_group_name = ad_group_data
+                    .iter()
+                    .find(|ag| ag.ad_group_id == ad_group_id)
+                    .map(|ag| ag.ad_group_name.clone())
+                    .unwrap_or_default();
+                KeywordReportRow {
+                    date: "".to_string(),
+                    campaign_id,
+                    campaign_name,
+                    ad_group_id,
+                    ad_group_name,
+                    keyword_id: id,
+                    keyword_text: text,
+                    match_type,
+                    quality_score,
+                    metrics: round_metrics(metrics),
+                }
+            },
+        )
         .collect::<Vec<_>>();
 
     AnalyticsReport {
@@ -455,8 +474,16 @@ fn derived_metrics(
     } else {
         0.0
     };
-    let cpc = if clicks > 0 { cost / clicks as f64 } else { 0.0 };
-    let cpa = if conversions > 0.0 { cost / conversions } else { 0.0 };
+    let cpc = if clicks > 0 {
+        cost / clicks as f64
+    } else {
+        0.0
+    };
+    let cpa = if conversions > 0.0 {
+        cost / conversions
+    } else {
+        0.0
+    };
     let roas = if cost > 0.0 {
         conversions_value / cost
     } else {
@@ -539,48 +566,100 @@ fn build_quality_controls(
     report: &AnalyticsReport,
     provenance: &[SourceProvenance],
 ) -> AnalyticsQualityControlsV1 {
+    let keyword_coverage_ratio = if report.keyword_data.is_empty() {
+        1.0
+    } else {
+        report
+            .keyword_data
+            .iter()
+            .filter(|row| !row.ad_group_id.trim().is_empty())
+            .count() as f64
+            / report.keyword_data.len() as f64
+    };
+    let ad_group_coverage_ratio = if report.ad_group_data.is_empty() {
+        1.0
+    } else {
+        report
+            .ad_group_data
+            .iter()
+            .filter(|row| !row.campaign_id.trim().is_empty())
+            .count() as f64
+            / report.ad_group_data.len() as f64
+    };
+    let sum_campaign_spend = report
+        .campaign_data
+        .iter()
+        .map(|row| row.metrics.cost)
+        .sum::<f64>();
+    let sum_campaign_revenue = report
+        .campaign_data
+        .iter()
+        .map(|row| row.metrics.conversions_value)
+        .sum::<f64>();
+
     let schema_drift_checks = vec![
         QualityCheckV1 {
             code: "schema_campaign_required_fields".to_string(),
-            passed: report
-                .campaign_data
-                .iter()
-                .all(|row| !row.campaign_id.trim().is_empty() && !row.campaign_name.trim().is_empty()),
+            passed: report.campaign_data.iter().all(|row| {
+                !row.campaign_id.trim().is_empty() && !row.campaign_name.trim().is_empty()
+            }),
             severity: "high".to_string(),
             observed: "campaign rows contain id/name".to_string(),
             expected: "all campaign rows include stable id and name".to_string(),
         },
         QualityCheckV1 {
             code: "schema_keyword_required_fields".to_string(),
-            passed: report
-                .keyword_data
-                .iter()
-                .all(|row| !row.keyword_id.trim().is_empty() && !row.keyword_text.trim().is_empty()),
+            passed: report.keyword_data.iter().all(|row| {
+                !row.keyword_id.trim().is_empty() && !row.keyword_text.trim().is_empty()
+            }),
             severity: "high".to_string(),
             observed: "keyword rows contain id/text".to_string(),
             expected: "all keyword rows include criterion id and keyword text".to_string(),
+        },
+        QualityCheckV1 {
+            code: "schema_report_metrics_finite".to_string(),
+            passed: report.total_metrics.cost.is_finite()
+                && report.total_metrics.conversions.is_finite()
+                && report.total_metrics.conversions_value.is_finite()
+                && report.total_metrics.ctr.is_finite()
+                && report.total_metrics.cpc.is_finite()
+                && report.total_metrics.cpa.is_finite()
+                && report.total_metrics.roas.is_finite(),
+            severity: "high".to_string(),
+            observed: "all report metrics are finite".to_string(),
+            expected: "no NaN or +/-inf values".to_string(),
         },
     ];
     let identity_resolution_checks = vec![
         QualityCheckV1 {
             code: "identity_ad_group_linked_to_campaign".to_string(),
-            passed: report
-                .ad_group_data
-                .iter()
-                .all(|row| !row.campaign_id.trim().is_empty()),
+            passed: ad_group_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
             severity: "high".to_string(),
-            observed: "ad groups include campaign_id linkage".to_string(),
-            expected: "every ad group row resolves to a campaign id".to_string(),
+            observed: format!("coverage={:.3}", ad_group_coverage_ratio),
+            expected: format!("coverage >= {:.2}", MIN_IDENTITY_COVERAGE_RATIO),
         },
         QualityCheckV1 {
             code: "identity_keyword_linked_to_ad_group".to_string(),
-            passed: report
-                .keyword_data
-                .iter()
-                .all(|row| !row.ad_group_id.trim().is_empty()),
+            passed: keyword_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
             severity: "high".to_string(),
-            observed: "keywords include ad_group_id linkage".to_string(),
-            expected: "every keyword row resolves to an ad group id".to_string(),
+            observed: format!("coverage={:.3}", keyword_coverage_ratio),
+            expected: format!("coverage >= {:.2}", MIN_IDENTITY_COVERAGE_RATIO),
+        },
+        QualityCheckV1 {
+            code: "identity_campaign_rollup_reconciliation".to_string(),
+            passed: (sum_campaign_spend - report.total_metrics.cost).abs()
+                <= RECONCILIATION_EPSILON
+                && (sum_campaign_revenue - report.total_metrics.conversions_value).abs()
+                    <= RECONCILIATION_EPSILON,
+            severity: "high".to_string(),
+            observed: format!(
+                "campaign_spend={:.4}, campaign_rev={:.4}, total_spend={:.4}, total_rev={:.4}",
+                sum_campaign_spend,
+                sum_campaign_revenue,
+                report.total_metrics.cost,
+                report.total_metrics.conversions_value
+            ),
+            expected: format!("abs(delta) <= {:.2}", RECONCILIATION_EPSILON),
         },
     ];
     let freshness_sla_checks = provenance
@@ -606,6 +685,43 @@ fn build_quality_controls(
         freshness_sla_checks,
         is_healthy,
     }
+}
+
+fn build_data_quality_summary(
+    quality_controls: &AnalyticsQualityControlsV1,
+) -> DataQualitySummaryV1 {
+    let completeness_ratio = pass_ratio(&quality_controls.schema_drift_checks);
+    let identity_join_coverage_ratio = pass_ratio(&quality_controls.identity_resolution_checks);
+    let freshness_pass_ratio = pass_ratio(&quality_controls.freshness_sla_checks);
+    let reconciliation_pass_ratio = quality_controls
+        .identity_resolution_checks
+        .iter()
+        .find(|check| check.code == "identity_campaign_rollup_reconciliation")
+        .map(|check| if check.passed { 1.0 } else { 0.0 })
+        .unwrap_or(0.0);
+
+    let quality_score = round4(
+        completeness_ratio * 0.35
+            + identity_join_coverage_ratio * 0.35
+            + freshness_pass_ratio * 0.20
+            + reconciliation_pass_ratio * 0.10,
+    );
+
+    DataQualitySummaryV1 {
+        completeness_ratio,
+        identity_join_coverage_ratio,
+        freshness_pass_ratio,
+        reconciliation_pass_ratio,
+        quality_score,
+    }
+}
+
+fn pass_ratio(checks: &[QualityCheckV1]) -> f64 {
+    if checks.is_empty() {
+        return 1.0;
+    }
+    let passed = checks.iter().filter(|check| check.passed).count() as f64;
+    round4((passed / checks.len() as f64).clamp(0.0, 1.0))
 }
 
 fn build_operator_summary(
@@ -686,7 +802,10 @@ mod tests {
             .run_mock_analysis(req.clone())
             .await
             .expect("run should succeed");
-        let b = svc.run_mock_analysis(req).await.expect("run should succeed");
+        let b = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("run should succeed");
         let sa = serde_json::to_string(&a).expect("serialize");
         let sb = serde_json::to_string(&b).expect("serialize");
         assert_eq!(sa, sb);
@@ -708,7 +827,10 @@ mod tests {
             .run_mock_analysis(req.clone())
             .await
             .expect("run should succeed");
-        let second = svc.run_mock_analysis(req).await.expect("run should succeed");
+        let second = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("run should succeed");
         assert_eq!(first.metadata.seed, second.metadata.seed);
         assert_eq!(first.metadata.run_id, second.metadata.run_id);
     }
@@ -726,8 +848,68 @@ mod tests {
                 profile_id: "small".to_string(),
                 include_narratives: true,
             };
-            let artifact = svc.run_mock_analysis(req).await.expect("run should succeed");
-            assert!(artifact.report.total_metrics.impressions >= artifact.report.total_metrics.clicks);
+            let artifact = svc
+                .run_mock_analysis(req)
+                .await
+                .expect("run should succeed");
+            assert!(
+                artifact.report.total_metrics.impressions >= artifact.report.total_metrics.clicks
+            );
+            assert!((0.0..=1.0).contains(&artifact.data_quality.quality_score));
+            assert!((0.0..=1.0).contains(&artifact.data_quality.completeness_ratio));
+            assert!((0.0..=1.0).contains(&artifact.data_quality.identity_join_coverage_ratio));
         }
+    }
+
+    #[test]
+    fn data_quality_summary_rejects_out_of_bound_ratio_via_artifact_validator() {
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: MockAnalyticsRequestV1 {
+                start_date: "2026-01-01".to_string(),
+                end_date: "2026-01-02".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(1),
+                profile_id: "small".to_string(),
+                include_narratives: true,
+            },
+            metadata: AnalyticsRunMetadataV1 {
+                run_id: "r".to_string(),
+                connector_id: "simulated".to_string(),
+                profile_id: "small".to_string(),
+                seed: 1,
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                date_span_days: 2,
+                requested_at_utc: None,
+            },
+            report: AnalyticsReport::default(),
+            observed_evidence: Vec::new(),
+            inferred_guidance: Vec::new(),
+            uncertainty_notes: vec!["sim".to_string()],
+            provenance: vec![SourceProvenance {
+                connector_id: "simulated".to_string(),
+                source_class: SourceClassLabel::Simulated,
+                source_system: "mock".to_string(),
+                collected_at_utc: "now".to_string(),
+                freshness_minutes: 0,
+            }],
+            validation: super::super::contracts::AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
+            quality_controls: Default::default(),
+            data_quality: DataQualitySummaryV1 {
+                quality_score: 1.4,
+                ..Default::default()
+            },
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
+        };
+        artifact.report.total_metrics.impressions = 10;
+        artifact.report.total_metrics.clicks = 5;
+        let validation = validate_mock_analytics_artifact_v1(&artifact);
+        assert!(!validation.is_valid);
     }
 }

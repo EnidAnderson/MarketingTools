@@ -91,13 +91,12 @@ impl AnalyticsRunStore {
             if line.trim().is_empty() {
                 continue;
             }
-            let parsed: PersistedAnalyticsRunV1 =
-                serde_json::from_str(&line).map_err(|err| {
-                    AnalyticsError::internal(
-                        "persistence_parse_failed",
-                        format!("failed to parse persisted analytics run: {err}"),
-                    )
-                })?;
+            let parsed: PersistedAnalyticsRunV1 = serde_json::from_str(&line).map_err(|err| {
+                AnalyticsError::internal(
+                    "persistence_parse_failed",
+                    format!("failed to parse persisted analytics run: {err}"),
+                )
+            })?;
             if let Some(profile_id) = profile_id {
                 if parsed.request.profile_id != profile_id {
                     continue;
@@ -180,6 +179,7 @@ mod tests {
                 checks: Vec::new(),
             },
             quality_controls: Default::default(),
+            data_quality: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

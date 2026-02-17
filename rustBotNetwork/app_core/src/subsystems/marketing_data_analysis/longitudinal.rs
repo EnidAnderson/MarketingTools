@@ -68,11 +68,7 @@ pub fn build_historical_analysis(
             current.report.total_metrics.roas,
             previous.roas,
         ));
-        deltas.push(delta(
-            "ctr",
-            current.report.total_metrics.ctr,
-            previous.ctr,
-        ));
+        deltas.push(delta("ctr", current.report.total_metrics.ctr, previous.ctr));
     }
 
     let all_impressions: Vec<f64> = baseline_runs
@@ -100,7 +96,11 @@ pub fn build_historical_analysis(
             all_impressions,
             current.report.total_metrics.impressions as f64,
         ),
-        ("clicks", all_clicks, current.report.total_metrics.clicks as f64),
+        (
+            "clicks",
+            all_clicks,
+            current.report.total_metrics.clicks as f64,
+        ),
         ("cost", all_cost, current.report.total_metrics.cost),
         (
             "conversions",
@@ -129,7 +129,10 @@ pub fn build_historical_analysis(
             if delta_pct.abs() >= DELTA_ANOMALY_PCT {
                 anomaly_flags.push(AnomalyFlagV1 {
                     metric_key: d.metric_key.clone(),
-                    reason: format!("period-over-period delta {:.2}% exceeds threshold", delta_pct * 100.0),
+                    reason: format!(
+                        "period-over-period delta {:.2}% exceeds threshold",
+                        delta_pct * 100.0
+                    ),
                     severity: "medium".to_string(),
                 });
             }
@@ -228,7 +231,12 @@ mod tests {
         MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
 
-    fn run(run_id: &str, profile_id: &str, impressions: u64, clicks: u64) -> PersistedAnalyticsRunV1 {
+    fn run(
+        run_id: &str,
+        profile_id: &str,
+        impressions: u64,
+        clicks: u64,
+    ) -> PersistedAnalyticsRunV1 {
         let request = MockAnalyticsRequestV1 {
             start_date: "2026-01-01".to_string(),
             end_date: "2026-01-03".to_string(),
@@ -255,8 +263,12 @@ mod tests {
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["sim".to_string()],
             provenance: Vec::new(),
-            validation: AnalyticsValidationReportV1 { is_valid: true, checks: Vec::new() },
+            validation: AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
             quality_controls: Default::default(),
+            data_quality: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

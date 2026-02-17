@@ -15,11 +15,12 @@ pub mod validators;
 pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
     AnalyticsValidationReportV1, ArtifactPersistenceRefV1, ChannelMixPointV1,
-    ConfidenceCalibrationV1, DriftFlagV1, EvidenceItem, ExecutiveDashboardSnapshotV1,
-    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1,
-    KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, MockAnalyticsArtifactV1,
-    MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1,
-    QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
+    ConfidenceCalibrationV1, DataQualitySummaryV1, DriftFlagV1, EvidenceItem,
+    ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem,
+    HistoricalAnalysisV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
+    MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
+    PortfolioRowV1, QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use longitudinal::build_historical_analysis;

@@ -619,6 +619,7 @@ mod tests {
                 checks: Vec::new(),
             },
             quality_controls: Default::default(),
+            data_quality: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

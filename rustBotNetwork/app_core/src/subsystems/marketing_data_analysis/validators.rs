@@ -3,6 +3,7 @@ use super::contracts::{
     ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use chrono::NaiveDate;
+use validator::Validate;
 
 const MAX_DATE_SPAN_DAYS: i64 = 93;
 const METRIC_EPSILON: f64 = 0.0001;
@@ -13,6 +14,19 @@ const METRIC_EPSILON: f64 = 0.0001;
 pub fn validate_mock_analytics_request_v1(
     req: &MockAnalyticsRequestV1,
 ) -> Result<(NaiveDate, NaiveDate), AnalyticsError> {
+    if let Err(err) = req.validate() {
+        return Err(AnalyticsError::new(
+            "request_contract_violation",
+            format!("request contract validation failed: {err}"),
+            vec![
+                "start_date".to_string(),
+                "end_date".to_string(),
+                "profile_id".to_string(),
+            ],
+            None,
+        ));
+    }
+
     if req.profile_id.trim().is_empty() {
         return Err(AnalyticsError::validation(
             "invalid_profile_id",
@@ -147,6 +161,21 @@ pub fn validate_mock_analytics_artifact_v1(
         "quality control health should match quality check pass/fail aggregate",
     ));
 
+    let ratios_valid = [
+        artifact.data_quality.completeness_ratio,
+        artifact.data_quality.identity_join_coverage_ratio,
+        artifact.data_quality.freshness_pass_ratio,
+        artifact.data_quality.reconciliation_pass_ratio,
+        artifact.data_quality.quality_score,
+    ]
+    .iter()
+    .all(|value| value.is_finite() && (0.0..=1.0).contains(value));
+    checks.push(check(
+        "data_quality_ratio_bounds",
+        ratios_valid,
+        "data quality ratios must be finite and within [0.0, 1.0]",
+    ));
+
     let is_valid = checks.iter().all(|c| c.passed);
     AnalyticsValidationReportV1 { is_valid, checks }
 }
@@ -162,10 +191,10 @@ fn check(code: &str, passed: bool, message: &str) -> ValidationCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_models::analytics::{AnalyticsReport, SourceClassLabel, SourceProvenance};
     use crate::subsystems::marketing_data_analysis::contracts::{
         AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem, MockAnalyticsArtifactV1,
     };
-    use crate::data_models::analytics::{AnalyticsReport, SourceClassLabel, SourceProvenance};
 
     #[test]
     fn request_validator_rejects_bad_dates() {
@@ -236,6 +265,7 @@ mod tests {
                 checks: Vec::new(),
             },
             quality_controls: Default::default(),
+            data_quality: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

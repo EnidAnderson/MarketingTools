@@ -1,6 +1,7 @@
 use crate::data_models::analytics::{AnalyticsReport, SourceProvenance};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use validator::Validate;
 
 pub const MOCK_ANALYTICS_SCHEMA_VERSION_V1: &str = "mock_analytics_artifact.v1";
 
@@ -10,13 +11,16 @@ pub const MOCK_ANALYTICS_SCHEMA_VERSION_V1: &str = "mock_analytics_artifact.v1";
 /// invariants:
 ///   - `start_date` and `end_date` use ISO format `YYYY-MM-DD`.
 ///   - If `seed` is omitted, a stable seed is derived from request fields.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Validate)]
 pub struct MockAnalyticsRequestV1 {
+    #[validate(length(min = 10, max = 10))]
     pub start_date: String,
+    #[validate(length(min = 10, max = 10))]
     pub end_date: String,
     pub campaign_filter: Option<String>,
     pub ad_group_filter: Option<String>,
     pub seed: Option<u64>,
+    #[validate(length(min = 1, max = 128))]
     pub profile_id: String,
     pub include_narratives: bool,
 }
@@ -117,6 +121,30 @@ pub struct AnalyticsQualityControlsV1 {
     pub identity_resolution_checks: Vec<QualityCheckV1>,
     pub freshness_sla_checks: Vec<QualityCheckV1>,
     pub is_healthy: bool,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Quantitative quality scorecard for completeness, joins, freshness, and reconciliation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DataQualitySummaryV1 {
+    pub completeness_ratio: f64,
+    pub identity_join_coverage_ratio: f64,
+    pub freshness_pass_ratio: f64,
+    pub reconciliation_pass_ratio: f64,
+    pub quality_score: f64,
+}
+
+impl Default for DataQualitySummaryV1 {
+    fn default() -> Self {
+        Self {
+            completeness_ratio: 1.0,
+            identity_join_coverage_ratio: 1.0,
+            freshness_pass_ratio: 1.0,
+            reconciliation_pass_ratio: 1.0,
+            quality_score: 1.0,
+        }
+    }
 }
 
 impl Default for AnalyticsQualityControlsV1 {
@@ -234,6 +262,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub validation: AnalyticsValidationReportV1,
     #[serde(default)]
     pub quality_controls: AnalyticsQualityControlsV1,
+    #[serde(default)]
+    pub data_quality: DataQualitySummaryV1,
     #[serde(default)]
     pub historical_analysis: HistoricalAnalysisV1,
     #[serde(default)]
