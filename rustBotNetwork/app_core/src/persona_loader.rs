@@ -1,8 +1,8 @@
 // rustBotNetwork/app_core/src/persona_loader.rs
 
 use crate::data_models::persona::Persona;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Loads a persona from the 'teams' directory.
 ///

@@ -28,7 +28,10 @@ pub fn generate_analytics_report(
         raw_rows.retain(|row| row.adGroup.as_ref().is_some_and(|ag| ag.name.contains(agf)));
     }
 
-    let report_name = format!("Google Ads Analytics Report: {} to {}", start_date, end_date);
+    let report_name = format!(
+        "Google Ads Analytics Report: {} to {}",
+        start_date, end_date
+    );
     let date_range = format!("{} to {}", start_date, end_date);
     process_google_ads_rows_to_report(raw_rows, &report_name, &date_range)
 }
@@ -44,8 +47,14 @@ pub fn generate_typed_trusted_report(
     let date_range = format!("{} to {}", start_date, end_date);
     let report = process_google_ads_rows_to_report(ads_rows, &report_name, &date_range);
 
-    let narratives = ga4_events.iter().map(build_kpi_narrative).collect::<Vec<_>>();
-    let provenance = ga4_events.into_iter().map(|e| e.provenance).collect::<Vec<_>>();
+    let narratives = ga4_events
+        .iter()
+        .map(build_kpi_narrative)
+        .collect::<Vec<_>>();
+    let provenance = ga4_events
+        .into_iter()
+        .map(|e| e.provenance)
+        .collect::<Vec<_>>();
 
     TrustedAnalyticsReportArtifact {
         report,
@@ -69,7 +78,10 @@ fn build_kpi_narrative(event: &Ga4NormalizedEvent) -> NormalizedKpiNarrative {
     }
 }
 
-pub fn validate_schema_drift(required_fields: &[&str], payload_fields: &[&str]) -> Result<(), String> {
+pub fn validate_schema_drift(
+    required_fields: &[&str],
+    payload_fields: &[&str],
+) -> Result<(), String> {
     for required in required_fields {
         if !payload_fields.iter().any(|present| present == required) {
             return Err(format!("schema_drift_missing_field={}", required));
@@ -82,7 +94,9 @@ pub fn detect_identity_mismatch(ga4_user_id: &str, ads_identity_key: &str) -> bo
     ga4_user_id.trim() != ads_identity_key.trim()
 }
 
-pub fn validate_attribution_window_safeguard(meta: &AttributionWindowMetadata) -> Result<(), String> {
+pub fn validate_attribution_window_safeguard(
+    meta: &AttributionWindowMetadata,
+) -> Result<(), String> {
     if meta.lookback_days == 0 {
         return Err("invalid_attribution_window_zero_days".to_string());
     }
@@ -98,7 +112,10 @@ pub fn validate_kpi_narratives(narratives: &[NormalizedKpiNarrative]) -> Result<
 
     for narrative in narratives {
         if matches!(narrative.source_class, SourceClassLabel::Simulated)
-            && narrative.confidence.confidence_label.eq_ignore_ascii_case("high")
+            && narrative
+                .confidence
+                .confidence_label
+                .eq_ignore_ascii_case("high")
         {
             return Err(format!(
                 "source_class_confidence_violation={}",
@@ -120,9 +137,9 @@ pub fn validate_kpi_narratives(narratives: &[NormalizedKpiNarrative]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
     use crate::analytics_connector_contracts::SimulatedConnectorContract;
     use crate::data_models::analytics::ReportMetrics;
+    use approx::assert_relative_eq;
 
     fn assert_metrics_approx_eq(m1: &ReportMetrics, m2: &ReportMetrics) {
         assert_eq!(m1.impressions, m2.impressions);
@@ -148,16 +165,31 @@ mod tests {
     #[test]
     fn test_generate_analytics_report_campaign_filter() {
         let report = generate_analytics_report("2023-01-01", "2023-01-01", Some("Summer"), None);
-        assert!(report.campaign_data.iter().all(|c| c.campaign_name.contains("Summer")));
-        assert!(report.ad_group_data.iter().all(|ag| ag.campaign_name.contains("Summer")));
-        assert!(report.keyword_data.iter().all(|kw| kw.campaign_name.contains("Summer")));
+        assert!(report
+            .campaign_data
+            .iter()
+            .all(|c| c.campaign_name.contains("Summer")));
+        assert!(report
+            .ad_group_data
+            .iter()
+            .all(|ag| ag.campaign_name.contains("Summer")));
+        assert!(report
+            .keyword_data
+            .iter()
+            .all(|kw| kw.campaign_name.contains("Summer")));
     }
 
     #[test]
     fn test_generate_analytics_report_ad_group_filter() {
         let report = generate_analytics_report("2023-01-01", "2023-01-01", None, Some("Dry Food"));
-        assert!(report.ad_group_data.iter().all(|ag| ag.ad_group_name.contains("Dry Food")));
-        assert!(report.keyword_data.iter().all(|kw| kw.ad_group_name.contains("Dry Food")));
+        assert!(report
+            .ad_group_data
+            .iter()
+            .all(|ag| ag.ad_group_name.contains("Dry Food")));
+        assert!(report
+            .keyword_data
+            .iter()
+            .all(|kw| kw.ad_group_name.contains("Dry Food")));
     }
 
     #[test]

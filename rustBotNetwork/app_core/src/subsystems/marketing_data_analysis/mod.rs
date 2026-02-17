@@ -18,7 +18,7 @@ pub use contracts::{
     AnalyticsValidationReportV1, ArtifactPersistenceRefV1, ChannelMixPointV1,
     ConfidenceCalibrationV1, DataQualitySummaryV1, DriftFlagV1, EvidenceItem,
     ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem,
-    HistoricalAnalysisV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
+    HistoricalAnalysisV1, IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
     PortfolioRowV1, QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
     ValidationCheck,
@@ -27,7 +27,7 @@ pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildO
 pub use ingest::{
     join_coverage_ratio, parse_ga4_event, window_completeness, Cleaned, CleaningNote,
     CleaningSeverity, Ga4EventRawV1, Ga4EventV1, GoogleAdsRowRawV1, GoogleAdsRowV1, IngestError,
-    WindowCompletenessCheck, WixOrderRawV1, WixOrderV1,
+    TimeGranularity, WindowCompletenessCheck, WixOrderRawV1, WixOrderV1,
 };
 pub use longitudinal::build_historical_analysis;
 pub use persistence::AnalyticsRunStore;

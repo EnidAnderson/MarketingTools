@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::Value;
-use async_trait::async_trait;
 use std::error::Error;
 
 #[derive(Debug, Serialize)]
@@ -59,4 +59,3 @@ pub trait Tool: Send + Sync {
     fn metadata(&self) -> ToolDefinition;
     async fn execute(&self, args: Value) -> Result<Value, Box<dyn Error + Send + Sync>>;
 }
-

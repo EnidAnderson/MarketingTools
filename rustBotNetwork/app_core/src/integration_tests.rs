@@ -3,11 +3,13 @@
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::data_models::analytics::{GoogleAdsRow, AnalyticsReport, ReportMetrics};
-    use crate::data_models::dashboard::{DashboardConfig, DateRangePreset, WidgetConfig, WidgetType};
     use crate::analytics_data_generator::process_google_ads_rows_to_report;
     use crate::analytics_reporter::generate_analytics_report;
     use crate::dashboard_processor::process_dashboard_config;
+    use crate::data_models::analytics::{AnalyticsReport, GoogleAdsRow, ReportMetrics};
+    use crate::data_models::dashboard::{
+        DashboardConfig, DateRangePreset, WidgetConfig, WidgetType,
+    };
     use approx::assert_relative_eq;
     use std::fs;
 
@@ -96,9 +98,10 @@ mod integration_tests {
             start_date: Some("2023-01-01".to_string()),
             end_date: Some("2023-01-02".to_string()),
             filters: Some(
-                [
-                    ("campaign_name".to_string(), "Summer Pet Food Promo".to_string()),
-                ]
+                [(
+                    "campaign_name".to_string(),
+                    "Summer Pet Food Promo".to_string(),
+                )]
                 .iter()
                 .cloned()
                 .collect(),
@@ -122,7 +125,11 @@ mod integration_tests {
                     title: "Total Conversions".to_string(),
                     data_source: "total_metrics".to_string(),
                     metrics: vec!["conversions".to_string()],
-                    dimension: None, limit: None, sort_by: None, sort_order: None, chart_options: None,
+                    dimension: None,
+                    limit: None,
+                    sort_by: None,
+                    sort_order: None,
+                    chart_options: None,
                 },
             ],
         };
@@ -136,7 +143,11 @@ mod integration_tests {
         assert_eq!(render_data.widgets.len(), 2);
 
         // Verify bar chart widget
-        let bar_chart_widget = render_data.widgets.iter().find(|w| w.widget_id == "campaign_clicks_bar").unwrap();
+        let bar_chart_widget = render_data
+            .widgets
+            .iter()
+            .find(|w| w.widget_id == "campaign_clicks_bar")
+            .unwrap();
         assert_eq!(bar_chart_widget.r#type, WidgetType::Bar);
         assert!(bar_chart_widget.chart_data.is_some());
         let chart_data = bar_chart_widget.chart_data.as_ref().unwrap();
@@ -147,7 +158,11 @@ mod integration_tests {
         assert!(chart_data.datasets[0].data[0] > 0.0);
 
         // Verify summary widget
-        let summary_widget = render_data.widgets.iter().find(|w| w.widget_id == "total_conversions_summary").unwrap();
+        let summary_widget = render_data
+            .widgets
+            .iter()
+            .find(|w| w.widget_id == "total_conversions_summary")
+            .unwrap();
         assert_eq!(summary_widget.r#type, WidgetType::Summary);
         assert!(summary_widget.summary_data.is_some());
         let summary_data = summary_widget.summary_data.as_ref().unwrap();

@@ -1,6 +1,6 @@
 // rustBotNetwork/app_core/src/data_models/dashboard.rs
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -34,11 +34,11 @@ pub struct WidgetConfig {
     pub id: String,
     pub r#type: WidgetType, // `type` is a Rust keyword
     pub title: String,
-    pub data_source: String, // e.g., "total_metrics", "campaign_data"
-    pub metrics: Vec<String>, // Metrics to display/chart
-    pub dimension: Option<String>, // Dimension to group by for charts
-    pub limit: Option<u32>, // Optional limit on number of items
-    pub sort_by: Option<String>, // Metric to sort by
+    pub data_source: String,        // e.g., "total_metrics", "campaign_data"
+    pub metrics: Vec<String>,       // Metrics to display/chart
+    pub dimension: Option<String>,  // Dimension to group by for charts
+    pub limit: Option<u32>,         // Optional limit on number of items
+    pub sort_by: Option<String>,    // Metric to sort by
     pub sort_order: Option<String>, // "asc" or "desc"
     pub chart_options: Option<Value>, // Flexible JSON for Chart.js options
 }
@@ -49,8 +49,8 @@ pub struct DashboardConfig {
     pub dashboard_name: String,
     pub description: Option<String>,
     pub date_range_preset: Option<DateRangePreset>,
-    pub start_date: Option<String>, // YYYY-MM-DD
-    pub end_date: Option<String>,   // YYYY-MM-DD
+    pub start_date: Option<String>,               // YYYY-MM-DD
+    pub end_date: Option<String>,                 // YYYY-MM-DD
     pub filters: Option<HashMap<String, String>>, // Global filters
     pub widgets: Vec<WidgetConfig>,
 }
@@ -82,7 +82,7 @@ pub struct WidgetRenderData {
     pub chart_data: Option<ChartData>, // For charts
     pub table_data: Option<Vec<HashMap<String, Value>>>, // For tables
     pub summary_data: Option<HashMap<String, Value>>, // For summary widgets
-    pub chart_options: Option<Value>, // Chart.js specific options
+    pub chart_options: Option<Value>,  // Chart.js specific options
 }
 
 /// The complete data structure returned to the frontend for rendering a dashboard.

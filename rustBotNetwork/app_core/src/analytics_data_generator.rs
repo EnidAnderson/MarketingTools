@@ -56,8 +56,7 @@ pub fn generate_simulated_google_ads_rows(
 
         for (campaign_idx, &campaign_name) in CAMPAIGN_NAMES.iter().enumerate() {
             let campaign_id = format!("{}", campaign_idx + 1);
-            let campaign_resourceName =
-                format!("customers/123456789/campaigns/{}", campaign_id);
+            let campaign_resourceName = format!("customers/123456789/campaigns/{}", campaign_id);
             let campaign_status = if rng.gen_bool(0.9) {
                 "ENABLED".to_string()
             } else {
@@ -73,8 +72,7 @@ pub fn generate_simulated_google_ads_rows(
 
             for (adGroup_idx, &adGroup_name) in AD_GROUP_NAMES.iter().enumerate() {
                 let adGroup_id = format!("{}.{}", campaign_id, adGroup_idx + 1);
-                let adGroup_resourceName =
-                    format!("customers/123456789/adGroups/{}", adGroup_id);
+                let adGroup_resourceName = format!("customers/123456789/adGroups/{}", adGroup_id);
                 let adGroup_status = if rng.gen_bool(0.9) {
                     "ENABLED".to_string()
                 } else {
@@ -166,12 +164,13 @@ pub fn process_google_ads_rows_to_report(
     date_range: &str,
 ) -> AnalyticsReport {
     let mut total_metrics = ReportMetrics::default();
-    let mut campaign_metrics_map: HashMap<String, (String, String, ReportMetrics)> =
-        HashMap::new(); // id -> (name, status, metrics)
+    let mut campaign_metrics_map: HashMap<String, (String, String, ReportMetrics)> = HashMap::new(); // id -> (name, status, metrics)
     let mut ad_group_metrics_map: HashMap<String, (String, String, String, ReportMetrics)> =
         HashMap::new(); // id -> (campaign_id, name, status, metrics)
-    let mut keyword_metrics_map: HashMap<String, (String, String, String, String, ReportMetrics, Option<u32>)> =
-        HashMap::new(); // id -> (campaign_id, adGroup_id, text, type, metrics, qualityScore)
+    let mut keyword_metrics_map: HashMap<
+        String,
+        (String, String, String, String, ReportMetrics, Option<u32>),
+    > = HashMap::new(); // id -> (campaign_id, adGroup_id, text, type, metrics, qualityScore)
 
     for row in rows {
         let campaign_id = row
@@ -241,26 +240,39 @@ pub fn process_google_ads_rows_to_report(
             total_metrics = aggregate_report_metrics(&total_metrics, &processed_metrics);
 
             // Aggregate campaign metrics
-            let (c_name, c_status, c_metrics) = campaign_metrics_map
-                .entry(campaign_id.clone())
-                .or_insert((campaign_name.clone(), campaign_status.clone(), ReportMetrics::default()));
+            let (c_name, c_status, c_metrics) =
+                campaign_metrics_map.entry(campaign_id.clone()).or_insert((
+                    campaign_name.clone(),
+                    campaign_status.clone(),
+                    ReportMetrics::default(),
+                ));
             *c_name = campaign_name.clone();
             *c_status = campaign_status.clone();
             *c_metrics = aggregate_report_metrics(c_metrics, &processed_metrics);
 
             // Aggregate ad group metrics
-            let (ag_c_id, ag_name, ag_status, ag_metrics) = ad_group_metrics_map
-                .entry(adGroup_id.clone())
-                .or_insert((campaign_id.clone(), adGroup_name.clone(), adGroup_status.clone(), ReportMetrics::default()));
+            let (ag_c_id, ag_name, ag_status, ag_metrics) =
+                ad_group_metrics_map.entry(adGroup_id.clone()).or_insert((
+                    campaign_id.clone(),
+                    adGroup_name.clone(),
+                    adGroup_status.clone(),
+                    ReportMetrics::default(),
+                ));
             *ag_c_id = campaign_id.clone();
             *ag_name = adGroup_name.clone();
             *ag_status = adGroup_status.clone();
             *ag_metrics = aggregate_report_metrics(ag_metrics, &processed_metrics);
 
             // Aggregate keyword metrics
-            let (kw_c_id, kw_ag_id, kw_text, kw_type, kw_metrics, kw_qualityScore) = keyword_metrics_map
-                .entry(keyword_id.clone())
-                .or_insert((campaign_id.clone(), adGroup_id.clone(), keyword_text.clone(), matchType.clone(), ReportMetrics::default(), qualityScore));
+            let (kw_c_id, kw_ag_id, kw_text, kw_type, kw_metrics, kw_qualityScore) =
+                keyword_metrics_map.entry(keyword_id.clone()).or_insert((
+                    campaign_id.clone(),
+                    adGroup_id.clone(),
+                    keyword_text.clone(),
+                    matchType.clone(),
+                    ReportMetrics::default(),
+                    qualityScore,
+                ));
             *kw_c_id = campaign_id.clone();
             *kw_ag_id = adGroup_id.clone();
             *kw_text = keyword_text.clone();
@@ -271,17 +283,21 @@ pub fn process_google_ads_rows_to_report(
     }
 
     // Convert aggregated maps to Vecs for AnalyticsReport
-    let campaign_data: Vec<crate::data_models::analytics::CampaignReportRow> = campaign_metrics_map.iter()
-        .map(|(id, (name, status, metrics))| crate::data_models::analytics::CampaignReportRow {
-            date: "".to_string(), // Date will be set by analytics_reporter
-            campaign_id: id.clone(),
-            campaign_name: name.clone(),
-            campaign_status: status.clone(),
-            metrics: metrics.clone(),
-        })
+    let campaign_data: Vec<crate::data_models::analytics::CampaignReportRow> = campaign_metrics_map
+        .iter()
+        .map(
+            |(id, (name, status, metrics))| crate::data_models::analytics::CampaignReportRow {
+                date: "".to_string(), // Date will be set by analytics_reporter
+                campaign_id: id.clone(),
+                campaign_name: name.clone(),
+                campaign_status: status.clone(),
+                metrics: metrics.clone(),
+            },
+        )
         .collect();
 
-    let ad_group_data: Vec<crate::data_models::analytics::AdGroupReportRow> = ad_group_metrics_map.iter()
+    let ad_group_data: Vec<crate::data_models::analytics::AdGroupReportRow> = ad_group_metrics_map
+        .iter()
         .map(|(id, (campaign_id, name, status, metrics))| {
             let campaign_name = campaign_metrics_map
                 .get(campaign_id)
@@ -299,29 +315,32 @@ pub fn process_google_ads_rows_to_report(
         })
         .collect();
 
-    let keyword_data: Vec<crate::data_models::analytics::KeywordReportRow> = keyword_metrics_map.into_iter()
-        .map(|(id, (campaign_id, ad_group_id, text, r#type, metrics, quality_score))| {
-            let campaign_name = campaign_metrics_map
-                .get(&campaign_id)
-                .map(|(n, _, _)| n.clone())
-                .unwrap_or_default();
-            let ad_group_name = ad_group_metrics_map
-                .get(&ad_group_id)
-                .map(|(_, n, _, _)| n.clone())
-                .unwrap_or_default();
-            crate::data_models::analytics::KeywordReportRow {
-                date: "".to_string(), // Date will be set by analytics_reporter
-                campaign_id: campaign_id.clone(),
-                campaign_name,
-                ad_group_id: ad_group_id.clone(),
-                ad_group_name,
-                keyword_id: id,
-                keyword_text: text,
-                match_type: r#type,
-                quality_score,
-                metrics,
-            }
-        })
+    let keyword_data: Vec<crate::data_models::analytics::KeywordReportRow> = keyword_metrics_map
+        .into_iter()
+        .map(
+            |(id, (campaign_id, ad_group_id, text, r#type, metrics, quality_score))| {
+                let campaign_name = campaign_metrics_map
+                    .get(&campaign_id)
+                    .map(|(n, _, _)| n.clone())
+                    .unwrap_or_default();
+                let ad_group_name = ad_group_metrics_map
+                    .get(&ad_group_id)
+                    .map(|(_, n, _, _)| n.clone())
+                    .unwrap_or_default();
+                crate::data_models::analytics::KeywordReportRow {
+                    date: "".to_string(), // Date will be set by analytics_reporter
+                    campaign_id: campaign_id.clone(),
+                    campaign_name,
+                    ad_group_id: ad_group_id.clone(),
+                    ad_group_name,
+                    keyword_id: id,
+                    keyword_text: text,
+                    match_type: r#type,
+                    quality_score,
+                    metrics,
+                }
+            },
+        )
         .collect();
 
     AnalyticsReport {
@@ -342,7 +361,13 @@ fn aggregate_report_metrics(a: &ReportMetrics, b: &ReportMetrics) -> ReportMetri
     let conversions = a.conversions + b.conversions;
     let conversions_value = a.conversions_value + b.conversions_value;
 
-    calculate_report_metrics(impressions, clicks, (cost * 1_000_000.0) as u64, conversions, conversions_value)
+    calculate_report_metrics(
+        impressions,
+        clicks,
+        (cost * 1_000_000.0) as u64,
+        conversions,
+        conversions_value,
+    )
 }
 
 /// Helper function to calculate derived metrics for ReportMetrics.
@@ -392,8 +417,8 @@ fn calculate_report_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
-    use crate::data_models::analytics::ReportMetrics; // Use ReportMetrics
+    use crate::data_models::analytics::ReportMetrics;
+    use approx::assert_relative_eq; // Use ReportMetrics
 
     // Helper to check if two ReportMetrics are approximately equal
     fn assert_report_metrics_approx_eq(m1: &ReportMetrics, m2: &ReportMetrics) {
@@ -438,8 +463,15 @@ mod tests {
         assert!(!report.keyword_data.is_empty());
 
         // Basic check for aggregation
-        let total_impressions_from_campaigns: u64 = report.campaign_data.iter().map(|c| c.metrics.impressions).sum();
-        assert_eq!(report.total_metrics.impressions, total_impressions_from_campaigns);
+        let total_impressions_from_campaigns: u64 = report
+            .campaign_data
+            .iter()
+            .map(|c| c.metrics.impressions)
+            .sum();
+        assert_eq!(
+            report.total_metrics.impressions,
+            total_impressions_from_campaigns
+        );
     }
 
     #[test]
@@ -464,6 +496,7 @@ mod tests {
         assert_relative_eq!(aggregated.conversions, 3.0, epsilon = 0.001);
         assert_relative_eq!(aggregated.conversions_value, 300.0, epsilon = 0.001);
         // Derived metrics should be recalculated based on aggregated base metrics
-        assert_relative_eq!(aggregated.ctr, (30.0/300.0)*100.0, epsilon = 0.001); // 10%
+        assert_relative_eq!(aggregated.ctr, (30.0 / 300.0) * 100.0, epsilon = 0.001);
+        // 10%
     }
 }

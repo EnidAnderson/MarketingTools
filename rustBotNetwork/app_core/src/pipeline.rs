@@ -1,7 +1,7 @@
 use crate::contracts::ToolError;
 use crate::invariants::{ensure_json_pointer, ensure_non_empty_trimmed, ensure_range_usize};
-use crate::tools::tool_registry::ToolRegistry;
 use crate::tools::tool_definition::Tool; // Added Tool trait import
+use crate::tools::tool_registry::ToolRegistry;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -93,8 +93,8 @@ pub struct PipelineRunResult {
     pub campaign_id: Option<String>,
     pub governance_refs: Option<PipelineGovernanceRefs>,
     pub started_at: String,
-    pub finished_at: String, // Reverted to type String
-    pub succeeded: bool,     // Reverted to type bool
+    pub finished_at: String,            // Reverted to type String
+    pub succeeded: bool,                // Reverted to type bool
     pub steps: Vec<PipelineStepResult>, // Reverted to type Vec
 }
 
@@ -105,7 +105,9 @@ pub struct PipelineRunResult {
 ///   - Step order is deterministic (definition order).
 ///   - A failed step terminates remaining execution.
 ///   - Returned `steps` are prefix-complete up to failure point.
-pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<PipelineRunResult, ToolError> {
+pub async fn execute_pipeline(
+    definition: PipelineDefinition,
+) -> Result<PipelineRunResult, ToolError> {
     validate_pipeline_definition(&definition)?;
 
     let run_started = Utc::now();
@@ -212,7 +214,9 @@ pub async fn execute_pipeline(definition: PipelineDefinition) -> Result<Pipeline
 fn validate_pipeline_definition(definition: &PipelineDefinition) -> Result<(), ToolError> {
     ensure_non_empty_trimmed(&definition.name, "name")?;
     if definition.steps.is_empty() {
-        return Err(ToolError::validation("pipeline must include at least one step"));
+        return Err(ToolError::validation(
+            "pipeline must include at least one step",
+        ));
     }
     ensure_range_usize(definition.steps.len(), 1, 50, "steps.len")?;
     if let Some(refs) = &definition.governance_refs {
@@ -250,13 +254,16 @@ fn validate_pipeline_definition(definition: &PipelineDefinition) -> Result<(), T
 }
 
 fn validate_governance_refs(refs: &PipelineGovernanceRefs) -> Result<(), ToolError> {
-    ensure_non_empty_trimmed(&refs.budget_envelope_ref, "governance_refs.budget_envelope_ref")?;
-    ensure_non_empty_trimmed(&refs.release_gate_log_ref, "governance_refs.release_gate_log_ref")?;
+    ensure_non_empty_trimmed(
+        &refs.budget_envelope_ref,
+        "governance_refs.budget_envelope_ref",
+    )?;
+    ensure_non_empty_trimmed(
+        &refs.release_gate_log_ref,
+        "governance_refs.release_gate_log_ref",
+    )?;
 
-    let has_change_request = refs
-        .change_request_ids
-        .iter()
-        .any(|v| !v.trim().is_empty());
+    let has_change_request = refs.change_request_ids.iter().any(|v| !v.trim().is_empty());
     let has_decision = refs.decision_ids.iter().any(|v| !v.trim().is_empty());
     if !has_change_request && !has_decision {
         return Err(ToolError::validation(
@@ -351,7 +358,10 @@ mod tests {
     #[test]
     fn fails_when_reference_path_missing() {
         let mut outputs = HashMap::new();
-        outputs.insert("analysis".to_string(), serde_json::json!({"source_count": 7}));
+        outputs.insert(
+            "analysis".to_string(),
+            serde_json::json!({"source_count": 7}),
+        );
 
         let mut input = HashMap::new();
         input.insert(
@@ -425,6 +435,8 @@ mod tests {
         };
 
         let err = validate_pipeline_definition(&definition).expect_err("must fail");
-        assert!(err.message.contains("requires at least one non-empty change_request_id"));
+        assert!(err
+            .message
+            .contains("requires at least one non-empty change_request_id"));
     }
 }

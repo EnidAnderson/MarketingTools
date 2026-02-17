@@ -1,8 +1,10 @@
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, DataQualitySummaryV1,
-    EvidenceItem, GuidanceItem, KpiAttributionNarrativeV1, MockAnalyticsArtifactV1,
-    MockAnalyticsRequestV1, OperatorSummaryV1, QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    EvidenceItem, GuidanceItem, IngestCleaningNoteV1, KpiAttributionNarrativeV1,
+    MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, QualityCheckV1,
+    MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
+use super::ingest::{parse_ga4_event, CleaningNote};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
     AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport,
@@ -31,6 +33,7 @@ const KEYWORD_TEXTS: &[&str] = &[
 ];
 const MIN_IDENTITY_COVERAGE_RATIO: f64 = 0.98;
 const RECONCILIATION_EPSILON: f64 = 0.01;
+const INGEST_CONTRACT_VERSION: &str = "ingest_contract.v1";
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::service`
@@ -71,12 +74,16 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
 
         let rows = generate_rows(&request, start, end, seed);
         let report = rows_to_report(rows, &request, start, end);
+        let ingest_cleaning_notes = collect_ingest_cleaning_notes(seed)?;
         let provenance = vec![SourceProvenance {
             connector_id: "mock_analytics_connector_v1".to_string(),
             source_class: SourceClassLabel::Simulated,
             source_system: "mock_analytics".to_string(),
             collected_at_utc: "deterministic-simulated".to_string(),
             freshness_minutes: 0,
+            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+            rejected_rows_count: 0,
+            cleaning_note_count: ingest_cleaning_notes.len() as u32,
         }];
         let (observed_evidence, inferred_guidance, uncertainty_notes) =
             build_evidence_and_guidance(&report, request.include_narratives);
@@ -103,6 +110,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             inferred_guidance,
             uncertainty_notes,
             provenance,
+            ingest_cleaning_notes,
             validation: super::contracts::AnalyticsValidationReportV1 {
                 is_valid: false,
                 checks: Vec::new(),
@@ -629,6 +637,18 @@ fn build_quality_controls(
             observed: "all report metrics are finite".to_string(),
             expected: "no NaN or +/-inf values".to_string(),
         },
+        QualityCheckV1 {
+            code: "schema_ingest_contract_version_present".to_string(),
+            passed: provenance.iter().all(|item| {
+                item.validated_contract_version
+                    .as_ref()
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+            }),
+            severity: "high".to_string(),
+            observed: "connector provenance declares validated contract version".to_string(),
+            expected: "every provenance entry has validated_contract_version".to_string(),
+        },
     ];
     let identity_resolution_checks = vec![
         QualityCheckV1 {
@@ -777,8 +797,41 @@ fn build_ga4_events(seed: u64) -> Vec<Ga4NormalizedEvent> {
             source_system: "mock_analytics".to_string(),
             collected_at_utc: "deterministic-simulated".to_string(),
             freshness_minutes: 0,
+            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+            rejected_rows_count: 0,
+            cleaning_note_count: 0,
         },
     }]
+}
+
+fn collect_ingest_cleaning_notes(seed: u64) -> Result<Vec<IngestCleaningNoteV1>, AnalyticsError> {
+    let ga4_json = format!(
+        r#"{{"event_name":" purchase ","event_timestamp_utc":"2026-02-16T00:00:00Z","user_pseudo_id":" user_{seed} ","session_id":"sess_{seed}","campaign":"spring_launch"}}"#
+    );
+    let parsed = parse_ga4_event(&ga4_json).map_err(|err| {
+        AnalyticsError::new(
+            "ingest_validation_failed",
+            format!("failed to parse/normalize ga4 event: {}", err.reason),
+            vec![err.field],
+            None,
+        )
+    })?;
+    Ok(map_ingest_notes("ga4", &parsed.notes))
+}
+
+fn map_ingest_notes(source_system: &str, notes: &[CleaningNote]) -> Vec<IngestCleaningNoteV1> {
+    notes
+        .iter()
+        .map(|note| IngestCleaningNoteV1 {
+            source_system: source_system.to_string(),
+            rule_id: note.rule_id.clone(),
+            severity: format!("{:?}", note.severity).to_lowercase(),
+            affected_field: note.affected_field.clone(),
+            raw_value: note.raw_value.clone(),
+            clean_value: note.clean_value.clone(),
+            message: note.message.clone(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -893,7 +946,11 @@ mod tests {
                 source_system: "mock".to_string(),
                 collected_at_utc: "now".to_string(),
                 freshness_minutes: 0,
+                validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: 0,
             }],
+            ingest_cleaning_notes: Vec::new(),
             validation: super::super::contracts::AnalyticsValidationReportV1 {
                 is_valid: true,
                 checks: Vec::new(),

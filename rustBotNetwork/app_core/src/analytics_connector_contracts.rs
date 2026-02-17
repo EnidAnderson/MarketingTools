@@ -40,6 +40,9 @@ impl AnalyticsConnectorContract for SimulatedConnectorContract {
                 source_system: "ga4".to_string(),
                 collected_at_utc: "2026-02-16T00:05:00Z".to_string(),
                 freshness_minutes: 5,
+                validated_contract_version: Some("ingest_contract.v1".to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: 0,
             },
         }]
     }

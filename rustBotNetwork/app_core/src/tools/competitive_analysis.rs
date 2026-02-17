@@ -59,7 +59,10 @@ impl CompetitiveAnalysisTool {
         }
     }
 
-    async fn fetch_search_results(topic: &str, max_sources: usize) -> Result<Vec<SearchSource>, ToolError> {
+    async fn fetch_search_results(
+        topic: &str,
+        max_sources: usize,
+    ) -> Result<Vec<SearchSource>, ToolError> {
         let encoded: String = url::form_urlencoded::byte_serialize(topic.as_bytes()).collect();
         let url = format!("https://duckduckgo.com/html/?q={}", encoded);
 
@@ -68,17 +71,22 @@ impl CompetitiveAnalysisTool {
             .get(url)
             .send()
             .await
-            .map_err(|e| ToolError::provider(format!("Failed to fetch live search results: {}", e), true))?
+            .map_err(|e| {
+                ToolError::provider(format!("Failed to fetch live search results: {}", e), true)
+            })?
             .text()
             .await
-            .map_err(|e| ToolError::provider(format!("Failed to parse search response body: {}", e), true))?;
+            .map_err(|e| {
+                ToolError::provider(format!("Failed to parse search response body: {}", e), true)
+            })?;
 
         let mut parsed = parse_search_results(&body);
         parsed.truncate(max_sources);
 
         if parsed.is_empty() {
             return Err(ToolError::provider(
-                "No live market sources were found for this topic. Try a broader query.".to_string(),
+                "No live market sources were found for this topic. Try a broader query."
+                    .to_string(),
                 true,
             ));
         }
@@ -138,8 +146,10 @@ impl BaseTool for CompetitiveAnalysisTool {
 
     async fn run(&self, input: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let parsed: CompetitiveAnalysisInput = serde_json::from_value(input).map_err(|e| {
-            Box::new(ToolError::validation(format!("Invalid competitive_analysis input: {}", e)))
-                as Box<dyn std::error::Error + Send + Sync>
+            Box::new(ToolError::validation(format!(
+                "Invalid competitive_analysis input: {}",
+                e
+            ))) as Box<dyn std::error::Error + Send + Sync>
         })?;
 
         let topic = parsed.topic.trim();
@@ -205,7 +215,11 @@ fn parse_search_results(html: &str) -> Vec<SearchSource> {
         }
         seen.insert(url.clone());
 
-        results.push(SearchSource { title, url, snippet });
+        results.push(SearchSource {
+            title,
+            url,
+            snippet,
+        });
     }
 
     results
@@ -215,20 +229,38 @@ fn extract_keyword_frequency(text: &str) -> HashMap<String, usize> {
     let lowered = text.to_lowercase();
     let keywords: [(&str, &[&str]); 10] = [
         ("price", &["price", "cost", "affordable", "value"]),
-        ("nutrition", &["nutrition", "nutrient", "protein", "ingredient"]),
-        ("convenience", &["convenient", "easy", "quick", "ready", "simple"]),
+        (
+            "nutrition",
+            &["nutrition", "nutrient", "protein", "ingredient"],
+        ),
+        (
+            "convenience",
+            &["convenient", "easy", "quick", "ready", "simple"],
+        ),
         ("trust", &["trusted", "vet", "quality", "safe", "certified"]),
-        ("health", &["digest", "energy", "coat", "health", "wellness"]),
-        ("subscription", &["subscription", "subscribe", "monthly", "delivery"]),
+        (
+            "health",
+            &["digest", "energy", "coat", "health", "wellness"],
+        ),
+        (
+            "subscription",
+            &["subscription", "subscribe", "monthly", "delivery"],
+        ),
         ("raw", &["raw", "freeze-dried", "freeze dried", "fresh"]),
         ("reviews", &["review", "rating", "testimonial", "feedback"]),
         ("natural", &["natural", "clean", "whole"]),
-        ("breed-specific", &["puppy", "senior", "small breed", "large breed"]),
+        (
+            "breed-specific",
+            &["puppy", "senior", "small breed", "large breed"],
+        ),
     ];
 
     let mut counts = HashMap::new();
     for (label, terms) in keywords {
-        let c = terms.iter().map(|t| lowered.matches(t).count()).sum::<usize>();
+        let c = terms
+            .iter()
+            .map(|t| lowered.matches(t).count())
+            .sum::<usize>();
         if c > 0 {
             counts.insert(label.to_string(), c);
         }
@@ -268,18 +300,36 @@ fn extract_recurring_phrases(text: &str, min_count: usize) -> Vec<RecurringPhras
     phrases
 }
 
-fn build_signals(sources: &[SearchSource], keyword_frequency: &HashMap<String, usize>) -> Vec<CompetitiveSignal> {
+fn build_signals(
+    sources: &[SearchSource],
+    keyword_frequency: &HashMap<String, usize>,
+) -> Vec<CompetitiveSignal> {
     let signal_terms: [(&str, &[&str]); 10] = [
         ("price", &["price", "cost", "affordable", "value"]),
-        ("nutrition", &["nutrition", "nutrient", "protein", "ingredient"]),
-        ("convenience", &["convenient", "easy", "quick", "ready", "simple"]),
+        (
+            "nutrition",
+            &["nutrition", "nutrient", "protein", "ingredient"],
+        ),
+        (
+            "convenience",
+            &["convenient", "easy", "quick", "ready", "simple"],
+        ),
         ("trust", &["trusted", "vet", "quality", "safe", "certified"]),
-        ("health", &["digest", "energy", "coat", "health", "wellness"]),
-        ("subscription", &["subscription", "subscribe", "monthly", "delivery"]),
+        (
+            "health",
+            &["digest", "energy", "coat", "health", "wellness"],
+        ),
+        (
+            "subscription",
+            &["subscription", "subscribe", "monthly", "delivery"],
+        ),
         ("raw", &["raw", "freeze-dried", "freeze dried", "fresh"]),
         ("reviews", &["review", "rating", "testimonial", "feedback"]),
         ("natural", &["natural", "clean", "whole"]),
-        ("breed-specific", &["puppy", "senior", "small breed", "large breed"]),
+        (
+            "breed-specific",
+            &["puppy", "senior", "small breed", "large breed"],
+        ),
     ];
 
     let mut signals = Vec::new();
@@ -294,7 +344,11 @@ fn build_signals(sources: &[SearchSource], keyword_frequency: &HashMap<String, u
         let mut evidence_snippets = Vec::new();
 
         for src in sources {
-            let lowered = format!("{} {}", src.title.to_lowercase(), src.snippet.to_lowercase());
+            let lowered = format!(
+                "{} {}",
+                src.title.to_lowercase(),
+                src.snippet.to_lowercase()
+            );
             if terms.iter().any(|t| lowered.contains(t)) {
                 evidence_urls.push(src.url.clone());
                 if !src.snippet.trim().is_empty() {
@@ -345,7 +399,8 @@ fn derive_inferred_notes(
 
     if notes.is_empty() {
         notes.push(
-            "Inferred: no dominant repeated narrative emerged from current sampled sources.".to_string(),
+            "Inferred: no dominant repeated narrative emerged from current sampled sources."
+                .to_string(),
         );
     }
 

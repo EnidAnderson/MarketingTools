@@ -1,7 +1,7 @@
 // rustBotNetwork/app_core/src/data_models/analytics.rs
 // provenance: decision_id=DEC-0003; change_request_id=CR-WHITE-0016; change_request_id=CR-WHITE-0017
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // --- Google Ads API Response Structures (Raw Data) ---
 
@@ -18,7 +18,7 @@ pub struct AdGroupResource {
     pub resourceName: String,
     pub id: String,
     pub name: String,
-    pub status: String, // e.g., "ENABLED", "PAUSED"
+    pub status: String,               // e.g., "ENABLED", "PAUSED"
     pub campaignResourceName: String, // Reference to campaign resource name
 }
 
@@ -35,7 +35,7 @@ pub struct AdGroupCriterionResource {
     pub status: String,
     #[serde(default)] // Keep default for optional keyword field
     pub keyword: Option<KeywordData>, // Actual keyword text and match type
-    pub qualityScore: Option<u32>, // Quality Score is often here
+    pub qualityScore: Option<u32>,   // Quality Score is often here
     pub adGroupResourceName: String, // Reference to ad group resource name
 }
 
@@ -54,15 +54,15 @@ pub struct MetricsData {
     pub conversionsValue: f64,
     pub ctr: f64, // Click-through rate
     pub averageCpc: f64, // Average Cost-per-click
-    // Add other relevant metrics as needed from Google Ads API documentation
-    // e.g., view_through_conversions, all_conversions, etc.
+                  // Add other relevant metrics as needed from Google Ads API documentation
+                  // e.g., view_through_conversions, all_conversions, etc.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SegmentsData {
     pub date: Option<String>, // YYYY-MM-DD
     pub device: Option<String>, // e.g., "MOBILE", "DESKTOP"
-    // Add other relevant segments as needed
+                              // Add other relevant segments as needed
 }
 
 /// Represents a single row from a Google Ads API report query.
@@ -87,10 +87,10 @@ pub struct ReportMetrics {
     pub cost: f64, // In account currency, e.g., USD
     pub conversions: f64,
     pub conversions_value: f64, // Total value of all conversions
-    pub ctr: f64, // Click-through rate (Clicks / Impressions)
-    pub cpc: f64, // Cost per click (Cost / Clicks)
-    pub cpa: f64, // Cost per acquisition (Cost / Conversions)
-    pub roas: f64, // Return on ad spend (Conversions Value / Cost)
+    pub ctr: f64,               // Click-through rate (Clicks / Impressions)
+    pub cpc: f64,               // Cost per click (Cost / Clicks)
+    pub cpa: f64,               // Cost per acquisition (Cost / Conversions)
+    pub roas: f64,              // Return on ad spend (Conversions Value / Cost)
 }
 
 impl Default for ReportMetrics {
@@ -191,6 +191,12 @@ pub struct SourceProvenance {
     pub source_system: String,
     pub collected_at_utc: String,
     pub freshness_minutes: u32,
+    #[serde(default)]
+    pub validated_contract_version: Option<String>,
+    #[serde(default)]
+    pub rejected_rows_count: u32,
+    #[serde(default)]
+    pub cleaning_note_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

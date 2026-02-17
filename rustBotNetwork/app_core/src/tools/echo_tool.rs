@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::error::Error;
 
-use super::tool_definition::{ParameterDefinition, Tool, ToolComplexity, ToolDefinition, ToolUIMetadata};
+use super::tool_definition::{
+    ParameterDefinition, Tool, ToolComplexity, ToolDefinition, ToolUIMetadata,
+};
 
 pub struct EchoTool;
 

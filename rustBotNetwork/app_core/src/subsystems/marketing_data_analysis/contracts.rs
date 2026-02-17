@@ -245,6 +245,20 @@ pub struct ArtifactPersistenceRefV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Persisted ingest cleaning note for audit and gate evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct IngestCleaningNoteV1 {
+    pub source_system: String,
+    pub rule_id: String,
+    pub severity: String,
+    pub affected_field: String,
+    pub raw_value: String,
+    pub clean_value: String,
+    pub message: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Versioned artifact envelope returned by the orchestrator.
 /// invariants:
 ///   - `schema_version` is explicit at root.
@@ -259,6 +273,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub inferred_guidance: Vec<GuidanceItem>,
     pub uncertainty_notes: Vec<String>,
     pub provenance: Vec<SourceProvenance>,
+    #[serde(default)]
+    pub ingest_cleaning_notes: Vec<IngestCleaningNoteV1>,
     pub validation: AnalyticsValidationReportV1,
     #[serde(default)]
     pub quality_controls: AnalyticsQualityControlsV1,

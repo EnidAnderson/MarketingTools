@@ -171,11 +171,9 @@ mod tests {
         };
         let result = validate_budget_envelope(&budget);
         assert!(!result.ok);
-        assert!(
-            result
-                .errors
-                .iter()
-                .any(|e| e.contains("per_run_cap_usd must be > 0"))
-        );
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("per_run_cap_usd must be > 0")));
     }
 }

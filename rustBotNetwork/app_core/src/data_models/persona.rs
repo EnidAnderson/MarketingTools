@@ -1,6 +1,6 @@
 // rustBotNetwork/app_core/src/data_models/persona.rs
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Persona {

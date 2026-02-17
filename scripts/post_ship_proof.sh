@@ -17,6 +17,13 @@ echo "status_porcelain=$(git status --porcelain | tr '\n' ';' | sed 's/;*$//')"
 
 if remote_line="$(git ls-remote --heads origin main | head -n 1)"; then
   echo "remote_main=${remote_line}"
+  remote_hash="$(awk '{print $1}' <<<"$remote_line")"
+  local_hash="$(git rev-parse HEAD)"
+  clean="false"
+  if [[ -z "$(git status --porcelain)" ]]; then
+    clean="true"
+  fi
+  echo "POST_SHIP_PROOF_OK local=${local_hash} remote=${remote_hash} branch=$(git branch --show-current) clean=${clean}"
 else
   echo "remote_main=UNREACHABLE"
   echo "POST_SHIP_PROOF_WARN commit created locally but not pushed"

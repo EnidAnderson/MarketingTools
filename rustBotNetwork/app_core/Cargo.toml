@@ -30,6 +30,7 @@ tempfile = "3.8" # For creating temporary files
 validator = { version = "0.18", features = ["derive"] }
 thiserror = "1.0"
 rust_decimal = { version = "1.36", features = ["serde"] }
+chrono-tz = "0.10"
 
 
 

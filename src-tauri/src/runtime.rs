@@ -6,8 +6,8 @@ use app_core::subsystems::marketing_data_analysis::{
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs;
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -139,7 +139,8 @@ impl JobManager {
                 return;
             };
 
-            match tool.execute(input).await { // Changed .run to .execute
+            match tool.execute(input).await {
+                // Changed .run to .execute
                 Ok(output) => {
                     if manager.is_canceled(&spawned_job_id) {
                         manager.update_canceled(&spawned_job_id, "Job canceled during execution");
@@ -227,7 +228,8 @@ impl JobManager {
             match execute_pipeline(definition).await {
                 Ok(result) => {
                     if manager.is_canceled(&spawned_job_id) {
-                        manager.update_canceled(&spawned_job_id, "Pipeline canceled during execution");
+                        manager
+                            .update_canceled(&spawned_job_id, "Pipeline canceled during execution");
                         manager.assert_snapshot_invariant(&spawned_job_id);
                         manager.emit_failed(&app_handle, &spawned_job_id);
                     } else {
@@ -406,7 +408,13 @@ impl JobManager {
                     };
 
                     artifact.historical_analysis = build_historical_analysis(&artifact, &history);
-                    apply_confidence_calibration(&mut artifact.inferred_guidance, &artifact.historical_analysis.confidence_calibration.recommended_confidence_cap);
+                    apply_confidence_calibration(
+                        &mut artifact.inferred_guidance,
+                        &artifact
+                            .historical_analysis
+                            .confidence_calibration
+                            .recommended_confidence_cap,
+                    );
 
                     manager.update_stage(
                         &spawned_job_id,
@@ -763,10 +771,7 @@ mod tests {
         };
         assert!(validate_job_snapshot(&ok).is_ok());
 
-        let bad = JobSnapshot {
-            output: None,
-            ..ok
-        };
+        let bad = JobSnapshot { output: None, ..ok };
         assert!(validate_job_snapshot(&bad).is_err());
     }
 

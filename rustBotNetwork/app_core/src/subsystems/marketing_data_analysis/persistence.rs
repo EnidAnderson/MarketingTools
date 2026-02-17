@@ -174,6 +174,7 @@ mod tests {
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["simulated".to_string()],
             provenance: Vec::new(),
+            ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
                 checks: Vec::new(),

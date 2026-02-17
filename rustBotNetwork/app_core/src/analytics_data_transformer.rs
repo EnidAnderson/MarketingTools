@@ -1,7 +1,9 @@
 // rustBotNetwork/app_core/src/analytics_data_transformer.rs
 
 use crate::data_models::analytics::{AnalyticsReport, ReportMetrics};
-use crate::data_models::dashboard::{ChartDataset, ChartData, WidgetConfig, WidgetRenderData, WidgetType};
+use crate::data_models::dashboard::{
+    ChartData, ChartDataset, WidgetConfig, WidgetRenderData, WidgetType,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -42,16 +44,28 @@ fn prepare_chart_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
     // Determine data source
     let (data_entries, _dimension_key) = match widget_config.data_source.as_str() {
         "campaign_data" => (
-            report.campaign_data.iter().map(|c| (c.campaign_name.clone(), c.metrics.clone())).collect::<Vec<_>>(),
-            "campaign_name"
+            report
+                .campaign_data
+                .iter()
+                .map(|c| (c.campaign_name.clone(), c.metrics.clone()))
+                .collect::<Vec<_>>(),
+            "campaign_name",
         ),
         "ad_group_data" => (
-            report.ad_group_data.iter().map(|ag| (ag.ad_group_name.clone(), ag.metrics.clone())).collect::<Vec<_>>(),
-            "ad_group_name"
+            report
+                .ad_group_data
+                .iter()
+                .map(|ag| (ag.ad_group_name.clone(), ag.metrics.clone()))
+                .collect::<Vec<_>>(),
+            "ad_group_name",
         ),
         "keyword_data" => (
-            report.keyword_data.iter().map(|kw| (kw.keyword_text.clone(), kw.metrics.clone())).collect::<Vec<_>>(),
-            "keyword_text"
+            report
+                .keyword_data
+                .iter()
+                .map(|kw| (kw.keyword_text.clone(), kw.metrics.clone()))
+                .collect::<Vec<_>>(),
+            "keyword_text",
         ),
         _ => (Vec::new(), ""), // total_metrics handled separately if needed for a single point chart
     };
@@ -63,7 +77,9 @@ fn prepare_chart_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
             for (name, metrics) in data_entries.iter() {
                 // This assumes name is the dimension value
                 *aggregated_data.entry(name.clone()).or_default() = aggregate_metrics(
-                    aggregated_data.get(name).unwrap_or(&ReportMetrics::default()),
+                    aggregated_data
+                        .get(name)
+                        .unwrap_or(&ReportMetrics::default()),
                     metrics,
                 );
             }
@@ -81,26 +97,32 @@ fn prepare_chart_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
             let metric_a = get_metric_value(&a.1, sort_by_metric);
             let metric_b = get_metric_value(&b.1, sort_by_metric);
             if widget_config.sort_order.as_deref() == Some("asc") {
-                metric_a.partial_cmp(&metric_b).unwrap_or(std::cmp::Ordering::Equal)
+                metric_a
+                    .partial_cmp(&metric_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             } else {
-                metric_b.partial_cmp(&metric_a).unwrap_or(std::cmp::Ordering::Equal)
+                metric_b
+                    .partial_cmp(&metric_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
         });
     }
 
     let limit_count = widget_config.limit.unwrap_or(sorted_entries.len() as u32) as usize;
-    let limited_entries: Vec<(String, ReportMetrics)> = sorted_entries
-        .into_iter()
-        .take(limit_count)
-        .collect();
+    let limited_entries: Vec<(String, ReportMetrics)> =
+        sorted_entries.into_iter().take(limit_count).collect();
 
     // Prepare labels and datasets
-    labels = limited_entries.iter().map(|(name, _metrics): &(String, ReportMetrics)| name.clone()).collect();
+    labels = limited_entries
+        .iter()
+        .map(|(name, _metrics): &(String, ReportMetrics)| name.clone())
+        .collect();
 
     for metric_name in &widget_config.metrics {
-        let data: Vec<f64> = limited_entries.iter().map(|(_, metrics)| {
-            get_metric_value(metrics, metric_name)
-        }).collect();
+        let data: Vec<f64> = limited_entries
+            .iter()
+            .map(|(_, metrics)| get_metric_value(metrics, metric_name))
+            .collect();
 
         datasets.push(ChartDataset {
             label: metric_name.clone(),
@@ -112,52 +134,74 @@ fn prepare_chart_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
     ChartData { labels, datasets }
 }
 
-fn prepare_table_data(report: &AnalyticsReport, widget_config: &WidgetConfig) -> Vec<HashMap<String, Value>> {
+fn prepare_table_data(
+    report: &AnalyticsReport,
+    widget_config: &WidgetConfig,
+) -> Vec<HashMap<String, Value>> {
     // Determine data source
     let (data_entries, _) = match widget_config.data_source.as_str() {
         "campaign_data" => (
-            report.campaign_data.iter().map(|c| {
-                let mut map = HashMap::new();
-                map.insert("date".to_string(), json!(c.date.clone()));
-                map.insert("campaign_id".to_string(), json!(c.campaign_id.clone()));
-                map.insert("campaign_name".to_string(), json!(c.campaign_name.clone()));
-                map.insert("campaign_status".to_string(), json!(c.campaign_status.clone()));
-                map.extend(metrics_to_json_map(&c.metrics));
-                map
-            }).collect::<Vec<_>>(), ""
+            report
+                .campaign_data
+                .iter()
+                .map(|c| {
+                    let mut map = HashMap::new();
+                    map.insert("date".to_string(), json!(c.date.clone()));
+                    map.insert("campaign_id".to_string(), json!(c.campaign_id.clone()));
+                    map.insert("campaign_name".to_string(), json!(c.campaign_name.clone()));
+                    map.insert(
+                        "campaign_status".to_string(),
+                        json!(c.campaign_status.clone()),
+                    );
+                    map.extend(metrics_to_json_map(&c.metrics));
+                    map
+                })
+                .collect::<Vec<_>>(),
+            "",
         ),
         "ad_group_data" => (
-            report.ad_group_data.iter().map(|ag| {
-                let mut map = HashMap::new();
-                map.insert("date".to_string(), json!(ag.date.clone()));
-                map.insert("campaign_id".to_string(), json!(ag.campaign_id.clone()));
-                map.insert("campaign_name".to_string(), json!(ag.campaign_name.clone()));
-                map.insert("ad_group_id".to_string(), json!(ag.ad_group_id.clone()));
-                map.insert("ad_group_name".to_string(), json!(ag.ad_group_name.clone()));
-                map.insert("ad_group_status".to_string(), json!(ag.ad_group_status.clone()));
-                map.extend(metrics_to_json_map(&ag.metrics));
-                map
-            }).collect::<Vec<_>>(), ""
+            report
+                .ad_group_data
+                .iter()
+                .map(|ag| {
+                    let mut map = HashMap::new();
+                    map.insert("date".to_string(), json!(ag.date.clone()));
+                    map.insert("campaign_id".to_string(), json!(ag.campaign_id.clone()));
+                    map.insert("campaign_name".to_string(), json!(ag.campaign_name.clone()));
+                    map.insert("ad_group_id".to_string(), json!(ag.ad_group_id.clone()));
+                    map.insert("ad_group_name".to_string(), json!(ag.ad_group_name.clone()));
+                    map.insert(
+                        "ad_group_status".to_string(),
+                        json!(ag.ad_group_status.clone()),
+                    );
+                    map.extend(metrics_to_json_map(&ag.metrics));
+                    map
+                })
+                .collect::<Vec<_>>(),
+            "",
         ),
         "keyword_data" => (
-            report.keyword_data.iter().map(|kw| {
-                let mut map = HashMap::new();
-                map.insert("date".to_string(), json!(kw.date.clone()));
-                map.insert("campaign_id".to_string(), json!(kw.campaign_id.clone()));
-                map.insert("campaign_name".to_string(), json!(kw.campaign_name.clone()));
-                map.insert("ad_group_id".to_string(), json!(kw.ad_group_id.clone()));
-                map.insert("ad_group_name".to_string(), json!(kw.ad_group_name.clone()));
-                map.insert("keyword_id".to_string(), json!(kw.keyword_id.clone()));
-                map.insert("keyword_text".to_string(), json!(kw.keyword_text.clone()));
-                map.insert("match_type".to_string(), json!(kw.match_type.clone()));
-                map.insert("quality_score".to_string(), json!(kw.quality_score));
-                map.extend(metrics_to_json_map(&kw.metrics));
-                map
-            }).collect::<Vec<_>>(), ""
+            report
+                .keyword_data
+                .iter()
+                .map(|kw| {
+                    let mut map = HashMap::new();
+                    map.insert("date".to_string(), json!(kw.date.clone()));
+                    map.insert("campaign_id".to_string(), json!(kw.campaign_id.clone()));
+                    map.insert("campaign_name".to_string(), json!(kw.campaign_name.clone()));
+                    map.insert("ad_group_id".to_string(), json!(kw.ad_group_id.clone()));
+                    map.insert("ad_group_name".to_string(), json!(kw.ad_group_name.clone()));
+                    map.insert("keyword_id".to_string(), json!(kw.keyword_id.clone()));
+                    map.insert("keyword_text".to_string(), json!(kw.keyword_text.clone()));
+                    map.insert("match_type".to_string(), json!(kw.match_type.clone()));
+                    map.insert("quality_score".to_string(), json!(kw.quality_score));
+                    map.extend(metrics_to_json_map(&kw.metrics));
+                    map
+                })
+                .collect::<Vec<_>>(),
+            "",
         ),
-        "total_metrics" => (
-            vec![metrics_to_json_map(&report.total_metrics)], ""
-        ),
+        "total_metrics" => (vec![metrics_to_json_map(&report.total_metrics)], ""),
         _ => (Vec::new(), ""),
     };
 
@@ -167,12 +211,22 @@ fn prepare_table_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
     let mut sortable_rows = data_entries;
     if let Some(sort_by_metric) = &widget_config.sort_by {
         sortable_rows.sort_by(|a, b| {
-            let metric_a = a.get(sort_by_metric).and_then(Value::as_f64).unwrap_or_default();
-            let metric_b = b.get(sort_by_metric).and_then(Value::as_f64).unwrap_or_default();
+            let metric_a = a
+                .get(sort_by_metric)
+                .and_then(Value::as_f64)
+                .unwrap_or_default();
+            let metric_b = b
+                .get(sort_by_metric)
+                .and_then(Value::as_f64)
+                .unwrap_or_default();
             if widget_config.sort_order.as_deref() == Some("asc") {
-                metric_a.partial_cmp(&metric_b).unwrap_or(std::cmp::Ordering::Equal)
+                metric_a
+                    .partial_cmp(&metric_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             } else {
-                metric_b.partial_cmp(&metric_a).unwrap_or(std::cmp::Ordering::Equal)
+                metric_b
+                    .partial_cmp(&metric_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }
         });
     }
@@ -182,9 +236,12 @@ fn prepare_table_data(report: &AnalyticsReport, widget_config: &WidgetConfig) ->
     sortable_rows.into_iter().take(limit_count).collect()
 }
 
-fn prepare_summary_data(report: &AnalyticsReport, widget_config: &WidgetConfig) -> HashMap<String, Value> {
+fn prepare_summary_data(
+    report: &AnalyticsReport,
+    widget_config: &WidgetConfig,
+) -> HashMap<String, Value> {
     let mut summary_map = HashMap::new();
-    
+
     // For summary, we primarily focus on total_metrics
     let metrics = &report.total_metrics;
 
@@ -227,7 +284,10 @@ fn metrics_to_json_map(metrics: &ReportMetrics) -> HashMap<String, Value> {
     map.insert("clicks".to_string(), json!(metrics.clicks));
     map.insert("cost".to_string(), json!(metrics.cost));
     map.insert("conversions".to_string(), json!(metrics.conversions));
-    map.insert("conversions_value".to_string(), json!(metrics.conversions_value));
+    map.insert(
+        "conversions_value".to_string(),
+        json!(metrics.conversions_value),
+    );
     map.insert("ctr".to_string(), json!(metrics.ctr));
     map.insert("cpc".to_string(), json!(metrics.cpc));
     map.insert("cpa".to_string(), json!(metrics.cpa));
@@ -287,16 +347,37 @@ mod tests {
 
     fn create_mock_analytics_report() -> AnalyticsReport {
         let metrics1 = ReportMetrics {
-            impressions: 1000, clicks: 100, cost: 50.0, conversions: 5.0, conversions_value: 250.0,
-            ctr: 10.0, cpc: 0.5, cpa: 10.0, roas: 5.0,
+            impressions: 1000,
+            clicks: 100,
+            cost: 50.0,
+            conversions: 5.0,
+            conversions_value: 250.0,
+            ctr: 10.0,
+            cpc: 0.5,
+            cpa: 10.0,
+            roas: 5.0,
         };
         let metrics2 = ReportMetrics {
-            impressions: 2000, clicks: 150, cost: 75.0, conversions: 10.0, conversions_value: 500.0,
-            ctr: 7.5, cpc: 0.5, cpa: 7.5, roas: 6.66,
+            impressions: 2000,
+            clicks: 150,
+            cost: 75.0,
+            conversions: 10.0,
+            conversions_value: 500.0,
+            ctr: 7.5,
+            cpc: 0.5,
+            cpa: 7.5,
+            roas: 6.66,
         };
         let metrics3 = ReportMetrics {
-            impressions: 500, clicks: 20, cost: 20.0, conversions: 1.0, conversions_value: 100.0,
-            ctr: 4.0, cpc: 1.0, cpa: 20.0, roas: 5.0,
+            impressions: 500,
+            clicks: 20,
+            cost: 20.0,
+            conversions: 1.0,
+            conversions_value: 100.0,
+            ctr: 4.0,
+            cpc: 1.0,
+            cpa: 20.0,
+            roas: 5.0,
         };
 
         let campaign1 = CampaignReportRow {
@@ -325,12 +406,19 @@ mod tests {
             report_name: "Mock Report".to_string(),
             date_range: "2023-01-01 to 2023-01-01".to_string(),
             total_metrics: ReportMetrics {
-                impressions: 3500, clicks: 270, cost: 145.0, conversions: 16.0, conversions_value: 850.0,
-                ctr: (270.0/3500.0)*100.0, cpc: 145.0/270.0, cpa: 145.0/16.0, roas: 850.0/145.0,
+                impressions: 3500,
+                clicks: 270,
+                cost: 145.0,
+                conversions: 16.0,
+                conversions_value: 850.0,
+                ctr: (270.0 / 3500.0) * 100.0,
+                cpc: 145.0 / 270.0,
+                cpa: 145.0 / 16.0,
+                roas: 850.0 / 145.0,
             },
             campaign_data: vec![campaign1, campaign2, campaign3],
             ad_group_data: Vec::new(), // Not populating for simplicity in these tests
-            keyword_data: Vec::new(), // Not populating for simplicity in these tests
+            keyword_data: Vec::new(),  // Not populating for simplicity in these tests
         }
     }
 
@@ -355,7 +443,7 @@ mod tests {
         assert_eq!(render_data.widget_id, "test_bar_chart");
         assert!(render_data.chart_data.is_some());
         let chart_data = render_data.chart_data.unwrap();
-        
+
         // Expect Campaign B (150 clicks), Campaign A (100 clicks) due to limit 2 and sort desc
         assert_eq!(chart_data.labels, vec!["Campaign B", "Campaign A"]);
         assert_eq!(chart_data.datasets.len(), 1);
@@ -373,15 +461,25 @@ mod tests {
             title: "Overall Summary".to_string(),
             data_source: "total_metrics".to_string(),
             metrics: vec!["impressions".to_string(), "roas".to_string()],
-            dimension: None, limit: None, sort_by: None, sort_order: None, chart_options: None,
+            dimension: None,
+            limit: None,
+            sort_by: None,
+            sort_order: None,
+            chart_options: None,
         };
 
         let render_data = transform_data_for_widget(&report, &widget_config);
 
         assert!(render_data.summary_data.is_some());
         let summary_data = render_data.summary_data.unwrap();
-        assert_relative_eq!(summary_data["impressions"].as_f64().unwrap(), report.total_metrics.impressions as f64);
-        assert_relative_eq!(summary_data["roas"].as_f64().unwrap(), report.total_metrics.roas);
+        assert_relative_eq!(
+            summary_data["impressions"].as_f64().unwrap(),
+            report.total_metrics.impressions as f64
+        );
+        assert_relative_eq!(
+            summary_data["roas"].as_f64().unwrap(),
+            report.total_metrics.roas
+        );
     }
 
     #[test]
@@ -405,7 +503,7 @@ mod tests {
         assert!(render_data.table_data.is_some());
         let table_data = render_data.table_data.unwrap();
         assert_eq!(table_data.len(), 2);
-        
+
         // Expect Campaign C (20.0 cost), Campaign A (50.0 cost) due to limit 2 and sort asc
         assert_eq!(table_data[0]["campaign_name"], "Campaign C");
         assert_eq!(table_data[1]["campaign_name"], "Campaign A");
@@ -422,7 +520,10 @@ mod tests {
             data_source: "campaign_data".to_string(),
             metrics: vec!["clicks".to_string()],
             dimension: Some("campaign_name".to_string()),
-            limit: None, sort_by: None, sort_order: None, chart_options: None,
+            limit: None,
+            sort_by: None,
+            sort_order: None,
+            chart_options: None,
         };
 
         let render_data = transform_data_for_widget(&empty_report, &widget_config);

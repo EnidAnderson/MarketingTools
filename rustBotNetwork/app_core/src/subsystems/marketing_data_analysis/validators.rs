@@ -128,6 +128,16 @@ pub fn validate_mock_analytics_artifact_v1(
         !artifact.provenance.is_empty(),
         "artifact must include at least one provenance record",
     ));
+    checks.push(check(
+        "provenance_contract_version_present",
+        artifact.provenance.iter().all(|item| {
+            item.validated_contract_version
+                .as_ref()
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+        }),
+        "every provenance row must include validated_contract_version",
+    ));
 
     checks.push(check(
         "uncertainty_notes_present",
@@ -159,6 +169,15 @@ pub fn validate_mock_analytics_artifact_v1(
         "quality_controls_consistency",
         artifact.quality_controls.is_healthy == all_quality_checks_passed,
         "quality control health should match quality check pass/fail aggregate",
+    ));
+    let has_blocking_cleaning = artifact
+        .ingest_cleaning_notes
+        .iter()
+        .any(|note| note.severity.eq_ignore_ascii_case("block"));
+    checks.push(check(
+        "ingest_cleaning_blocking_count",
+        !has_blocking_cleaning,
+        "ingest cleaning notes cannot contain blocking severity in publishable artifacts",
     ));
 
     let ratios_valid = [
@@ -259,7 +278,11 @@ mod tests {
                 source_system: "mock".to_string(),
                 collected_at_utc: "synthetic".to_string(),
                 freshness_minutes: 0,
+                validated_contract_version: Some("ingest_contract.v1".to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: 0,
             }],
+            ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
                 checks: Vec::new(),

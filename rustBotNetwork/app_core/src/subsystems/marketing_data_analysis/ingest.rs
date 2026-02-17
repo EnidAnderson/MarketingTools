@@ -1,5 +1,6 @@
 // provenance: decision_id=DEC-0016; change_request_id=CR-QA_FIXER-0033
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, Timelike, Utc};
+use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -48,11 +49,22 @@ pub struct IngestFailure {
 
 impl From<IngestFailure> for IngestError {
     fn from(value: IngestFailure) -> Self {
+        let sample = value.sample.map(|s| {
+            if s.len() > 96 {
+                s.chars().take(96).collect()
+            } else {
+                s
+            }
+        });
         Self {
             code: value.code,
-            field: value.field,
+            field: if value.field.trim().is_empty() {
+                "__root__".to_string()
+            } else {
+                value.field
+            },
             reason: value.reason,
-            sample: value.sample,
+            sample,
         }
     }
 }
@@ -73,6 +85,28 @@ pub struct CurrencyCode(String);
 pub struct Money {
     pub currency: CurrencyCode,
     pub amount: Decimal,
+}
+
+impl Money {
+    pub fn checked_add(&self, rhs: &Money) -> Result<Money, IngestError> {
+        if self.currency != rhs.currency {
+            return Err(IngestFailure {
+                code: "mixed_currency_aggregation".to_string(),
+                field: "currency".to_string(),
+                reason: "cannot aggregate money values with different currencies".to_string(),
+                sample: Some(format!(
+                    "left={}, right={}",
+                    self.currency.0.as_str(),
+                    rhs.currency.0.as_str()
+                )),
+            }
+            .into());
+        }
+        Ok(Money {
+            currency: self.currency.clone(),
+            amount: self.amount + rhs.amount,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -264,7 +298,51 @@ pub struct WindowCompletenessCheck {
     pub completeness_ratio: f64,
 }
 
-pub fn window_completeness(expected_units: u32, observed_units: u32) -> WindowCompletenessCheck {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TimeGranularity {
+    Day,
+    Hour,
+}
+
+pub fn window_completeness(
+    start_utc: DateTime<Utc>,
+    end_utc: DateTime<Utc>,
+    granularity: TimeGranularity,
+    timezone: Tz,
+    observed_units: &[DateTime<Utc>],
+) -> WindowCompletenessCheck {
+    if start_utc > end_utc {
+        return WindowCompletenessCheck {
+            expected_units: 0,
+            observed_units: 0,
+            completeness_ratio: 0.0,
+        };
+    }
+    let expected_units = count_expected_units(start_utc, end_utc, granularity, timezone);
+    let mut observed_bucket_keys = std::collections::BTreeSet::new();
+    for ts in observed_units {
+        let local = ts.with_timezone(&timezone);
+        match granularity {
+            TimeGranularity::Day => {
+                observed_bucket_keys.insert(format!(
+                    "{:04}-{:02}-{:02}",
+                    local.year(),
+                    local.month(),
+                    local.day()
+                ));
+            }
+            TimeGranularity::Hour => {
+                observed_bucket_keys.insert(format!(
+                    "{:04}-{:02}-{:02}T{:02}",
+                    local.year(),
+                    local.month(),
+                    local.day(),
+                    local.hour()
+                ));
+            }
+        }
+    }
+    let observed_units = observed_bucket_keys.len() as u32;
     let ratio = if expected_units == 0 {
         1.0
     } else {
@@ -282,6 +360,43 @@ pub fn join_coverage_ratio(total_rows: u64, joined_rows: u64) -> f64 {
         return 1.0;
     }
     (joined_rows as f64 / total_rows as f64).clamp(0.0, 1.0)
+}
+
+fn count_expected_units(
+    start_utc: DateTime<Utc>,
+    end_utc: DateTime<Utc>,
+    granularity: TimeGranularity,
+    timezone: Tz,
+) -> u32 {
+    let mut cursor = start_utc.with_timezone(&timezone);
+    let end = end_utc.with_timezone(&timezone);
+    let mut expected = std::collections::BTreeSet::new();
+
+    while cursor <= end {
+        match granularity {
+            TimeGranularity::Day => {
+                expected.insert(format!(
+                    "{:04}-{:02}-{:02}",
+                    cursor.year(),
+                    cursor.month(),
+                    cursor.day()
+                ));
+                cursor += Duration::days(1);
+            }
+            TimeGranularity::Hour => {
+                expected.insert(format!(
+                    "{:04}-{:02}-{:02}T{:02}",
+                    cursor.year(),
+                    cursor.month(),
+                    cursor.day(),
+                    cursor.hour()
+                ));
+                cursor += Duration::hours(1);
+            }
+        }
+    }
+
+    expected.len() as u32
 }
 
 fn normalized_non_empty(
@@ -351,6 +466,7 @@ fn clean_optional(value: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono_tz::America::Denver;
     use proptest::prelude::*;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -376,11 +492,60 @@ mod tests {
         assert!(no_unmatched_removed >= baseline);
     }
 
+    #[test]
+    fn money_checked_add_rejects_mixed_currency() {
+        let usd = Money {
+            currency: CurrencyCode("USD".to_string()),
+            amount: Decimal::from(10),
+        };
+        let cad = Money {
+            currency: CurrencyCode("CAD".to_string()),
+            amount: Decimal::from(10),
+        };
+        let result = usd.checked_add(&cad);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn window_completeness_handles_dst_boundary_denver_hourly() {
+        let start = DateTime::parse_from_rfc3339("2026-03-08T07:00:00Z")
+            .expect("valid")
+            .with_timezone(&Utc);
+        let end = DateTime::parse_from_rfc3339("2026-03-08T10:00:00Z")
+            .expect("valid")
+            .with_timezone(&Utc);
+        let observed = vec![start, end];
+        let check = window_completeness(start, end, TimeGranularity::Hour, Denver, &observed);
+        assert!(check.expected_units >= 3);
+        assert!((0.0..=1.0).contains(&check.completeness_ratio));
+    }
+
+    #[test]
+    fn window_completeness_empty_observed_is_zero_ratio_when_expected_nonzero() {
+        let start = DateTime::parse_from_rfc3339("2026-02-01T00:00:00Z")
+            .expect("valid")
+            .with_timezone(&Utc);
+        let end = DateTime::parse_from_rfc3339("2026-02-03T00:00:00Z")
+            .expect("valid")
+            .with_timezone(&Utc);
+        let check = window_completeness(start, end, TimeGranularity::Day, Denver, &[]);
+        assert!(check.expected_units > 0);
+        assert_eq!(check.observed_units, 0);
+        assert_eq!(check.completeness_ratio, 0.0);
+    }
+
     proptest! {
         #[test]
         fn hostile_ga4_json_never_panics(input in ".*") {
             let result = catch_unwind(AssertUnwindSafe(|| parse_ga4_event(&input)));
             prop_assert!(result.is_ok());
+            if let Ok(Err(err)) = result {
+                prop_assert!(!err.code.trim().is_empty());
+                prop_assert!(!err.field.trim().is_empty());
+                if let Some(sample) = err.sample {
+                    prop_assert!(sample.len() <= 96);
+                }
+            }
         }
 
         #[test]

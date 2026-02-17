@@ -168,6 +168,22 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
         });
     }
 
+    if !run.artifact.ingest_cleaning_notes.is_empty() {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "ingest-cleaning".to_string(),
+            priority: "medium".to_string(),
+            status: "review_required".to_string(),
+            title: "Input normalization applied".to_string(),
+            summary: format!(
+                "{} field-level normalizations were applied at ingest.",
+                run.artifact.ingest_cleaning_notes.len()
+            ),
+            recommended_action: "Review ingest cleaning audit notes before publishing operator packets."
+                .to_string(),
+            evidence_refs: vec!["ingest_cleaning_notes".to_string()],
+        });
+    }
+
     if cards.is_empty() {
         cards.push(DecisionFeedCardV1 {
             card_id: "green-status".to_string(),
@@ -245,6 +261,14 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }
     if data_quality.reconciliation_pass_ratio < 1.0 {
         warning_reasons.push("Reconciliation checks not fully passing.".to_string());
+    }
+    if run
+        .artifact
+        .ingest_cleaning_notes
+        .iter()
+        .any(|note| note.severity.eq_ignore_ascii_case("block"))
+    {
+        blocking_reasons.push("Blocking ingest cleaning notes present.".to_string());
     }
 
     let publish_ready = blocking_reasons.is_empty();
@@ -647,6 +671,7 @@ mod tests {
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["sim".to_string()],
             provenance: Vec::new(),
+            ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
                 checks: Vec::new(),
