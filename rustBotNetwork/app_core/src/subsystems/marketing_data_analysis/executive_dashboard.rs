@@ -299,6 +299,9 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     {
         blocking_reasons.push("Budget spend exceeded envelope.".to_string());
     }
+    if run.artifact.budget.daily_spent_after_micros > run.artifact.budget.hard_daily_cap_micros {
+        blocking_reasons.push("Daily hard budget cap exceeded.".to_string());
+    }
     if run
         .artifact
         .ingest_cleaning_notes

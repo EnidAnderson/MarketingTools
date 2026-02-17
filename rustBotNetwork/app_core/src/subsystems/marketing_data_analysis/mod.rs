@@ -26,8 +26,8 @@ pub use contracts::{
     ValidationCheck,
 };
 pub use budget::{
-    build_budget_plan, estimate_budget_upper_bound, BudgetCategory, BudgetEstimate, BudgetGuard,
-    BudgetPlan,
+    build_budget_plan, enforce_daily_hard_cap, estimate_budget_upper_bound, BudgetCategory,
+    BudgetEstimate, BudgetGuard, BudgetPlan, DailyHardCapStatus, HARD_DAILY_SPEND_CAP_MICROS,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use ingest::{

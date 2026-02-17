@@ -3,6 +3,11 @@ use super::contracts::{
     BudgetSummaryV1, MockAnalyticsRequestV1,
 };
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 const COST_PER_RETRIEVAL_UNIT_MICROS: u64 = 200;
 const COST_PER_ANALYSIS_UNIT_MICROS: u64 = 100;
@@ -12,6 +17,9 @@ const RETRIEVAL_UNITS_PER_DAY: u64 = 128;
 const ANALYSIS_UNITS_PER_DAY: u64 = 64;
 const LLM_IN_WITH_NARRATIVES: u64 = 600;
 const LLM_OUT_WITH_NARRATIVES: u64 = 380;
+pub const HARD_DAILY_SPEND_CAP_MICROS: u64 = 10_000_000;
+const DAILY_LEDGER_DEFAULT_PATH: &str = "data/analytics_runs/daily_spend_ledger_v1.json";
+static DAILY_LEDGER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Default)]
 pub struct BudgetLedger {
@@ -78,6 +86,19 @@ pub struct BudgetPlan {
     pub clipped: bool,
     pub sampled: bool,
     pub skipped_modules: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DailyHardCapStatus {
+    pub cap_micros: u64,
+    pub spent_before_micros: u64,
+    pub spent_after_micros: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct DailySpendLedgerV1 {
+    #[serde(default)]
+    by_date: BTreeMap<String, u64>,
 }
 
 impl BudgetGuard {
@@ -225,6 +246,7 @@ impl BudgetGuard {
     pub fn summary(
         self,
         estimated: &BudgetEstimate,
+        daily_status: DailyHardCapStatus,
         clipped: bool,
         sampled: bool,
         skipped_modules: Vec<String>,
@@ -258,6 +280,9 @@ impl BudgetGuard {
             actuals,
             remaining,
             estimated: estimated.as_actuals(),
+            hard_daily_cap_micros: daily_status.cap_micros,
+            daily_spent_before_micros: daily_status.spent_before_micros,
+            daily_spent_after_micros: daily_status.spent_after_micros,
             clipped,
             sampled,
             incomplete_output,
@@ -424,6 +449,116 @@ pub fn estimate_fits_envelope(estimate: &BudgetEstimate, envelope: &BudgetEnvelo
         && estimate.total_cost_micros <= envelope.max_total_cost_micros
 }
 
+pub fn enforce_daily_hard_cap(
+    run_cost_micros: u64,
+    run_day: NaiveDate,
+) -> Result<DailyHardCapStatus, AnalyticsError> {
+    let resolved = std::env::var("ANALYTICS_DAILY_BUDGET_LEDGER_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| default_daily_ledger_path());
+    enforce_daily_hard_cap_at_path(run_cost_micros, run_day, &resolved)
+}
+
+fn default_daily_ledger_path() -> PathBuf {
+    #[cfg(test)]
+    {
+        return std::env::temp_dir().join("nd_marketing_daily_spend_ledger_test.json");
+    }
+    #[cfg(not(test))]
+    {
+        PathBuf::from(DAILY_LEDGER_DEFAULT_PATH)
+    }
+}
+
+fn enforce_daily_hard_cap_at_path(
+    run_cost_micros: u64,
+    run_day: NaiveDate,
+    ledger_path: &Path,
+) -> Result<DailyHardCapStatus, AnalyticsError> {
+    let lock = DAILY_LEDGER_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock
+        .lock()
+        .map_err(|_| AnalyticsError::internal("daily_budget_lock_poisoned", "daily budget lock poisoned"))?;
+
+    let mut ledger = read_daily_ledger(ledger_path)?;
+    let key = run_day.format("%Y-%m-%d").to_string();
+    let spent_before = ledger.by_date.get(&key).copied().unwrap_or(0);
+    let spent_after = spent_before.saturating_add(run_cost_micros);
+    if spent_after > HARD_DAILY_SPEND_CAP_MICROS {
+        return Err(AnalyticsError::new(
+            "daily_budget_hard_cap_exceeded",
+            "daily hard cap of $10.00 reached; run blocked",
+            vec!["budget.hard_daily_cap".to_string()],
+            Some(serde_json::json!({
+                "day": key,
+                "cap_micros": HARD_DAILY_SPEND_CAP_MICROS,
+                "spent_before_micros": spent_before,
+                "attempted_additional_micros": run_cost_micros,
+                "would_be_spent_after_micros": spent_after
+            })),
+        ));
+    }
+
+    ledger.by_date.insert(key, spent_after);
+    write_daily_ledger(ledger_path, &ledger)?;
+    Ok(DailyHardCapStatus {
+        cap_micros: HARD_DAILY_SPEND_CAP_MICROS,
+        spent_before_micros: spent_before,
+        spent_after_micros: spent_after,
+    })
+}
+
+fn read_daily_ledger(path: &Path) -> Result<DailySpendLedgerV1, AnalyticsError> {
+    if !path.exists() {
+        return Ok(DailySpendLedgerV1::default());
+    }
+    let bytes = fs::read(path).map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_ledger_read_failed",
+            format!("failed to read daily budget ledger: {err}"),
+        )
+    })?;
+    serde_json::from_slice(&bytes).map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_ledger_parse_failed",
+            format!("failed to parse daily budget ledger: {err}"),
+        )
+    })
+}
+
+fn write_daily_ledger(path: &Path, ledger: &DailySpendLedgerV1) -> Result<(), AnalyticsError> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|err| {
+                AnalyticsError::internal(
+                    "daily_budget_ledger_parent_failed",
+                    format!("failed to create daily budget ledger directory: {err}"),
+                )
+            })?;
+        }
+    }
+    let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+    let payload = serde_json::to_vec_pretty(ledger).map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_ledger_serialize_failed",
+            format!("failed to serialize daily budget ledger: {err}"),
+        )
+    })?;
+    fs::write(&tmp_path, payload).map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_ledger_write_failed",
+            format!("failed to write temporary daily budget ledger: {err}"),
+        )
+    })?;
+    fs::rename(&tmp_path, path).map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_ledger_rename_failed",
+            format!("failed to commit daily budget ledger update: {err}"),
+        )
+    })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,6 +628,11 @@ mod tests {
                     llm_tokens_out: 0,
                     total_cost_micros: 0,
                 },
+                DailyHardCapStatus {
+                    cap_micros: HARD_DAILY_SPEND_CAP_MICROS,
+                    spent_before_micros: 0,
+                    spent_after_micros: 0,
+                },
                 false,
                 false,
                 Vec::new(),
@@ -504,5 +644,19 @@ mod tests {
             prop_assert!(summary.actuals.llm_tokens_out <= summary.envelope.max_llm_tokens_out);
             prop_assert!(summary.actuals.total_cost_micros <= summary.envelope.max_total_cost_micros);
         }
+    }
+
+    #[test]
+    fn daily_hard_cap_blocks_when_over_ten_dollars() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ledger_path = temp.path().join("daily.json");
+        let day = NaiveDate::parse_from_str("2026-02-17", "%Y-%m-%d").expect("day");
+
+        let first = enforce_daily_hard_cap_at_path(6_000_000, day, &ledger_path).expect("first");
+        assert_eq!(first.spent_after_micros, 6_000_000);
+
+        let blocked = enforce_daily_hard_cap_at_path(5_000_000, day, &ledger_path)
+            .expect_err("second should block");
+        assert_eq!(blocked.code, "daily_budget_hard_cap_exceeded");
     }
 }

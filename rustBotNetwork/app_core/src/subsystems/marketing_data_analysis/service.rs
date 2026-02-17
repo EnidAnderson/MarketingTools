@@ -4,7 +4,7 @@ use super::contracts::{
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
     QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use super::budget::{build_budget_plan, BudgetCategory, BudgetGuard};
+use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::ingest::{parse_ga4_event, CleaningNote};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
@@ -72,6 +72,10 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
     ) -> Result<MockAnalyticsArtifactV1, AnalyticsError> {
         let (start, end) = validate_mock_analytics_request_v1(&request)?;
         let budget_plan = build_budget_plan(&request, start, end)?;
+        let daily_status = enforce_daily_hard_cap(
+            budget_plan.estimated.total_cost_micros,
+            chrono::Utc::now().date_naive(),
+        )?;
         let mut budget_guard = BudgetGuard::new(request.budget_envelope.clone());
         let seed = resolve_seed(&request);
 
@@ -126,6 +130,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         }
         let budget = budget_guard.summary(
             &budget_plan.estimated,
+            daily_status,
             budget_plan.clipped,
             budget_plan.sampled,
             budget_plan.skipped_modules,
@@ -832,6 +837,16 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
             ),
             expected: "actual <= cap".to_string(),
         },
+        QualityCheckV1 {
+            code: "budget_daily_hard_cap_within_limit".to_string(),
+            passed: budget.daily_spent_after_micros <= budget.hard_daily_cap_micros,
+            severity: "high".to_string(),
+            observed: format!(
+                "{}/{}",
+                budget.daily_spent_after_micros, budget.hard_daily_cap_micros
+            ),
+            expected: "daily_spent_after <= hard_daily_cap".to_string(),
+        },
     ]
 }
 
@@ -951,14 +966,25 @@ mod tests {
             budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
 
-        let a = svc
+        let mut a = svc
             .run_mock_analysis(req.clone())
             .await
             .expect("run should succeed");
-        let b = svc
+        let mut b = svc
             .run_mock_analysis(req)
             .await
             .expect("run should succeed");
+        for artifact in [&mut a, &mut b] {
+            for check in &mut artifact.quality_controls.budget_checks {
+                if check.code == "budget_daily_hard_cap_within_limit" {
+                    check.observed = format!("0/{}", artifact.budget.hard_daily_cap_micros);
+                }
+            }
+        }
+        a.budget.daily_spent_before_micros = 0;
+        a.budget.daily_spent_after_micros = 0;
+        b.budget.daily_spent_before_micros = 0;
+        b.budget.daily_spent_after_micros = 0;
         let sa = serde_json::to_string(&a).expect("serialize");
         let sb = serde_json::to_string(&b).expect("serialize");
         assert_eq!(sa, sb);

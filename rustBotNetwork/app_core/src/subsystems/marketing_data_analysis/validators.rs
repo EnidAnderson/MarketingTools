@@ -200,6 +200,11 @@ pub fn validate_mock_analytics_artifact_v1(
         !budget_exceeded,
         "budget exceeded events must block artifact validity",
     ));
+    checks.push(check(
+        "budget_daily_hard_cap",
+        artifact.budget.daily_spent_after_micros <= artifact.budget.hard_daily_cap_micros,
+        "daily spend must remain below or equal to hard daily cap",
+    ));
     let has_blocking_cleaning = artifact
         .ingest_cleaning_notes
         .iter()
