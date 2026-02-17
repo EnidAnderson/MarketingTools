@@ -3,11 +3,12 @@ use super::contracts::{
     BudgetSummaryV1, MockAnalyticsRequestV1,
 };
 use chrono::NaiveDate;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
 
 const COST_PER_RETRIEVAL_UNIT_MICROS: u64 = 200;
 const COST_PER_ANALYSIS_UNIT_MICROS: u64 = 100;
@@ -19,7 +20,6 @@ const LLM_IN_WITH_NARRATIVES: u64 = 600;
 const LLM_OUT_WITH_NARRATIVES: u64 = 380;
 pub const HARD_DAILY_SPEND_CAP_MICROS: u64 = 10_000_000;
 const DAILY_LEDGER_DEFAULT_PATH: &str = "data/analytics_runs/daily_spend_ledger_v1.json";
-static DAILY_LEDGER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Default)]
 pub struct BudgetLedger {
@@ -475,10 +475,34 @@ fn enforce_daily_hard_cap_at_path(
     run_day: NaiveDate,
     ledger_path: &Path,
 ) -> Result<DailyHardCapStatus, AnalyticsError> {
-    let lock = DAILY_LEDGER_LOCK.get_or_init(|| Mutex::new(()));
-    let _guard = lock
-        .lock()
-        .map_err(|_| AnalyticsError::internal("daily_budget_lock_poisoned", "daily budget lock poisoned"))?;
+    let lock_path = PathBuf::from(format!("{}.lock", ledger_path.display()));
+    if let Some(parent) = lock_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|err| {
+                AnalyticsError::internal(
+                    "daily_budget_lock_parent_failed",
+                    format!("failed to create daily budget lock directory: {err}"),
+                )
+            })?;
+        }
+    }
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|err| {
+            AnalyticsError::internal(
+                "daily_budget_lock_open_failed",
+                format!("failed to open daily budget lock file: {err}"),
+            )
+        })?;
+    lock_file.lock_exclusive().map_err(|err| {
+        AnalyticsError::internal(
+            "daily_budget_lock_acquire_failed",
+            format!("failed to acquire daily budget lock: {err}"),
+        )
+    })?;
 
     let mut ledger = read_daily_ledger(ledger_path)?;
     let key = run_day.format("%Y-%m-%d").to_string();
@@ -501,6 +525,7 @@ fn enforce_daily_hard_cap_at_path(
 
     ledger.by_date.insert(key, spent_after);
     write_daily_ledger(ledger_path, &ledger)?;
+    let _ = lock_file.unlock();
     Ok(DailyHardCapStatus {
         cap_micros: HARD_DAILY_SPEND_CAP_MICROS,
         spent_before_micros: spent_before,
@@ -563,6 +588,8 @@ fn write_daily_ledger(path: &Path, ledger: &DailySpendLedgerV1) -> Result<(), An
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
 
     #[test]
     fn fail_closed_errors_when_estimate_exceeds() {
@@ -658,5 +685,57 @@ mod tests {
         let blocked = enforce_daily_hard_cap_at_path(5_000_000, day, &ledger_path)
             .expect_err("second should block");
         assert_eq!(blocked.code, "daily_budget_hard_cap_exceeded");
+    }
+
+    #[test]
+    fn daily_hard_cap_resets_by_day() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ledger_path = temp.path().join("daily.json");
+        let day1 = NaiveDate::parse_from_str("2026-02-17", "%Y-%m-%d").expect("day");
+        let day2 = NaiveDate::parse_from_str("2026-02-18", "%Y-%m-%d").expect("day");
+
+        let d1 = enforce_daily_hard_cap_at_path(9_000_000, day1, &ledger_path).expect("day1");
+        let d2 = enforce_daily_hard_cap_at_path(9_000_000, day2, &ledger_path).expect("day2");
+        assert_eq!(d1.spent_after_micros, 9_000_000);
+        assert_eq!(d2.spent_after_micros, 9_000_000);
+    }
+
+    #[test]
+    fn daily_hard_cap_fails_closed_on_corrupt_ledger() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ledger_path = temp.path().join("daily.json");
+        fs::write(&ledger_path, "{bad json").expect("write corrupt");
+        let day = NaiveDate::parse_from_str("2026-02-17", "%Y-%m-%d").expect("day");
+        let err =
+            enforce_daily_hard_cap_at_path(1_000_000, day, &ledger_path).expect_err("must fail");
+        assert_eq!(err.code, "daily_budget_ledger_parse_failed");
+    }
+
+    #[test]
+    fn daily_hard_cap_is_atomic_under_parallel_attempts() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ledger_path = temp.path().join("daily.json");
+        let day = NaiveDate::parse_from_str("2026-02-17", "%Y-%m-%d").expect("day");
+        let workers = 5usize;
+        let barrier = Arc::new(Barrier::new(workers));
+        let mut handles = Vec::new();
+        for _ in 0..workers {
+            let barrier = Arc::clone(&barrier);
+            let ledger_path = ledger_path.clone();
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                enforce_daily_hard_cap_at_path(3_000_000, day, &ledger_path).is_ok()
+            }));
+        }
+        let mut success_count = 0usize;
+        for handle in handles {
+            if handle.join().expect("thread join") {
+                success_count += 1;
+            }
+        }
+        assert_eq!(success_count, 3, "only three 3M reservations fit within 10M");
+        let ledger = read_daily_ledger(&ledger_path).expect("read ledger");
+        let spent = ledger.by_date.get("2026-02-17").copied().unwrap_or(0);
+        assert_eq!(spent, 9_000_000);
     }
 }
