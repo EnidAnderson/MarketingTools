@@ -356,6 +356,35 @@ pub struct ForecastSummaryV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Governance-grade decision feed card for operator actioning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DecisionFeedCardV1 {
+    pub card_id: String,
+    pub priority: String,
+    pub status: String,
+    pub title: String,
+    pub summary: String,
+    pub recommended_action: String,
+    #[serde(default)]
+    pub evidence_refs: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Publish/export gate state with explicit block reasons.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct PublishExportGateV1 {
+    pub publish_ready: bool,
+    pub export_ready: bool,
+    #[serde(default)]
+    pub blocking_reasons: Vec<String>,
+    #[serde(default)]
+    pub warning_reasons: Vec<String>,
+    pub gate_status: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Stable multi-chart payload for frontend executive dashboard rendering.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ExecutiveDashboardSnapshotV1 {
@@ -372,6 +401,10 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub storefront_behavior_summary: StorefrontBehaviorSummaryV1,
     pub portfolio_rows: Vec<PortfolioRowV1>,
     pub forecast_summary: ForecastSummaryV1,
+    #[serde(default)]
+    pub decision_feed: Vec<DecisionFeedCardV1>,
+    #[serde(default)]
+    pub publish_export_gate: PublishExportGateV1,
     pub quality_controls: AnalyticsQualityControlsV1,
     pub historical_analysis: HistoricalAnalysisV1,
     pub operator_summary: OperatorSummaryV1,

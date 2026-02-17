@@ -36,3 +36,4 @@ http = "0.2"
 httptest = "0.16.4"
 tempfile = "3.24.0"
 approx = "0.5" # Added for floating point assertions in tests
+proptest = "1.6"

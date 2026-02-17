@@ -1,8 +1,8 @@
 // provenance: decision_id=DEC-0015; change_request_id=CR-QA_FIXER-0032
 use super::contracts::{
-    ChannelMixPointV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FunnelStageV1,
-    FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1,
-    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ChannelMixPointV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1,
+    FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1,
+    PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
 };
 use crate::data_models::analytics::ReportMetrics;
 use chrono::Utc;
@@ -90,12 +90,164 @@ pub fn build_executive_dashboard_snapshot(
         storefront_behavior_summary: build_storefront_summary(latest_metrics),
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
+        decision_feed: build_decision_feed(latest),
+        publish_export_gate: build_publish_export_gate(latest),
         quality_controls: latest.artifact.quality_controls.clone(),
         historical_analysis: latest.artifact.historical_analysis.clone(),
         operator_summary: latest.artifact.operator_summary.clone(),
         trust_status,
         alerts,
     })
+}
+
+fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1> {
+    let mut cards = Vec::new();
+    let quality = &run.artifact.quality_controls;
+    let historical = &run.artifact.historical_analysis;
+
+    let failed_schema = quality
+        .schema_drift_checks
+        .iter()
+        .filter(|check| !check.passed)
+        .count();
+    if failed_schema > 0 {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "schema-drift".to_string(),
+            priority: "critical".to_string(),
+            status: "blocked".to_string(),
+            title: "Schema drift detected".to_string(),
+            summary: format!("{failed_schema} schema-drift checks failed in latest run."),
+            recommended_action: "Pause publish/export and reconcile upstream field mappings."
+                .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks".to_string(),
+                format!("run_id={}", run.metadata.run_id),
+            ],
+        });
+    }
+
+    let failed_identity = quality
+        .identity_resolution_checks
+        .iter()
+        .filter(|check| !check.passed)
+        .count();
+    if failed_identity > 0 {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "identity-resolution".to_string(),
+            priority: "high".to_string(),
+            status: "action_required".to_string(),
+            title: "Identity resolution degraded".to_string(),
+            summary: format!(
+                "{failed_identity} identity checks failed; cross-source joins may be unreliable."
+            ),
+            recommended_action:
+                "Review Wix/GA identity stitching before acting on segment-level recommendations."
+                    .to_string(),
+            evidence_refs: vec!["quality_controls.identity_resolution_checks".to_string()],
+        });
+    }
+
+    for anomaly in historical.anomaly_flags.iter().take(3) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: format!("anomaly-{}", anomaly.metric_key),
+            priority: if anomaly.severity == "high" {
+                "high".to_string()
+            } else {
+                "medium".to_string()
+            },
+            status: "investigate".to_string(),
+            title: format!("Anomaly flagged for {}", anomaly.metric_key),
+            summary: anomaly.reason.clone(),
+            recommended_action: "Inspect campaign mix and attribution windows for root cause."
+                .to_string(),
+            evidence_refs: vec![format!(
+                "historical_analysis.anomaly_flags.{}",
+                anomaly.metric_key
+            )],
+        });
+    }
+
+    if cards.is_empty() {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "green-status".to_string(),
+            priority: "low".to_string(),
+            status: "monitor".to_string(),
+            title: "Pipeline stable".to_string(),
+            summary: "No blocking quality failures or severe anomalies in current window."
+                .to_string(),
+            recommended_action: "Continue monitoring and publish with standard review cadence."
+                .to_string(),
+            evidence_refs: vec![format!("run_id={}", run.metadata.run_id)],
+        });
+    }
+
+    cards
+}
+
+fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGateV1 {
+    let quality = &run.artifact.quality_controls;
+    let historical = &run.artifact.historical_analysis;
+    let mut blocking_reasons = Vec::new();
+    let mut warning_reasons = Vec::new();
+
+    if !quality
+        .schema_drift_checks
+        .iter()
+        .all(|check| check.passed || check.severity != "high")
+    {
+        blocking_reasons.push("High-severity schema-drift failure present.".to_string());
+    }
+
+    if !quality
+        .freshness_sla_checks
+        .iter()
+        .all(|check| check.passed || check.severity != "high")
+    {
+        blocking_reasons.push("High-severity freshness SLA failure present.".to_string());
+    }
+
+    if !quality
+        .identity_resolution_checks
+        .iter()
+        .all(|check| check.passed || check.severity != "high")
+    {
+        blocking_reasons.push("High-severity identity-resolution failure present.".to_string());
+    }
+
+    if historical
+        .anomaly_flags
+        .iter()
+        .any(|flag| flag.severity == "high")
+    {
+        warning_reasons.push("High-severity anomaly flagged; require operator review.".to_string());
+    }
+
+    let publish_ready = blocking_reasons.is_empty();
+    let export_ready = blocking_reasons.is_empty();
+    let gate_status = if !publish_ready {
+        "blocked".to_string()
+    } else if warning_reasons.is_empty() {
+        "ready".to_string()
+    } else {
+        "review_required".to_string()
+    };
+
+    assert!(
+        !(publish_ready && !blocking_reasons.is_empty()),
+        "publish cannot be ready when blocking reasons exist"
+    );
+    assert!(
+        !(export_ready && !blocking_reasons.is_empty()),
+        "export cannot be ready when blocking reasons exist"
+    );
+
+    PublishExportGateV1 {
+        publish_ready,
+        export_ready,
+        blocking_reasons,
+        warning_reasons,
+        gate_status,
+    }
 }
 
 fn build_kpis(
@@ -240,8 +392,16 @@ fn build_funnel_summary(metrics: &ReportMetrics) -> FunnelSummaryV1 {
 
     let stages = vec![
         stage("Impression", stage_impressions, None),
-        stage("Click", stage_clicks, Some(stage_clicks / stage_impressions.max(1.0))),
-        stage("Session", stage_sessions, Some(stage_sessions / stage_clicks.max(1.0))),
+        stage(
+            "Click",
+            stage_clicks,
+            Some(stage_clicks / stage_impressions.max(1.0)),
+        ),
+        stage(
+            "Session",
+            stage_sessions,
+            Some(stage_sessions / stage_clicks.max(1.0)),
+        ),
         stage(
             "Product View",
             stage_product_view,
@@ -392,11 +552,17 @@ fn build_forecast(
         .map(|target| month_to_date_revenue / target)
         .unwrap_or(1.0);
 
+    let confidence_interval_low = expected_revenue_next_period * 0.9;
+    let confidence_interval_high = expected_revenue_next_period * 1.1;
+    assert!(confidence_interval_low <= expected_revenue_next_period);
+    assert!(expected_revenue_next_period <= confidence_interval_high);
+    assert!(month_to_date_pacing_ratio.is_finite());
+
     ForecastSummaryV1 {
         expected_revenue_next_period,
         expected_roas_next_period: avg_roas,
-        confidence_interval_low: expected_revenue_next_period * 0.9,
-        confidence_interval_high: expected_revenue_next_period * 1.1,
+        confidence_interval_low,
+        confidence_interval_high,
         month_to_date_pacing_ratio,
         month_to_date_revenue,
         monthly_revenue_target,
@@ -420,6 +586,7 @@ mod tests {
         AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
         MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
+    use proptest::prelude::*;
 
     fn build_run(run_id: &str, profile_id: &str, spend: f64, roas: f64) -> PersistedAnalyticsRunV1 {
         let mut artifact = MockAnalyticsArtifactV1 {
@@ -484,5 +651,47 @@ mod tests {
         assert_eq!(snap.profile_id, "p1");
         assert!(!snap.kpis.is_empty());
         assert!(!snap.channel_mix_series.is_empty());
+        assert!(!snap.decision_feed.is_empty());
+        assert!(snap.publish_export_gate.gate_status == "ready");
+    }
+
+    #[test]
+    fn publish_gate_blocks_on_high_severity_schema_failure() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.push(
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                code: "schema_required".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "missing metrics.clicks".to_string(),
+                expected: "metrics.clicks present".to_string(),
+            },
+        );
+        let gate = build_publish_export_gate(&run);
+        assert!(!gate.publish_ready);
+        assert!(!gate.export_ready);
+        assert_eq!(gate.gate_status, "blocked");
+        assert!(!gate.blocking_reasons.is_empty());
+    }
+
+    proptest! {
+        #[test]
+        fn forecast_confidence_and_pacing_invariants_hold(
+            spend in 0.0f64..100_000.0,
+            roas in 0.0f64..30.0,
+            monthly_target in 1.0f64..500_000.0
+        ) {
+            let run = build_run("run-prop", "p1", spend, roas);
+            let options = SnapshotBuildOptions {
+                compare_window_runs: 1,
+                target_roas: Some((roas / 2.0).max(0.1)),
+                monthly_revenue_target: Some(monthly_target),
+            };
+            let forecast = build_forecast(&run.artifact.report.total_metrics, std::slice::from_ref(&run), options);
+            prop_assert!(forecast.confidence_interval_low <= forecast.expected_revenue_next_period);
+            prop_assert!(forecast.expected_revenue_next_period <= forecast.confidence_interval_high);
+            prop_assert!(forecast.month_to_date_pacing_ratio.is_finite());
+            prop_assert!(forecast.month_to_date_pacing_ratio >= 0.0);
+        }
     }
 }

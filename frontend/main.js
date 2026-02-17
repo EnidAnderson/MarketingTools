@@ -28,6 +28,9 @@ const el = {
   funnelTableBody: document.getElementById('funnelTableBody'),
   storefrontTableBody: document.getElementById('storefrontTableBody'),
   forecastPanel: document.getElementById('forecastPanel'),
+  publishGatePanel: document.getElementById('publishGatePanel'),
+  decisionFeedList: document.getElementById('decisionFeedList'),
+  exportPacketButton: document.getElementById('exportPacketButton'),
   narrativeList: document.getElementById('narrativeList'),
   historyList: document.getElementById('historyList')
 };
@@ -47,6 +50,9 @@ async function boot() {
 function wireEvents() {
   el.runButton.addEventListener('click', () => generateRunAndRefresh());
   el.refreshButton.addEventListener('click', () => refreshDashboard());
+  el.exportPacketButton?.addEventListener('click', () => {
+    status('Export packet is not yet wired to a file command. Gate status is active.');
+  });
 }
 
 async function invoke(command, payload = {}) {
@@ -173,6 +179,8 @@ function renderExecutiveDashboard(snapshot) {
   renderFunnelTable(snapshot.funnel_summary?.stages || []);
   renderStorefrontTable(snapshot.storefront_behavior_summary?.rows || []);
   renderForecast(snapshot.forecast_summary || {});
+  renderPublishGate(snapshot.publish_export_gate || {});
+  renderDecisionFeed(snapshot.decision_feed || []);
   renderNarratives(snapshot.operator_summary?.attribution_narratives || [], snapshot.alerts || []);
 }
 
@@ -389,6 +397,53 @@ function renderForecast(forecast) {
   `;
 }
 
+function renderPublishGate(gate) {
+  const statusValue = gate.gate_status || 'ready';
+  const blocking = gate.blocking_reasons || [];
+  const warnings = gate.warning_reasons || [];
+  const publishReady = gate.publish_ready !== false;
+  const exportReady = gate.export_ready !== false;
+
+  if (el.exportPacketButton) {
+    el.exportPacketButton.disabled = !exportReady;
+    el.exportPacketButton.title = exportReady
+      ? 'Export gate is open for this snapshot.'
+      : `Blocked: ${blocking.join(' | ') || 'publish/export gate failed'}`;
+  }
+
+  el.publishGatePanel.innerHTML = `
+    <div class="gate-card">
+      <h3>Gate Status</h3>
+      <div class="gate-status ${escapeHtml(statusValue)}">${escapeHtml(statusValue.replace('_', ' '))}</div>
+      <p>Publish ready: <strong>${publishReady ? 'yes' : 'no'}</strong></p>
+      <p>Export ready: <strong>${exportReady ? 'yes' : 'no'}</strong></p>
+    </div>
+    <div class="gate-card">
+      <h3>Blocking Reasons</h3>
+      <p>${blocking.length ? escapeHtml(blocking.join(' | ')) : 'None'}</p>
+    </div>
+    <div class="gate-card">
+      <h3>Warnings</h3>
+      <p>${warnings.length ? escapeHtml(warnings.join(' | ')) : 'None'}</p>
+    </div>
+  `;
+}
+
+function renderDecisionFeed(cards) {
+  if (!cards.length) {
+    el.decisionFeedList.innerHTML = '<div class="decision-card low"><h3>No active decision cards</h3><p>Pipeline is stable in this window.</p></div>';
+    return;
+  }
+  el.decisionFeedList.innerHTML = cards.slice(0, 8).map(card => `
+    <div class="decision-card ${escapeHtml(card.priority || 'low')}">
+      <div class="decision-meta">${escapeHtml(card.priority || 'low')} | ${escapeHtml(card.status || 'monitor')}</div>
+      <h3>${escapeHtml(card.title || card.card_id || 'Decision')}</h3>
+      <p>${escapeHtml(card.summary || '')}</p>
+      <p><strong>Action:</strong> ${escapeHtml(card.recommended_action || 'Monitor')}</p>
+    </div>
+  `).join('');
+}
+
 function renderNarratives(narratives, alerts) {
   const cards = [];
   for (const item of narratives.slice(0, 3)) {
@@ -508,6 +563,23 @@ function fallbackSnapshot(profileId, opts) {
       monthly_revenue_target: monthlyRevenueTarget,
       target_roas: targetRoas,
       pacing_status: (2200 / monthlyRevenueTarget) >= 0.9 ? 'on_track' : 'behind'
+    },
+    decision_feed: [
+      {
+        card_id: 'demo-review',
+        priority: 'medium',
+        status: 'investigate',
+        title: 'ROAS variance near threshold',
+        summary: 'ROAS is above target, but one campaign has widening CPA variance.',
+        recommended_action: 'Review campaign budget split before weekly publish.'
+      }
+    ],
+    publish_export_gate: {
+      publish_ready: true,
+      export_ready: true,
+      blocking_reasons: [],
+      warning_reasons: ['One medium anomaly requires review note in packet.'],
+      gate_status: 'review_required'
     },
     operator_summary: {
       attribution_narratives: [

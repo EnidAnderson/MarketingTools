@@ -37,10 +37,14 @@ fn validate_governed_pipeline_contract(definition: &PipelineDefinition) -> Resul
     };
 
     if refs.budget_envelope_ref.trim().is_empty() {
-        return Err("governed pipeline requires non-empty governance_refs.budget_envelope_ref".to_string());
+        return Err(
+            "governed pipeline requires non-empty governance_refs.budget_envelope_ref".to_string(),
+        );
     }
     if refs.release_gate_log_ref.trim().is_empty() {
-        return Err("governed pipeline requires non-empty governance_refs.release_gate_log_ref".to_string());
+        return Err(
+            "governed pipeline requires non-empty governance_refs.release_gate_log_ref".to_string(),
+        );
     }
 
     let has_change_request = refs
@@ -442,12 +446,13 @@ fn get_executive_dashboard_snapshot(
         target_roas,
         monthly_revenue_target,
     };
-    let snapshot = build_executive_dashboard_snapshot(profile_id, &runs, options).ok_or_else(|| {
-        format!(
-            "No persisted analytics runs found for profile '{}'. Generate a run first.",
-            profile_id
-        )
-    })?;
+    let snapshot =
+        build_executive_dashboard_snapshot(profile_id, &runs, options).ok_or_else(|| {
+            format!(
+                "No persisted analytics runs found for profile '{}'. Generate a run first.",
+                profile_id
+            )
+        })?;
     serde_json::to_value(snapshot)
         .map_err(|err| format!("failed to serialize dashboard snapshot: {err}"))
 }
@@ -464,6 +469,8 @@ fn get_dashboard_chart_definitions() -> Result<Value, String> {
         {"id":"storefront_behavior","title":"Wix Storefront Behavior","kind":"matrix"},
         {"id":"campaign_portfolio","title":"Campaign Portfolio","kind":"table"},
         {"id":"forecast_pacing","title":"Forecast and Pacing","kind":"forecast"},
+        {"id":"publish_export_gate","title":"Publish and Export Gate","kind":"gate"},
+        {"id":"decision_feed","title":"Governance Decision Feed","kind":"cards"},
         {"id":"trust_risk","title":"Trust and Risk","kind":"signals"}
     ]))
 }
