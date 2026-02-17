@@ -42,6 +42,15 @@
         <label>Seed
           <input id="seed" type="number" placeholder="Optional deterministic seed" />
         </label>
+        <label>Compare Window (runs)
+          <input id="compareWindowRuns" type="number" min="1" value="1" />
+        </label>
+        <label>Target ROAS
+          <input id="targetRoas" type="number" step="0.01" value="6.00" />
+        </label>
+        <label>Monthly Revenue Target
+          <input id="monthlyRevenueTarget" type="number" step="0.01" value="3000" />
+        </label>
       </div>
       <div class="control-actions">
         <button id="runButton" class="btn btn-primary">Generate New Analytics Run</button>
@@ -131,6 +140,11 @@
             <tbody id="storefrontTableBody"></tbody>
           </table>
         </div>
+      </article>
+
+      <article class="card panel-wide">
+        <h2>Forecast & Pacing</h2>
+        <div id="forecastPanel" class="forecast-panel"></div>
       </article>
 
       <article class="card panel">

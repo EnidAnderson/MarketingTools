@@ -8,6 +8,24 @@ use crate::data_models::analytics::ReportMetrics;
 use chrono::Utc;
 
 const SNAPSHOT_SCHEMA_VERSION_V1: &str = "executive_dashboard_snapshot.v1";
+const DEFAULT_COMPARE_WINDOW_RUNS: usize = 1;
+
+#[derive(Debug, Clone, Copy)]
+pub struct SnapshotBuildOptions {
+    pub compare_window_runs: usize,
+    pub target_roas: Option<f64>,
+    pub monthly_revenue_target: Option<f64>,
+}
+
+impl Default for SnapshotBuildOptions {
+    fn default() -> Self {
+        Self {
+            compare_window_runs: DEFAULT_COMPARE_WINDOW_RUNS,
+            target_roas: None,
+            monthly_revenue_target: None,
+        }
+    }
+}
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::executive_dashboard`
@@ -15,9 +33,11 @@ const SNAPSHOT_SCHEMA_VERSION_V1: &str = "executive_dashboard_snapshot.v1";
 pub fn build_executive_dashboard_snapshot(
     profile_id: &str,
     runs: &[PersistedAnalyticsRunV1],
+    options: SnapshotBuildOptions,
 ) -> Option<ExecutiveDashboardSnapshotV1> {
     let latest = runs.first()?;
-    let previous = runs.get(1);
+    let compare_offset = options.compare_window_runs.max(1);
+    let previous = runs.get(compare_offset);
     let latest_metrics = &latest.artifact.report.total_metrics;
     let previous_metrics = previous
         .map(|run| &run.artifact.report.total_metrics)
@@ -56,12 +76,20 @@ pub fn build_executive_dashboard_snapshot(
         generated_at_utc: Utc::now().to_rfc3339(),
         run_id: latest.metadata.run_id.clone(),
         date_range: latest.artifact.report.date_range.clone(),
-        kpis: build_kpis(latest_metrics, previous_metrics, &confidence_cap, &source_class),
+        compare_window_runs: compare_offset.min(u8::MAX as usize) as u8,
+        kpis: build_kpis(
+            latest_metrics,
+            previous_metrics,
+            &confidence_cap,
+            &source_class,
+            options.target_roas,
+        ),
         channel_mix_series: build_channel_mix_series(runs),
+        roas_target_band: options.target_roas,
         funnel_summary: build_funnel_summary(latest_metrics),
         storefront_behavior_summary: build_storefront_summary(latest_metrics),
         portfolio_rows: build_portfolio_rows(latest),
-        forecast_summary: build_forecast(latest_metrics, runs),
+        forecast_summary: build_forecast(latest_metrics, runs, options),
         quality_controls: latest.artifact.quality_controls.clone(),
         historical_analysis: latest.artifact.historical_analysis.clone(),
         operator_summary: latest.artifact.operator_summary.clone(),
@@ -75,6 +103,7 @@ fn build_kpis(
     baseline: &ReportMetrics,
     confidence_label: &str,
     source_class: &str,
+    target_roas: Option<f64>,
 ) -> Vec<KpiTileV1> {
     vec![
         kpi(
@@ -85,6 +114,7 @@ fn build_kpis(
             format!("${:.2}", current.cost),
             confidence_label,
             source_class,
+            None,
         ),
         kpi(
             "revenue",
@@ -94,6 +124,7 @@ fn build_kpis(
             format!("${:.2}", current.conversions_value),
             confidence_label,
             source_class,
+            None,
         ),
         kpi(
             "roas",
@@ -103,6 +134,7 @@ fn build_kpis(
             format!("{:.2}x", current.roas),
             confidence_label,
             source_class,
+            target_roas,
         ),
         kpi(
             "conversions",
@@ -112,6 +144,7 @@ fn build_kpis(
             format!("{:.2}", current.conversions),
             confidence_label,
             source_class,
+            None,
         ),
         kpi(
             "ctr",
@@ -121,6 +154,7 @@ fn build_kpis(
             format!("{:.2}%", current.ctr),
             confidence_label,
             source_class,
+            None,
         ),
         kpi(
             "cpa",
@@ -130,6 +164,7 @@ fn build_kpis(
             format!("${:.2}", current.cpa),
             confidence_label,
             source_class,
+            None,
         ),
         kpi(
             "aov",
@@ -139,6 +174,7 @@ fn build_kpis(
             format!("${:.2}", average_order_value(current)),
             confidence_label,
             source_class,
+            None,
         ),
     ]
 }
@@ -151,19 +187,28 @@ fn kpi(
     formatted_value: String,
     confidence_label: &str,
     source_class: &str,
+    target_value: Option<f64>,
 ) -> KpiTileV1 {
     let delta_percent = if baseline.abs() > f64::EPSILON {
         Some((value - baseline) / baseline)
     } else {
         None
     };
+    let target_delta_percent = target_value.and_then(|target| {
+        if target.abs() > f64::EPSILON {
+            Some((value - target) / target)
+        } else {
+            None
+        }
+    });
+
     KpiTileV1 {
         key: key.to_string(),
         label: label.to_string(),
         value,
         formatted_value,
         delta_percent,
-        target_delta_percent: None,
+        target_delta_percent,
         confidence_label: confidence_label.to_string(),
         source_class: source_class.to_string(),
     }
@@ -174,11 +219,7 @@ fn build_channel_mix_series(runs: &[PersistedAnalyticsRunV1]) -> Vec<ChannelMixP
         .iter()
         .take(12)
         .map(|run| ChannelMixPointV1 {
-            period_label: run
-                .artifact
-                .report
-                .date_range
-                .replace(" to ", " -> "),
+            period_label: run.artifact.report.date_range.replace(" to ", " -> "),
             spend: run.artifact.report.total_metrics.cost,
             revenue: run.artifact.report.total_metrics.conversions_value,
             roas: run.artifact.report.total_metrics.roas,
@@ -199,7 +240,7 @@ fn build_funnel_summary(metrics: &ReportMetrics) -> FunnelSummaryV1 {
 
     let stages = vec![
         stage("Impression", stage_impressions, None),
-        stage("Click", stage_clicks, Some(stage_clicks / stage_impressions)),
+        stage("Click", stage_clicks, Some(stage_clicks / stage_impressions.max(1.0))),
         stage("Session", stage_sessions, Some(stage_sessions / stage_clicks.max(1.0))),
         stage(
             "Product View",
@@ -309,23 +350,58 @@ fn build_portfolio_rows(run: &PersistedAnalyticsRunV1) -> Vec<PortfolioRowV1> {
     rows
 }
 
-fn build_forecast(metrics: &ReportMetrics, runs: &[PersistedAnalyticsRunV1]) -> ForecastSummaryV1 {
+fn build_forecast(
+    metrics: &ReportMetrics,
+    runs: &[PersistedAnalyticsRunV1],
+    options: SnapshotBuildOptions,
+) -> ForecastSummaryV1 {
     let avg_roas = if runs.is_empty() {
         metrics.roas
     } else {
-        runs.iter()
-            .take(8)
-            .map(|run| run.artifact.report.total_metrics.roas)
-            .sum::<f64>()
-            / runs.iter().take(8).count() as f64
+        let sample = runs.iter().take(8);
+        let count = sample.clone().count();
+        if count == 0 {
+            metrics.roas
+        } else {
+            sample
+                .map(|run| run.artifact.report.total_metrics.roas)
+                .sum::<f64>()
+                / count as f64
+        }
     };
+
     let expected_revenue_next_period = metrics.cost * avg_roas;
+    let month_to_date_revenue = metrics.conversions_value;
+    let monthly_revenue_target = options.monthly_revenue_target;
+    let pacing_status = match monthly_revenue_target {
+        Some(target) if target > 0.0 => {
+            let ratio = month_to_date_revenue / target;
+            if ratio >= 1.0 {
+                "ahead".to_string()
+            } else if ratio >= 0.9 {
+                "on_track".to_string()
+            } else {
+                "behind".to_string()
+            }
+        }
+        _ => "no_target".to_string(),
+    };
+
+    let month_to_date_pacing_ratio = monthly_revenue_target
+        .filter(|target| *target > 0.0)
+        .map(|target| month_to_date_revenue / target)
+        .unwrap_or(1.0);
+
     ForecastSummaryV1 {
         expected_revenue_next_period,
         expected_roas_next_period: avg_roas,
         confidence_interval_low: expected_revenue_next_period * 0.9,
         confidence_interval_high: expected_revenue_next_period * 1.1,
-        month_to_date_pacing_ratio: 1.03,
+        month_to_date_pacing_ratio,
+        month_to_date_revenue,
+        monthly_revenue_target,
+        target_roas: options.target_roas,
+        pacing_status,
     }
 }
 
@@ -403,7 +479,8 @@ mod tests {
             build_run("run-2", "p1", 200.0, 6.5),
             build_run("run-1", "p1", 180.0, 5.8),
         ];
-        let snap = build_executive_dashboard_snapshot("p1", &runs).expect("snapshot");
+        let snap = build_executive_dashboard_snapshot("p1", &runs, SnapshotBuildOptions::default())
+            .expect("snapshot");
         assert_eq!(snap.profile_id, "p1");
         assert!(!snap.kpis.is_empty());
         assert!(!snap.channel_mix_series.is_empty());

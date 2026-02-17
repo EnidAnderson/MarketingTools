@@ -348,6 +348,10 @@ pub struct ForecastSummaryV1 {
     pub confidence_interval_low: f64,
     pub confidence_interval_high: f64,
     pub month_to_date_pacing_ratio: f64,
+    pub month_to_date_revenue: f64,
+    pub monthly_revenue_target: Option<f64>,
+    pub target_roas: Option<f64>,
+    pub pacing_status: String,
 }
 
 /// # NDOC
@@ -360,8 +364,10 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub generated_at_utc: String,
     pub run_id: String,
     pub date_range: String,
+    pub compare_window_runs: u8,
     pub kpis: Vec<KpiTileV1>,
     pub channel_mix_series: Vec<ChannelMixPointV1>,
+    pub roas_target_band: Option<f64>,
     pub funnel_summary: FunnelSummaryV1,
     pub storefront_behavior_summary: StorefrontBehaviorSummaryV1,
     pub portfolio_rows: Vec<PortfolioRowV1>,

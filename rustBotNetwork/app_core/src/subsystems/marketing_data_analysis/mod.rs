@@ -21,7 +21,7 @@ pub use contracts::{
     MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1,
     QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
 };
-pub use executive_dashboard::build_executive_dashboard_snapshot;
+pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use longitudinal::build_historical_analysis;
 pub use persistence::AnalyticsRunStore;
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};

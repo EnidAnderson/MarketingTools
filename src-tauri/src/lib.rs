@@ -2,6 +2,7 @@ use app_core::image_generator::generate_image;
 use app_core::pipeline::PipelineDefinition;
 use app_core::subsystems::marketing_data_analysis::{
     build_executive_dashboard_snapshot, AnalyticsRunStore, MockAnalyticsRequestV1,
+    SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -424,6 +425,9 @@ fn get_analysis_workflows() -> Result<Value, String> {
 fn get_executive_dashboard_snapshot(
     profile_id: String,
     limit: Option<usize>,
+    compare_window_runs: Option<u8>,
+    target_roas: Option<f64>,
+    monthly_revenue_target: Option<f64>,
 ) -> Result<Value, String> {
     let profile_id = profile_id.trim();
     if profile_id.is_empty() {
@@ -433,7 +437,12 @@ fn get_executive_dashboard_snapshot(
     let runs = store
         .list_recent(Some(profile_id), limit.unwrap_or(24).min(64))
         .map_err(|err| format!("{}: {}", err.code, err.message))?;
-    let snapshot = build_executive_dashboard_snapshot(profile_id, &runs).ok_or_else(|| {
+    let options = SnapshotBuildOptions {
+        compare_window_runs: compare_window_runs.unwrap_or(1).max(1) as usize,
+        target_roas,
+        monthly_revenue_target,
+    };
+    let snapshot = build_executive_dashboard_snapshot(profile_id, &runs, options).ok_or_else(|| {
         format!(
             "No persisted analytics runs found for profile '{}'. Generate a run first.",
             profile_id
@@ -454,6 +463,7 @@ fn get_dashboard_chart_definitions() -> Result<Value, String> {
         {"id":"funnel","title":"Funnel Leakage","kind":"funnel"},
         {"id":"storefront_behavior","title":"Wix Storefront Behavior","kind":"matrix"},
         {"id":"campaign_portfolio","title":"Campaign Portfolio","kind":"table"},
+        {"id":"forecast_pacing","title":"Forecast and Pacing","kind":"forecast"},
         {"id":"trust_risk","title":"Trust and Risk","kind":"signals"}
     ]))
 }
