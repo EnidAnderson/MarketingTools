@@ -34,6 +34,25 @@ pub fn validate_mock_analytics_request_v1(
             "profile_id",
         ));
     }
+    if req.budget_envelope.max_retrieval_units == 0
+        || req.budget_envelope.max_analysis_units == 0
+        || req.budget_envelope.max_llm_tokens_in == 0
+        || req.budget_envelope.max_llm_tokens_out == 0
+        || req.budget_envelope.max_total_cost_micros == 0
+    {
+        return Err(AnalyticsError::validation(
+            "invalid_budget_envelope",
+            "budget envelope caps must be positive",
+            "budget_envelope",
+        ));
+    }
+    if req.budget_envelope.provenance_ref.trim().is_empty() {
+        return Err(AnalyticsError::validation(
+            "invalid_budget_provenance_ref",
+            "budget_envelope.provenance_ref is required",
+            "budget_envelope.provenance_ref",
+        ));
+    }
 
     let start = NaiveDate::parse_from_str(&req.start_date, "%Y-%m-%d").map_err(|_| {
         AnalyticsError::validation(
@@ -158,6 +177,7 @@ pub fn validate_mock_analytics_artifact_v1(
         .iter()
         .chain(artifact.quality_controls.identity_resolution_checks.iter())
         .chain(artifact.quality_controls.freshness_sla_checks.iter())
+        .chain(artifact.quality_controls.budget_checks.iter())
         .all(|check| check.passed);
     checks.push(check(
         "quality_controls_high_severity",
@@ -169,6 +189,16 @@ pub fn validate_mock_analytics_artifact_v1(
         "quality_controls_consistency",
         artifact.quality_controls.is_healthy == all_quality_checks_passed,
         "quality control health should match quality check pass/fail aggregate",
+    ));
+    let budget_exceeded = artifact
+        .budget
+        .events
+        .iter()
+        .any(|event| event.outcome.eq_ignore_ascii_case("blocked"));
+    checks.push(check(
+        "budget_fail_closed",
+        !budget_exceeded,
+        "budget exceeded events must block artifact validity",
     ));
     let has_blocking_cleaning = artifact
         .ingest_cleaning_notes
@@ -185,6 +215,7 @@ pub fn validate_mock_analytics_artifact_v1(
         artifact.data_quality.identity_join_coverage_ratio,
         artifact.data_quality.freshness_pass_ratio,
         artifact.data_quality.reconciliation_pass_ratio,
+        artifact.data_quality.budget_pass_ratio,
         artifact.data_quality.quality_score,
     ]
     .iter()
@@ -225,6 +256,7 @@ mod tests {
             seed: None,
             profile_id: "small".to_string(),
             include_narratives: true,
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
         assert!(validate_mock_analytics_request_v1(&bad).is_err());
     }
@@ -241,6 +273,7 @@ mod tests {
                 seed: Some(1),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             },
             metadata: AnalyticsRunMetadataV1 {
                 run_id: "r".to_string(),
@@ -289,6 +322,7 @@ mod tests {
             },
             quality_controls: Default::default(),
             data_quality: Default::default(),
+            budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

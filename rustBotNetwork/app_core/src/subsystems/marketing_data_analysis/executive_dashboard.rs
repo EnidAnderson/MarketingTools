@@ -91,6 +91,7 @@ pub fn build_executive_dashboard_snapshot(
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
         data_quality: latest.artifact.data_quality.clone(),
+        budget: latest.artifact.budget.clone(),
         decision_feed: build_decision_feed(latest),
         publish_export_gate: build_publish_export_gate(latest),
         quality_controls: latest.artifact.quality_controls.clone(),
@@ -183,6 +184,21 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec!["ingest_cleaning_notes".to_string()],
         });
     }
+    if run.artifact.budget.clipped || run.artifact.budget.sampled || run.artifact.budget.incomplete_output {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "budget-cap-hit".to_string(),
+            priority: "high".to_string(),
+            status: "action_required".to_string(),
+            title: "Budget cap hit - output incomplete".to_string(),
+            summary: format!(
+                "Budget policy clipped/sampled execution. skipped_modules={}",
+                run.artifact.budget.skipped_modules.join(",")
+            ),
+            recommended_action: "Review budget panel and rerun with higher envelope for full-fidelity output."
+                .to_string(),
+            evidence_refs: vec!["budget.events".to_string(), "budget.skipped_modules".to_string()],
+        });
+    }
 
     if cards.is_empty() {
         cards.push(DecisionFeedCardV1 {
@@ -262,6 +278,27 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     if data_quality.reconciliation_pass_ratio < 1.0 {
         warning_reasons.push("Reconciliation checks not fully passing.".to_string());
     }
+    if data_quality.budget_pass_ratio < 1.0 {
+        blocking_reasons.push("Budget checks not fully passing.".to_string());
+    }
+    if run
+        .artifact
+        .quality_controls
+        .budget_checks
+        .iter()
+        .any(|check| !check.passed && check.severity.eq_ignore_ascii_case("high"))
+    {
+        blocking_reasons.push("High-severity budget check failure present.".to_string());
+    }
+    if run
+        .artifact
+        .budget
+        .events
+        .iter()
+        .any(|event| event.outcome.eq_ignore_ascii_case("blocked"))
+    {
+        blocking_reasons.push("Budget spend exceeded envelope.".to_string());
+    }
     if run
         .artifact
         .ingest_cleaning_notes
@@ -304,6 +341,7 @@ fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) {
     assert!((0.0..=1.0).contains(&data_quality.identity_join_coverage_ratio));
     assert!((0.0..=1.0).contains(&data_quality.freshness_pass_ratio));
     assert!((0.0..=1.0).contains(&data_quality.reconciliation_pass_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.budget_pass_ratio));
     assert!((0.0..=1.0).contains(&data_quality.quality_score));
 }
 
@@ -656,6 +694,8 @@ mod tests {
                 seed: Some(1),
                 profile_id: profile_id.to_string(),
                 include_narratives: true,
+                budget_envelope:
+                    crate::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(),
             },
             metadata: AnalyticsRunMetadataV1 {
                 run_id: run_id.to_string(),
@@ -678,6 +718,7 @@ mod tests {
             },
             quality_controls: Default::default(),
             data_quality: Default::default(),
+            budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,
@@ -731,6 +772,28 @@ mod tests {
         assert!(!gate.export_ready);
         assert_eq!(gate.gate_status, "blocked");
         assert!(!gate.blocking_reasons.is_empty());
+    }
+
+    #[test]
+    fn publish_gate_blocks_when_budget_event_blocked() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.budget.events.push(
+            crate::subsystems::marketing_data_analysis::contracts::BudgetEventV1 {
+                subsystem: "mock_analytics.fetch".to_string(),
+                category: "retrieval".to_string(),
+                attempted_units: 9999,
+                remaining_units_before: 10,
+                outcome: "blocked".to_string(),
+                message: "budget cap exceeded".to_string(),
+            },
+        );
+        let gate = build_publish_export_gate(&run);
+        assert!(!gate.publish_ready);
+        assert_eq!(gate.gate_status, "blocked");
+        assert!(gate
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason.contains("Budget spend exceeded")));
     }
 
     proptest! {

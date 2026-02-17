@@ -23,6 +23,49 @@ pub struct MockAnalyticsRequestV1 {
     #[validate(length(min = 1, max = 128))]
     pub profile_id: String,
     pub include_narratives: bool,
+    pub budget_envelope: BudgetEnvelopeV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Budget policy mode for handling envelope pressure.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetPolicyModeV1 {
+    FailClosed,
+    Degrade,
+    Sample,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Required budget envelope for every analytics run.
+/// invariants:
+///   - all caps are positive
+///   - `max_total_cost_micros` is a hard run ceiling
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BudgetEnvelopeV1 {
+    pub max_retrieval_units: u64,
+    pub max_analysis_units: u64,
+    pub max_llm_tokens_in: u64,
+    pub max_llm_tokens_out: u64,
+    pub max_total_cost_micros: u64,
+    pub policy: BudgetPolicyModeV1,
+    pub provenance_ref: String,
+}
+
+impl Default for BudgetEnvelopeV1 {
+    fn default() -> Self {
+        Self {
+            max_retrieval_units: 20_000,
+            max_analysis_units: 10_000,
+            max_llm_tokens_in: 15_000,
+            max_llm_tokens_out: 8_000,
+            max_total_cost_micros: 50_000_000,
+            policy: BudgetPolicyModeV1::FailClosed,
+            provenance_ref: "budget.default.v1".to_string(),
+        }
+    }
 }
 
 /// # NDOC
@@ -120,6 +163,7 @@ pub struct AnalyticsQualityControlsV1 {
     pub schema_drift_checks: Vec<QualityCheckV1>,
     pub identity_resolution_checks: Vec<QualityCheckV1>,
     pub freshness_sla_checks: Vec<QualityCheckV1>,
+    pub budget_checks: Vec<QualityCheckV1>,
     pub is_healthy: bool,
 }
 
@@ -132,6 +176,7 @@ pub struct DataQualitySummaryV1 {
     pub identity_join_coverage_ratio: f64,
     pub freshness_pass_ratio: f64,
     pub reconciliation_pass_ratio: f64,
+    pub budget_pass_ratio: f64,
     pub quality_score: f64,
 }
 
@@ -142,6 +187,7 @@ impl Default for DataQualitySummaryV1 {
             identity_join_coverage_ratio: 1.0,
             freshness_pass_ratio: 1.0,
             reconciliation_pass_ratio: 1.0,
+            budget_pass_ratio: 1.0,
             quality_score: 1.0,
         }
     }
@@ -153,9 +199,53 @@ impl Default for AnalyticsQualityControlsV1 {
             schema_drift_checks: Vec::new(),
             identity_resolution_checks: Vec::new(),
             freshness_sla_checks: Vec::new(),
+            budget_checks: Vec::new(),
             is_healthy: true,
         }
     }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: One budget tracking event emitted during guarded execution.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct BudgetEventV1 {
+    pub subsystem: String,
+    pub category: String,
+    pub attempted_units: u64,
+    pub remaining_units_before: u64,
+    pub outcome: String,
+    pub message: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Actual budget consumption counters for a run.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct BudgetActualsV1 {
+    pub retrieval_units: u64,
+    pub analysis_units: u64,
+    pub llm_tokens_in: u64,
+    pub llm_tokens_out: u64,
+    pub total_cost_micros: u64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Budget state attached to artifact for audit and UI panels.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct BudgetSummaryV1 {
+    pub envelope: BudgetEnvelopeV1,
+    pub actuals: BudgetActualsV1,
+    pub remaining: BudgetActualsV1,
+    pub estimated: BudgetActualsV1,
+    pub clipped: bool,
+    pub sampled: bool,
+    pub incomplete_output: bool,
+    #[serde(default)]
+    pub skipped_modules: Vec<String>,
+    #[serde(default)]
+    pub events: Vec<BudgetEventV1>,
 }
 
 /// # NDOC
@@ -280,6 +370,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub quality_controls: AnalyticsQualityControlsV1,
     #[serde(default)]
     pub data_quality: DataQualitySummaryV1,
+    #[serde(default)]
+    pub budget: BudgetSummaryV1,
     #[serde(default)]
     pub historical_analysis: HistoricalAnalysisV1,
     #[serde(default)]
@@ -449,6 +541,8 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub forecast_summary: ForecastSummaryV1,
     #[serde(default)]
     pub data_quality: DataQualitySummaryV1,
+    #[serde(default)]
+    pub budget: BudgetSummaryV1,
     #[serde(default)]
     pub decision_feed: Vec<DecisionFeedCardV1>,
     #[serde(default)]

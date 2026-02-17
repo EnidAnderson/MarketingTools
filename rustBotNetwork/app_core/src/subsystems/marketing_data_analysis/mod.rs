@@ -5,6 +5,7 @@
 ///   - Request and artifact payloads are schema-versioned.
 ///   - Request validation and artifact validation are transport-neutral.
 ///   - Orchestration does not depend on Tauri/UI types.
+pub mod budget;
 pub mod contracts;
 pub mod executive_dashboard;
 pub mod ingest;
@@ -14,14 +15,19 @@ pub mod service;
 pub mod validators;
 
 pub use contracts::{
-    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
-    AnalyticsValidationReportV1, ArtifactPersistenceRefV1, ChannelMixPointV1,
-    ConfidenceCalibrationV1, DataQualitySummaryV1, DriftFlagV1, EvidenceItem,
-    ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem,
-    HistoricalAnalysisV1, IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
+    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, AnalyticsValidationReportV1,
+    ArtifactPersistenceRefV1, BudgetActualsV1, BudgetEnvelopeV1, BudgetEventV1,
+    BudgetPolicyModeV1, BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1,
+    DataQualitySummaryV1, DriftFlagV1, EvidenceItem, ExecutiveDashboardSnapshotV1,
+    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1,
+    IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
     PortfolioRowV1, QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
     ValidationCheck,
+};
+pub use budget::{
+    build_budget_plan, estimate_budget_upper_bound, BudgetCategory, BudgetEstimate, BudgetGuard,
+    BudgetPlan,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use ingest::{

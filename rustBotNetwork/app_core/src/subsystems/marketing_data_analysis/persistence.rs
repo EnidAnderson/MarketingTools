@@ -156,6 +156,8 @@ mod tests {
             seed: Some(7),
             profile_id: profile_id.to_string(),
             include_narratives: true,
+            budget_envelope:
+                crate::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(),
         };
         let artifact = MockAnalyticsArtifactV1 {
             schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
@@ -181,6 +183,7 @@ mod tests {
             },
             quality_controls: Default::default(),
             data_quality: Default::default(),
+            budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,

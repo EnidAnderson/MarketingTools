@@ -146,12 +146,28 @@ fn get_tools() -> Result<Vec<ToolDefinition>, String> {
                 description: "Optional deterministic seed override.".to_string(),
                 optional: true,
             },
+            ParameterDefinition {
+                name: "budget_envelope".to_string(),
+                r#type: "object".to_string(),
+                description: "Required budget envelope for retrieval/analysis/LLM/cost caps."
+                    .to_string(),
+                optional: false,
+            },
         ],
         input_examples: vec![json!({
             "start_date": "2026-02-01",
             "end_date": "2026-02-07",
             "profile_id": "marketing_default",
-            "include_narratives": true
+            "include_narratives": true,
+            "budget_envelope": {
+                "max_retrieval_units": 20000,
+                "max_analysis_units": 10000,
+                "max_llm_tokens_in": 15000,
+                "max_llm_tokens_out": 8000,
+                "max_total_cost_micros": 50000000,
+                "policy": "fail_closed",
+                "provenance_ref": "ui_example.v1"
+            }
         })],
         output_schema: Some(json!({
             "type": "object",

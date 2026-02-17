@@ -1,9 +1,10 @@
 use super::contracts::{
-    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, DataQualitySummaryV1,
-    EvidenceItem, GuidanceItem, IngestCleaningNoteV1, KpiAttributionNarrativeV1,
-    MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, QualityCheckV1,
-    MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
+    DataQualitySummaryV1, EvidenceItem, GuidanceItem, IngestCleaningNoteV1,
+    KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
+    QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
+use super::budget::{build_budget_plan, BudgetCategory, BudgetGuard};
 use super::ingest::{parse_ga4_event, CleaningNote};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
@@ -70,10 +71,40 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         request: MockAnalyticsRequestV1,
     ) -> Result<MockAnalyticsArtifactV1, AnalyticsError> {
         let (start, end) = validate_mock_analytics_request_v1(&request)?;
+        let budget_plan = build_budget_plan(&request, start, end)?;
+        let mut budget_guard = BudgetGuard::new(request.budget_envelope.clone());
         let seed = resolve_seed(&request);
 
-        let rows = generate_rows(&request, start, end, seed);
-        let report = rows_to_report(rows, &request, start, end);
+        budget_guard.spend(
+            BudgetCategory::Retrieval,
+            budget_plan.estimated.retrieval_units,
+            "mock_analytics.fetch",
+        )?;
+        let rows = generate_rows(&request, start, budget_plan.effective_end, seed);
+        budget_guard.spend(
+            BudgetCategory::Analysis,
+            budget_plan.estimated.analysis_units,
+            "mock_analytics.transform",
+        )?;
+        if budget_plan.include_narratives {
+            budget_guard.spend(
+                BudgetCategory::LlmTokensIn,
+                budget_plan.estimated.llm_tokens_in,
+                "mock_analytics.narrative_tokens_in",
+            )?;
+            budget_guard.spend(
+                BudgetCategory::LlmTokensOut,
+                budget_plan.estimated.llm_tokens_out,
+                "mock_analytics.narrative_tokens_out",
+            )?;
+        }
+        budget_guard.spend(
+            BudgetCategory::CostMicros,
+            budget_plan.estimated.total_cost_micros,
+            "mock_analytics.total_cost",
+        )?;
+
+        let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
         let ingest_cleaning_notes = collect_ingest_cleaning_notes(seed)?;
         let provenance = vec![SourceProvenance {
             connector_id: "mock_analytics_connector_v1".to_string(),
@@ -85,9 +116,23 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             rejected_rows_count: 0,
             cleaning_note_count: ingest_cleaning_notes.len() as u32,
         }];
-        let (observed_evidence, inferred_guidance, uncertainty_notes) =
-            build_evidence_and_guidance(&report, request.include_narratives);
-        let quality_controls = build_quality_controls(&report, &provenance);
+        let (observed_evidence, inferred_guidance, mut uncertainty_notes) =
+            build_evidence_and_guidance(&report, budget_plan.include_narratives);
+        if budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives {
+            uncertainty_notes.push(
+                "Budget policy modified run scope; see artifact.budget for clipping/sampling details."
+                    .to_string(),
+            );
+        }
+        let budget = budget_guard.summary(
+            &budget_plan.estimated,
+            budget_plan.clipped,
+            budget_plan.sampled,
+            budget_plan.skipped_modules,
+            budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives,
+        );
+        let budget_checks = build_budget_checks(&budget);
+        let quality_controls = build_quality_controls(&report, &provenance, budget_checks);
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
 
@@ -97,7 +142,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             profile_id: request.profile_id.clone(),
             seed,
             schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
-            date_span_days: ((end - start).num_days() + 1) as u32,
+            date_span_days: ((budget_plan.effective_end - start).num_days() + 1) as u32,
             requested_at_utc: None,
         };
 
@@ -117,6 +162,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             },
             quality_controls,
             data_quality,
+            budget,
             historical_analysis: Default::default(),
             operator_summary,
             persistence: None,
@@ -573,6 +619,7 @@ fn build_evidence_and_guidance(
 fn build_quality_controls(
     report: &AnalyticsReport,
     provenance: &[SourceProvenance],
+    budget_checks: Vec<QualityCheckV1>,
 ) -> AnalyticsQualityControlsV1 {
     let keyword_coverage_ratio = if report.keyword_data.is_empty() {
         1.0
@@ -697,12 +744,14 @@ fn build_quality_controls(
         .iter()
         .chain(identity_resolution_checks.iter())
         .chain(freshness_sla_checks.iter())
+        .chain(budget_checks.iter())
         .all(|c| c.passed);
 
     AnalyticsQualityControlsV1 {
         schema_drift_checks,
         identity_resolution_checks,
         freshness_sla_checks,
+        budget_checks,
         is_healthy,
     }
 }
@@ -719,12 +768,14 @@ fn build_data_quality_summary(
         .find(|check| check.code == "identity_campaign_rollup_reconciliation")
         .map(|check| if check.passed { 1.0 } else { 0.0 })
         .unwrap_or(0.0);
+    let budget_pass_ratio = pass_ratio(&quality_controls.budget_checks);
 
     let quality_score = round4(
-        completeness_ratio * 0.35
-            + identity_join_coverage_ratio * 0.35
-            + freshness_pass_ratio * 0.20
-            + reconciliation_pass_ratio * 0.10,
+        completeness_ratio * 0.30
+            + identity_join_coverage_ratio * 0.25
+            + freshness_pass_ratio * 0.15
+            + reconciliation_pass_ratio * 0.15
+            + budget_pass_ratio * 0.15,
     );
 
     DataQualitySummaryV1 {
@@ -732,8 +783,56 @@ fn build_data_quality_summary(
         identity_join_coverage_ratio,
         freshness_pass_ratio,
         reconciliation_pass_ratio,
+        budget_pass_ratio,
         quality_score,
     }
+}
+
+fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
+    let blocked_events = budget
+        .events
+        .iter()
+        .filter(|event| event.outcome.eq_ignore_ascii_case("blocked"))
+        .count();
+    vec![
+        QualityCheckV1 {
+            code: "budget_no_blocked_spend".to_string(),
+            passed: blocked_events == 0,
+            severity: "high".to_string(),
+            observed: format!("blocked_events={blocked_events}"),
+            expected: "blocked_events=0".to_string(),
+        },
+        QualityCheckV1 {
+            code: "budget_retrieval_within_cap".to_string(),
+            passed: budget.actuals.retrieval_units <= budget.envelope.max_retrieval_units,
+            severity: "high".to_string(),
+            observed: format!(
+                "{}/{}",
+                budget.actuals.retrieval_units, budget.envelope.max_retrieval_units
+            ),
+            expected: "actual <= cap".to_string(),
+        },
+        QualityCheckV1 {
+            code: "budget_analysis_within_cap".to_string(),
+            passed: budget.actuals.analysis_units <= budget.envelope.max_analysis_units,
+            severity: "high".to_string(),
+            observed: format!(
+                "{}/{}",
+                budget.actuals.analysis_units, budget.envelope.max_analysis_units
+            ),
+            expected: "actual <= cap".to_string(),
+        },
+        QualityCheckV1 {
+            code: "budget_total_cost_within_cap".to_string(),
+            passed: budget.actuals.total_cost_micros <= budget.envelope.max_total_cost_micros,
+            severity: "high".to_string(),
+            observed: format!(
+                "{}/{}",
+                budget.actuals.total_cost_micros, budget.envelope.max_total_cost_micros
+            ),
+            expected: "actual <= cap".to_string(),
+        },
+    ]
 }
 
 fn pass_ratio(checks: &[QualityCheckV1]) -> f64 {
@@ -849,6 +948,7 @@ mod tests {
             seed: Some(42),
             profile_id: "small".to_string(),
             include_narratives: true,
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
 
         let a = svc
@@ -875,6 +975,7 @@ mod tests {
             seed: None,
             profile_id: "small".to_string(),
             include_narratives: false,
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
         let first = svc
             .run_mock_analysis(req.clone())
@@ -900,6 +1001,7 @@ mod tests {
                 seed: Some(seed),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             };
             let artifact = svc
                 .run_mock_analysis(req)
@@ -911,6 +1013,16 @@ mod tests {
             assert!((0.0..=1.0).contains(&artifact.data_quality.quality_score));
             assert!((0.0..=1.0).contains(&artifact.data_quality.completeness_ratio));
             assert!((0.0..=1.0).contains(&artifact.data_quality.identity_join_coverage_ratio));
+            assert!(
+                artifact.budget.estimated.retrieval_units >= artifact.budget.actuals.retrieval_units
+            );
+            assert!(
+                artifact.budget.estimated.analysis_units >= artifact.budget.actuals.analysis_units
+            );
+            assert!(
+                artifact.budget.estimated.total_cost_micros
+                    >= artifact.budget.actuals.total_cost_micros
+            );
         }
     }
 
@@ -926,6 +1038,7 @@ mod tests {
                 seed: Some(1),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             },
             metadata: AnalyticsRunMetadataV1 {
                 run_id: "r".to_string(),
@@ -960,6 +1073,7 @@ mod tests {
                 quality_score: 1.4,
                 ..Default::default()
             },
+            budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
             persistence: None,
