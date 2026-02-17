@@ -23,6 +23,7 @@ const el = {
   kpiGrid: document.getElementById('kpiGrid'),
   runIdBadge: document.getElementById('runIdBadge'),
   qualityList: document.getElementById('qualityList'),
+  dataQualityPanel: document.getElementById('dataQualityPanel'),
   driftList: document.getElementById('driftList'),
   campaignTableBody: document.getElementById('campaignTableBody'),
   funnelTableBody: document.getElementById('funnelTableBody'),
@@ -174,6 +175,7 @@ function renderExecutiveDashboard(snapshot) {
   renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
   renderChannelMixChart(snapshot.channel_mix_series || [], snapshot.roas_target_band);
   renderQuality(snapshot.quality_controls || {});
+  renderDataQuality(snapshot.data_quality || {});
   renderDrift(snapshot.historical_analysis || {});
   renderCampaignTable(snapshot.portfolio_rows || []);
   renderFunnelTable(snapshot.funnel_summary?.stages || []);
@@ -319,6 +321,23 @@ function renderDrift(historical) {
     ...anomalies.map(a => `<li class="signal-item ${a.severity === 'high' ? 'bad' : 'warn'}"><strong>Anomaly</strong> ${escapeHtml(a.metric_key)} ${escapeHtml(a.reason)}</li>`)
   ];
   el.driftList.innerHTML = items.slice(0, 10).join('');
+}
+
+function renderDataQuality(dq) {
+  const rows = [
+    ['Completeness', dq.completeness_ratio],
+    ['Join Coverage', dq.identity_join_coverage_ratio],
+    ['Freshness Pass', dq.freshness_pass_ratio],
+    ['Reconciliation Pass', dq.reconciliation_pass_ratio],
+    ['Composite Score', dq.quality_score]
+  ];
+
+  el.dataQualityPanel.innerHTML = rows.map(([label, value]) => {
+    const ratio = typeof value === 'number' ? value : 0;
+    const pct = `${fmtNum(ratio * 100, 1)}%`;
+    const cls = ratio >= 0.99 ? 'good' : ratio >= 0.95 ? 'warn' : 'bad';
+    return `<div class="dq-row"><strong>${escapeHtml(label)}</strong>${pct}<span class="dq-badge ${cls}">${cls}</span></div>`;
+  }).join('');
 }
 
 function renderCampaignTable(rows) {
@@ -580,6 +599,13 @@ function fallbackSnapshot(profileId, opts) {
       blocking_reasons: [],
       warning_reasons: ['One medium anomaly requires review note in packet.'],
       gate_status: 'review_required'
+    },
+    data_quality: {
+      completeness_ratio: 1.0,
+      identity_join_coverage_ratio: 0.99,
+      freshness_pass_ratio: 0.96,
+      reconciliation_pass_ratio: 1.0,
+      quality_score: 0.988
     },
     operator_summary: {
       attribution_narratives: [

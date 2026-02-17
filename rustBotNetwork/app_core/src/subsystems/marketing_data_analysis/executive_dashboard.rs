@@ -1,8 +1,8 @@
 // provenance: decision_id=DEC-0015; change_request_id=CR-QA_FIXER-0032
 use super::contracts::{
-    ChannelMixPointV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1,
-    FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1,
-    PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ChannelMixPointV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
+    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1,
+    PortfolioRowV1, PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
 };
 use crate::data_models::analytics::ReportMetrics;
 use chrono::Utc;
@@ -90,6 +90,7 @@ pub fn build_executive_dashboard_snapshot(
         storefront_behavior_summary: build_storefront_summary(latest_metrics),
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
+        data_quality: latest.artifact.data_quality.clone(),
         decision_feed: build_decision_feed(latest),
         publish_export_gate: build_publish_export_gate(latest),
         quality_controls: latest.artifact.quality_controls.clone(),
@@ -187,6 +188,8 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
 fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGateV1 {
     let quality = &run.artifact.quality_controls;
     let historical = &run.artifact.historical_analysis;
+    let data_quality = &run.artifact.data_quality;
+    validate_data_quality_bounds(data_quality);
     let mut blocking_reasons = Vec::new();
     let mut warning_reasons = Vec::new();
 
@@ -222,6 +225,28 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
         warning_reasons.push("High-severity anomaly flagged; require operator review.".to_string());
     }
 
+    if data_quality.completeness_ratio < 0.99 {
+        blocking_reasons.push(format!(
+            "Data completeness below threshold: {:.2}%",
+            data_quality.completeness_ratio * 100.0
+        ));
+    }
+    if data_quality.identity_join_coverage_ratio < 0.98 {
+        blocking_reasons.push(format!(
+            "Join coverage below threshold: {:.2}%",
+            data_quality.identity_join_coverage_ratio * 100.0
+        ));
+    }
+    if data_quality.freshness_pass_ratio < 0.95 {
+        warning_reasons.push(format!(
+            "Freshness pass ratio degraded: {:.2}%",
+            data_quality.freshness_pass_ratio * 100.0
+        ));
+    }
+    if data_quality.reconciliation_pass_ratio < 1.0 {
+        warning_reasons.push("Reconciliation checks not fully passing.".to_string());
+    }
+
     let publish_ready = blocking_reasons.is_empty();
     let export_ready = blocking_reasons.is_empty();
     let gate_status = if !publish_ready {
@@ -248,6 +273,14 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
         warning_reasons,
         gate_status,
     }
+}
+
+fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) {
+    assert!((0.0..=1.0).contains(&data_quality.completeness_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.identity_join_coverage_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.freshness_pass_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.reconciliation_pass_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.quality_score));
 }
 
 fn build_kpis(

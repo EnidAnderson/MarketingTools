@@ -65,9 +65,17 @@ unset SAFE_SHIP
 "$ROOT/scripts/secret_scan.sh" tracked
 
 if [[ ${#PUSH_ARGS[@]} -gt 0 ]]; then
-  git push "${PUSH_ARGS[@]}"
+  if ! git push "${PUSH_ARGS[@]}"; then
+    echo "Push failed: commit created locally but not pushed." >&2
+    exit 1
+  fi
 else
-  git push
+  if ! git push; then
+    echo "Push failed: commit created locally but not pushed." >&2
+    exit 1
+  fi
 fi
+
+"$ROOT/scripts/post_ship_proof.sh"
 
 echo "Ship complete: committed and pushed with secret checks."

@@ -469,6 +469,7 @@ fn get_dashboard_chart_definitions() -> Result<Value, String> {
         {"id":"storefront_behavior","title":"Wix Storefront Behavior","kind":"matrix"},
         {"id":"campaign_portfolio","title":"Campaign Portfolio","kind":"table"},
         {"id":"forecast_pacing","title":"Forecast and Pacing","kind":"forecast"},
+        {"id":"data_quality_scorecard","title":"Data Quality Scorecard","kind":"scorecard"},
         {"id":"publish_export_gate","title":"Publish and Export Gate","kind":"gate"},
         {"id":"decision_feed","title":"Governance Decision Feed","kind":"cards"},
         {"id":"trust_risk","title":"Trust and Risk","kind":"signals"}

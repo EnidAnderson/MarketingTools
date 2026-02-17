@@ -250,6 +250,48 @@ input {
   font-size: 13px;
 }
 
+.data-quality-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.dq-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.dq-row strong {
+  display: inline-block;
+  min-width: 140px;
+}
+
+.dq-badge {
+  display: inline-block;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  border: 1px solid var(--line);
+}
+
+.dq-badge.good {
+  background: #e9f7ef;
+  color: #0e7a44;
+}
+
+.dq-badge.warn {
+  background: #fff7db;
+  color: #9b6b00;
+}
+
+.dq-badge.bad {
+  background: #fdecef;
+  color: #a4232c;
+}
+
 .signal-item.ok {
   border-left: 4px solid var(--ok);
 }

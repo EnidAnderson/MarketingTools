@@ -432,6 +432,8 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub portfolio_rows: Vec<PortfolioRowV1>,
     pub forecast_summary: ForecastSummaryV1,
     #[serde(default)]
+    pub data_quality: DataQualitySummaryV1,
+    #[serde(default)]
     pub decision_feed: Vec<DecisionFeedCardV1>,
     #[serde(default)]
     pub publish_export_gate: PublishExportGateV1,

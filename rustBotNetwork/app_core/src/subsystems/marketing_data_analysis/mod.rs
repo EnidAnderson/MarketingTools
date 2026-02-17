@@ -7,6 +7,7 @@
 ///   - Orchestration does not depend on Tauri/UI types.
 pub mod contracts;
 pub mod executive_dashboard;
+pub mod ingest;
 pub mod longitudinal;
 pub mod persistence;
 pub mod service;
@@ -23,6 +24,11 @@ pub use contracts::{
     ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
+pub use ingest::{
+    join_coverage_ratio, parse_ga4_event, window_completeness, Cleaned, CleaningNote,
+    CleaningSeverity, Ga4EventRawV1, Ga4EventV1, GoogleAdsRowRawV1, GoogleAdsRowV1, IngestError,
+    WindowCompletenessCheck, WixOrderRawV1, WixOrderV1,
+};
 pub use longitudinal::build_historical_analysis;
 pub use persistence::AnalyticsRunStore;
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};
