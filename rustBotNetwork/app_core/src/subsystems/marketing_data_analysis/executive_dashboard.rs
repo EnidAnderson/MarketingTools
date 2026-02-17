@@ -1,0 +1,411 @@
+// provenance: decision_id=DEC-0015; change_request_id=CR-QA_FIXER-0032
+use super::contracts::{
+    ChannelMixPointV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FunnelStageV1,
+    FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1,
+    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+};
+use crate::data_models::analytics::ReportMetrics;
+use chrono::Utc;
+
+const SNAPSHOT_SCHEMA_VERSION_V1: &str = "executive_dashboard_snapshot.v1";
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::executive_dashboard`
+/// purpose: Build chart-ready executive dashboard payload from persisted analytics runs.
+pub fn build_executive_dashboard_snapshot(
+    profile_id: &str,
+    runs: &[PersistedAnalyticsRunV1],
+) -> Option<ExecutiveDashboardSnapshotV1> {
+    let latest = runs.first()?;
+    let previous = runs.get(1);
+    let latest_metrics = &latest.artifact.report.total_metrics;
+    let previous_metrics = previous
+        .map(|run| &run.artifact.report.total_metrics)
+        .unwrap_or(latest_metrics);
+
+    let confidence_cap = latest
+        .artifact
+        .historical_analysis
+        .confidence_calibration
+        .recommended_confidence_cap
+        .clone();
+    let source_class = latest
+        .artifact
+        .provenance
+        .first()
+        .map(|p| format!("{:?}", p.source_class).to_lowercase())
+        .unwrap_or_else(|| "simulated".to_string());
+
+    let mut alerts = Vec::new();
+    if !latest.artifact.quality_controls.is_healthy {
+        alerts.push("Quality controls degraded".to_string());
+    }
+    for flag in &latest.artifact.historical_analysis.anomaly_flags {
+        alerts.push(format!("Anomaly {}: {}", flag.metric_key, flag.reason));
+    }
+
+    let trust_status = if latest.artifact.quality_controls.is_healthy {
+        "healthy".to_string()
+    } else {
+        "degraded".to_string()
+    };
+
+    Some(ExecutiveDashboardSnapshotV1 {
+        schema_version: SNAPSHOT_SCHEMA_VERSION_V1.to_string(),
+        profile_id: profile_id.to_string(),
+        generated_at_utc: Utc::now().to_rfc3339(),
+        run_id: latest.metadata.run_id.clone(),
+        date_range: latest.artifact.report.date_range.clone(),
+        kpis: build_kpis(latest_metrics, previous_metrics, &confidence_cap, &source_class),
+        channel_mix_series: build_channel_mix_series(runs),
+        funnel_summary: build_funnel_summary(latest_metrics),
+        storefront_behavior_summary: build_storefront_summary(latest_metrics),
+        portfolio_rows: build_portfolio_rows(latest),
+        forecast_summary: build_forecast(latest_metrics, runs),
+        quality_controls: latest.artifact.quality_controls.clone(),
+        historical_analysis: latest.artifact.historical_analysis.clone(),
+        operator_summary: latest.artifact.operator_summary.clone(),
+        trust_status,
+        alerts,
+    })
+}
+
+fn build_kpis(
+    current: &ReportMetrics,
+    baseline: &ReportMetrics,
+    confidence_label: &str,
+    source_class: &str,
+) -> Vec<KpiTileV1> {
+    vec![
+        kpi(
+            "spend",
+            "Spend",
+            current.cost,
+            baseline.cost,
+            format!("${:.2}", current.cost),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "revenue",
+            "Revenue",
+            current.conversions_value,
+            baseline.conversions_value,
+            format!("${:.2}", current.conversions_value),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "roas",
+            "ROAS",
+            current.roas,
+            baseline.roas,
+            format!("{:.2}x", current.roas),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "conversions",
+            "Conversions",
+            current.conversions,
+            baseline.conversions,
+            format!("{:.2}", current.conversions),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "ctr",
+            "CTR",
+            current.ctr,
+            baseline.ctr,
+            format!("{:.2}%", current.ctr),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "cpa",
+            "CPA",
+            current.cpa,
+            baseline.cpa,
+            format!("${:.2}", current.cpa),
+            confidence_label,
+            source_class,
+        ),
+        kpi(
+            "aov",
+            "AOV",
+            average_order_value(current),
+            average_order_value(baseline),
+            format!("${:.2}", average_order_value(current)),
+            confidence_label,
+            source_class,
+        ),
+    ]
+}
+
+fn kpi(
+    key: &str,
+    label: &str,
+    value: f64,
+    baseline: f64,
+    formatted_value: String,
+    confidence_label: &str,
+    source_class: &str,
+) -> KpiTileV1 {
+    let delta_percent = if baseline.abs() > f64::EPSILON {
+        Some((value - baseline) / baseline)
+    } else {
+        None
+    };
+    KpiTileV1 {
+        key: key.to_string(),
+        label: label.to_string(),
+        value,
+        formatted_value,
+        delta_percent,
+        target_delta_percent: None,
+        confidence_label: confidence_label.to_string(),
+        source_class: source_class.to_string(),
+    }
+}
+
+fn build_channel_mix_series(runs: &[PersistedAnalyticsRunV1]) -> Vec<ChannelMixPointV1> {
+    let mut series = runs
+        .iter()
+        .take(12)
+        .map(|run| ChannelMixPointV1 {
+            period_label: run
+                .artifact
+                .report
+                .date_range
+                .replace(" to ", " -> "),
+            spend: run.artifact.report.total_metrics.cost,
+            revenue: run.artifact.report.total_metrics.conversions_value,
+            roas: run.artifact.report.total_metrics.roas,
+        })
+        .collect::<Vec<_>>();
+    series.reverse();
+    series
+}
+
+fn build_funnel_summary(metrics: &ReportMetrics) -> FunnelSummaryV1 {
+    let stage_impressions = metrics.impressions as f64;
+    let stage_clicks = metrics.clicks as f64;
+    let stage_sessions = stage_clicks * 0.92;
+    let stage_product_view = stage_sessions * 0.67;
+    let stage_add_to_cart = stage_product_view * 0.28;
+    let stage_checkout = stage_add_to_cart * 0.57;
+    let stage_purchase = metrics.conversions.max(0.0);
+
+    let stages = vec![
+        stage("Impression", stage_impressions, None),
+        stage("Click", stage_clicks, Some(stage_clicks / stage_impressions)),
+        stage("Session", stage_sessions, Some(stage_sessions / stage_clicks.max(1.0))),
+        stage(
+            "Product View",
+            stage_product_view,
+            Some(stage_product_view / stage_sessions.max(1.0)),
+        ),
+        stage(
+            "Add To Cart",
+            stage_add_to_cart,
+            Some(stage_add_to_cart / stage_product_view.max(1.0)),
+        ),
+        stage(
+            "Checkout",
+            stage_checkout,
+            Some(stage_checkout / stage_add_to_cart.max(1.0)),
+        ),
+        stage(
+            "Purchase",
+            stage_purchase,
+            Some(stage_purchase / stage_checkout.max(1.0)),
+        ),
+    ];
+
+    let mut hotspot = "None".to_string();
+    let mut min_rate = 1.0;
+    for item in stages.iter().skip(1) {
+        if let Some(rate) = item.conversion_from_previous {
+            if rate < min_rate {
+                min_rate = rate;
+                hotspot = item.stage.clone();
+            }
+        }
+    }
+
+    FunnelSummaryV1 {
+        stages,
+        dropoff_hotspot_stage: hotspot,
+    }
+}
+
+fn stage(name: &str, value: f64, conversion_from_previous: Option<f64>) -> FunnelStageV1 {
+    FunnelStageV1 {
+        stage: name.to_string(),
+        value,
+        conversion_from_previous,
+    }
+}
+
+fn build_storefront_summary(metrics: &ReportMetrics) -> StorefrontBehaviorSummaryV1 {
+    let sessions = (metrics.clicks as f64 * 0.92).round() as u64;
+    let add_to_cart_rate = 0.18;
+    let purchase_rate = if sessions > 0 {
+        metrics.conversions / sessions as f64
+    } else {
+        0.0
+    };
+    let aov = average_order_value(metrics);
+
+    StorefrontBehaviorSummaryV1 {
+        source_system: "wix_storefront_mock".to_string(),
+        identity_confidence: "medium".to_string(),
+        rows: vec![
+            StorefrontBehaviorRowV1 {
+                segment: "mobile".to_string(),
+                product_or_template: "ready-raw-hero-landing".to_string(),
+                sessions: (sessions as f64 * 0.58).round() as u64,
+                add_to_cart_rate: add_to_cart_rate + 0.02,
+                purchase_rate: purchase_rate + 0.01,
+                aov: aov * 0.97,
+            },
+            StorefrontBehaviorRowV1 {
+                segment: "desktop".to_string(),
+                product_or_template: "value-bundle-collection".to_string(),
+                sessions: (sessions as f64 * 0.42).round() as u64,
+                add_to_cart_rate: add_to_cart_rate - 0.01,
+                purchase_rate: purchase_rate + 0.015,
+                aov: aov * 1.06,
+            },
+        ],
+    }
+}
+
+fn build_portfolio_rows(run: &PersistedAnalyticsRunV1) -> Vec<PortfolioRowV1> {
+    let mut rows = run
+        .artifact
+        .report
+        .campaign_data
+        .iter()
+        .map(|row| PortfolioRowV1 {
+            campaign: row.campaign_name.clone(),
+            spend: row.metrics.cost,
+            revenue: row.metrics.conversions_value,
+            roas: row.metrics.roas,
+            ctr: row.metrics.ctr,
+            cpa: row.metrics.cpa,
+            conversions: row.metrics.conversions,
+            drift_severity: run
+                .artifact
+                .historical_analysis
+                .drift_flags
+                .iter()
+                .find(|flag| flag.metric_key == "conversions")
+                .map(|flag| flag.severity.clone()),
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|a, b| b.roas.total_cmp(&a.roas));
+    rows
+}
+
+fn build_forecast(metrics: &ReportMetrics, runs: &[PersistedAnalyticsRunV1]) -> ForecastSummaryV1 {
+    let avg_roas = if runs.is_empty() {
+        metrics.roas
+    } else {
+        runs.iter()
+            .take(8)
+            .map(|run| run.artifact.report.total_metrics.roas)
+            .sum::<f64>()
+            / runs.iter().take(8).count() as f64
+    };
+    let expected_revenue_next_period = metrics.cost * avg_roas;
+    ForecastSummaryV1 {
+        expected_revenue_next_period,
+        expected_roas_next_period: avg_roas,
+        confidence_interval_low: expected_revenue_next_period * 0.9,
+        confidence_interval_high: expected_revenue_next_period * 1.1,
+        month_to_date_pacing_ratio: 1.03,
+    }
+}
+
+fn average_order_value(metrics: &ReportMetrics) -> f64 {
+    if metrics.conversions > 0.0 {
+        metrics.conversions_value / metrics.conversions
+    } else {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subsystems::marketing_data_analysis::contracts::{
+        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
+        MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    };
+
+    fn build_run(run_id: &str, profile_id: &str, spend: f64, roas: f64) -> PersistedAnalyticsRunV1 {
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: MockAnalyticsRequestV1 {
+                start_date: "2026-02-01".to_string(),
+                end_date: "2026-02-07".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(1),
+                profile_id: profile_id.to_string(),
+                include_narratives: true,
+            },
+            metadata: AnalyticsRunMetadataV1 {
+                run_id: run_id.to_string(),
+                connector_id: "mock".to_string(),
+                profile_id: profile_id.to_string(),
+                seed: 1,
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                date_span_days: 7,
+                requested_at_utc: None,
+            },
+            report: Default::default(),
+            observed_evidence: Vec::new(),
+            inferred_guidance: Vec::new(),
+            uncertainty_notes: vec!["sim".to_string()],
+            provenance: Vec::new(),
+            validation: AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
+            quality_controls: Default::default(),
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
+        };
+        artifact.report.total_metrics.cost = spend;
+        artifact.report.total_metrics.roas = roas;
+        artifact.report.total_metrics.conversions_value = spend * roas;
+        artifact.report.total_metrics.impressions = 1000;
+        artifact.report.total_metrics.clicks = 100;
+        artifact.report.total_metrics.conversions = 8.0;
+        artifact.report.date_range = "2026-02-01 to 2026-02-07".to_string();
+        PersistedAnalyticsRunV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: artifact.request.clone(),
+            metadata: artifact.metadata.clone(),
+            validation: artifact.validation.clone(),
+            artifact,
+            stored_at_utc: "2026-02-17T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn builds_snapshot_from_history() {
+        let runs = vec![
+            build_run("run-2", "p1", 200.0, 6.5),
+            build_run("run-1", "p1", 180.0, 5.8),
+        ];
+        let snap = build_executive_dashboard_snapshot("p1", &runs).expect("snapshot");
+        assert_eq!(snap.profile_id, "p1");
+        assert!(!snap.kpis.is_empty());
+        assert!(!snap.channel_mix_series.is_empty());
+    }
+}

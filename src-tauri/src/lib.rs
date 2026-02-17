@@ -1,6 +1,8 @@
 use app_core::image_generator::generate_image;
 use app_core::pipeline::PipelineDefinition;
-use app_core::subsystems::marketing_data_analysis::{AnalyticsRunStore, MockAnalyticsRequestV1};
+use app_core::subsystems::marketing_data_analysis::{
+    build_executive_dashboard_snapshot, AnalyticsRunStore, MockAnalyticsRequestV1,
+};
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
@@ -415,6 +417,47 @@ fn get_analysis_workflows() -> Result<Value, String> {
     ]))
 }
 
+/// # NDOC
+/// component: `tauri_commands::get_executive_dashboard_snapshot`
+/// purpose: Return multi-chart executive snapshot assembled from persisted analytics runs.
+#[tauri::command]
+fn get_executive_dashboard_snapshot(
+    profile_id: String,
+    limit: Option<usize>,
+) -> Result<Value, String> {
+    let profile_id = profile_id.trim();
+    if profile_id.is_empty() {
+        return Err("profile_id cannot be empty".to_string());
+    }
+    let store = AnalyticsRunStore::default();
+    let runs = store
+        .list_recent(Some(profile_id), limit.unwrap_or(24).min(64))
+        .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    let snapshot = build_executive_dashboard_snapshot(profile_id, &runs).ok_or_else(|| {
+        format!(
+            "No persisted analytics runs found for profile '{}'. Generate a run first.",
+            profile_id
+        )
+    })?;
+    serde_json::to_value(snapshot)
+        .map_err(|err| format!("failed to serialize dashboard snapshot: {err}"))
+}
+
+/// # NDOC
+/// component: `tauri_commands::get_dashboard_chart_definitions`
+/// purpose: Return stable chart catalog metadata for frontend rendering surfaces.
+#[tauri::command]
+fn get_dashboard_chart_definitions() -> Result<Value, String> {
+    Ok(json!([
+        {"id":"kpi_strip","title":"North Star KPIs","kind":"cards"},
+        {"id":"scale_efficiency","title":"Spend vs Revenue and ROAS","kind":"line"},
+        {"id":"funnel","title":"Funnel Leakage","kind":"funnel"},
+        {"id":"storefront_behavior","title":"Wix Storefront Behavior","kind":"matrix"},
+        {"id":"campaign_portfolio","title":"Campaign Portfolio","kind":"table"},
+        {"id":"trust_risk","title":"Trust and Risk","kind":"signals"}
+    ]))
+}
+
 #[tauri::command]
 async fn generate_image_command(prompt: String, campaign_dir: String) -> Result<String, String> {
     match generate_image(&prompt, &campaign_dir).await {
@@ -461,6 +504,8 @@ pub fn run() {
             start_mock_analytics_job,
             get_mock_analytics_run_history,
             get_analysis_workflows,
+            get_executive_dashboard_snapshot,
+            get_dashboard_chart_definitions,
             generate_image_command,
         ])
         .run(tauri::generate_context!())

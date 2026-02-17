@@ -64,6 +64,11 @@
         <canvas id="deltaChart" height="120"></canvas>
       </article>
 
+      <article class="card panel-wide">
+        <h2>Scale vs Efficiency</h2>
+        <canvas id="channelMixChart" height="120"></canvas>
+      </article>
+
       <article class="card panel">
         <h2>Quality Controls</h2>
         <ul id="qualityList" class="signal-list"></ul>
@@ -72,6 +77,22 @@
       <article class="card panel">
         <h2>Drift & Anomaly Flags</h2>
         <ul id="driftList" class="signal-list"></ul>
+      </article>
+
+      <article class="card panel-wide">
+        <h2>Funnel Leakage</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Stage</th>
+                <th>Volume</th>
+                <th>Conv. From Prev</th>
+              </tr>
+            </thead>
+            <tbody id="funnelTableBody"></tbody>
+          </table>
+        </div>
       </article>
 
       <article class="card panel-wide">
@@ -89,6 +110,25 @@
               </tr>
             </thead>
             <tbody id="campaignTableBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card panel-wide">
+        <h2>Wix Storefront Behavior</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Segment</th>
+                <th>Template/Product</th>
+                <th>Sessions</th>
+                <th>Add-To-Cart</th>
+                <th>Purchase Rate</th>
+                <th>AOV</th>
+              </tr>
+            </thead>
+            <tbody id="storefrontTableBody"></tbody>
           </table>
         </div>
       </article>

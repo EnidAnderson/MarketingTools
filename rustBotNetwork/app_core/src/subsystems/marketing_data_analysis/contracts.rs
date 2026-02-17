@@ -257,6 +257,124 @@ pub struct PersistedAnalyticsRunV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Executive KPI tile payload for top dashboard strip.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct KpiTileV1 {
+    pub key: String,
+    pub label: String,
+    pub value: f64,
+    pub formatted_value: String,
+    pub delta_percent: Option<f64>,
+    pub target_delta_percent: Option<f64>,
+    pub confidence_label: String,
+    pub source_class: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Funnel stage summary row for executive funnel panel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FunnelStageV1 {
+    pub stage: String,
+    pub value: f64,
+    pub conversion_from_previous: Option<f64>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Funnel summary section in executive dashboard snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FunnelSummaryV1 {
+    pub stages: Vec<FunnelStageV1>,
+    pub dropoff_hotspot_stage: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Time point for channel mix and scale/efficiency trend charts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ChannelMixPointV1 {
+    pub period_label: String,
+    pub spend: f64,
+    pub revenue: f64,
+    pub roas: f64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: One Wix storefront behavior aggregate row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct StorefrontBehaviorRowV1 {
+    pub segment: String,
+    pub product_or_template: String,
+    pub sessions: u64,
+    pub add_to_cart_rate: f64,
+    pub purchase_rate: f64,
+    pub aov: f64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Storefront behavior panel model enriched with Wix-like aggregates.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct StorefrontBehaviorSummaryV1 {
+    pub source_system: String,
+    pub identity_confidence: String,
+    pub rows: Vec<StorefrontBehaviorRowV1>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Campaign portfolio table row for executive ranking panel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PortfolioRowV1 {
+    pub campaign: String,
+    pub spend: f64,
+    pub revenue: f64,
+    pub roas: f64,
+    pub ctr: f64,
+    pub cpa: f64,
+    pub conversions: f64,
+    pub drift_severity: Option<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Forecast and pace status section for executive planning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ForecastSummaryV1 {
+    pub expected_revenue_next_period: f64,
+    pub expected_roas_next_period: f64,
+    pub confidence_interval_low: f64,
+    pub confidence_interval_high: f64,
+    pub month_to_date_pacing_ratio: f64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Stable multi-chart payload for frontend executive dashboard rendering.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ExecutiveDashboardSnapshotV1 {
+    pub schema_version: String,
+    pub profile_id: String,
+    pub generated_at_utc: String,
+    pub run_id: String,
+    pub date_range: String,
+    pub kpis: Vec<KpiTileV1>,
+    pub channel_mix_series: Vec<ChannelMixPointV1>,
+    pub funnel_summary: FunnelSummaryV1,
+    pub storefront_behavior_summary: StorefrontBehaviorSummaryV1,
+    pub portfolio_rows: Vec<PortfolioRowV1>,
+    pub forecast_summary: ForecastSummaryV1,
+    pub quality_controls: AnalyticsQualityControlsV1,
+    pub historical_analysis: HistoricalAnalysisV1,
+    pub operator_summary: OperatorSummaryV1,
+    pub trust_status: String,
+    pub alerts: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Machine-readable analytics error payload with user-safe message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AnalyticsError {
