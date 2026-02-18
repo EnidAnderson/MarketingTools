@@ -125,22 +125,26 @@ impl JobManager {
             }
 
             let registry = ToolRegistry::new();
-            let Some(tool) = registry.get_tool_instance(&tool_name) else {
+            if registry.get_tool_instance(&tool_name).is_none() {
                 manager.update_failed(
                     &spawned_job_id,
                     serde_json::json!({
-                        "kind": "internal_error",
+                        "code": "internal_error",
+                        "category": "internal",
+                        "source": "runtime",
                         "message": "Tool became unavailable before execution",
-                        "retryable": false
+                        "retryable": false,
+                        "field_paths": [],
+                        "trace_id": "",
+                        "context": {}
                     }),
                 );
                 manager.assert_snapshot_invariant(&spawned_job_id);
                 manager.emit_failed(&app_handle, &spawned_job_id);
                 return;
-            };
+            }
 
-            match tool.execute(input).await {
-                // Changed .run to .execute
+            match registry.execute_tool(&tool_name, input).await {
                 Ok(output) => {
                     if manager.is_canceled(&spawned_job_id) {
                         manager.update_canceled(&spawned_job_id, "Job canceled during execution");
@@ -153,14 +157,17 @@ impl JobManager {
                     }
                 }
                 Err(err) => {
-                    // Simplified error handling to directly use the string representation of err
                     manager.update_failed(
                         &spawned_job_id,
                         serde_json::json!({
-                            "kind": "tool_execution_error", // Generic error kind
-                            "message": err.to_string(),
-                            "retryable": false,
-                            "details": err.to_string() // Using to_string for details as well
+                            "code": err.code,
+                            "category": err.category,
+                            "source": err.source,
+                            "message": err.message,
+                            "retryable": err.retryable,
+                            "field_paths": err.field_paths,
+                            "trace_id": err.trace_id,
+                            "context": err.context
                         }),
                     );
                     manager.assert_snapshot_invariant(&spawned_job_id);
@@ -240,9 +247,14 @@ impl JobManager {
                                         manager.update_failed(
                                             &spawned_job_id,
                                             serde_json::json!({
-                                                "kind": "internal_error",
+                                                "code": "internal_error",
+                                                "category": "internal",
+                                                "source": "storage",
                                                 "message": format!("Failed to write pipeline manifest: {}", err),
-                                                "retryable": false
+                                                "retryable": false,
+                                                "field_paths": [],
+                                                "trace_id": "",
+                                                "context": {}
                                             }),
                                         );
                                         manager.assert_snapshot_invariant(&spawned_job_id);
@@ -258,9 +270,14 @@ impl JobManager {
                                 manager.update_failed(
                                     &spawned_job_id,
                                     serde_json::json!({
-                                        "kind": "internal_error",
+                                        "code": "internal_error",
+                                        "category": "internal",
+                                        "source": "runtime",
                                         "message": format!("Failed to serialize pipeline result: {}", err),
-                                        "retryable": false
+                                        "retryable": false,
+                                        "field_paths": [],
+                                        "trace_id": "",
+                                        "context": {}
                                     }),
                                 );
                                 manager.assert_snapshot_invariant(&spawned_job_id);
@@ -273,10 +290,14 @@ impl JobManager {
                     manager.update_failed(
                         &spawned_job_id,
                         serde_json::json!({
-                            "kind": format!("{:?}", err.kind),
+                            "code": format!("{:?}", err.kind),
+                            "category": "internal",
+                            "source": "runtime",
                             "message": err.message,
                             "retryable": err.retryable,
-                            "details": err.details
+                            "field_paths": [],
+                            "trace_id": "",
+                            "context": err.details
                         }),
                     );
                     manager.assert_snapshot_invariant(&spawned_job_id);
@@ -395,10 +416,13 @@ impl JobManager {
                             manager.update_failed(
                                 &spawned_job_id,
                                 serde_json::json!({
-                                    "kind": err.code,
+                                    "code": err.code,
+                                    "category": "internal",
+                                    "source": "storage",
                                     "message": err.message,
                                     "retryable": false,
                                     "field_paths": err.field_paths,
+                                    "trace_id": "",
                                     "context": err.context
                                 }),
                             );
@@ -443,10 +467,13 @@ impl JobManager {
                             manager.update_failed(
                                 &spawned_job_id,
                                 serde_json::json!({
-                                    "kind": err.code,
+                                    "code": err.code,
+                                    "category": "internal",
+                                    "source": "storage",
                                     "message": err.message,
                                     "retryable": false,
                                     "field_paths": err.field_paths,
+                                    "trace_id": "",
                                     "context": err.context
                                 }),
                             );
@@ -465,9 +492,14 @@ impl JobManager {
                             manager.update_failed(
                                 &spawned_job_id,
                                 serde_json::json!({
-                                    "kind": "internal_error",
+                                    "code": "internal_error",
+                                    "category": "internal",
+                                    "source": "runtime",
                                     "message": format!("Failed to serialize artifact: {}", err),
-                                    "retryable": false
+                                    "retryable": false,
+                                    "field_paths": [],
+                                    "trace_id": "",
+                                    "context": {}
                                 }),
                             );
                             manager.emit_failed(&app_handle, &spawned_job_id);
@@ -478,10 +510,13 @@ impl JobManager {
                     manager.update_failed(
                         &spawned_job_id,
                         serde_json::json!({
-                            "kind": err.code,
+                            "code": err.code,
+                            "category": "internal",
+                            "source": "tool",
                             "message": err.message,
                             "retryable": false,
                             "field_paths": err.field_paths,
+                            "trace_id": "",
                             "context": err.context
                         }),
                     );
@@ -526,9 +561,14 @@ impl JobManager {
                 snapshot.stage = "canceled".to_string();
                 snapshot.message = Some("Cancellation requested".to_string());
                 snapshot.error = Some(serde_json::json!({
-                    "kind": "canceled",
+                    "code": "canceled",
+                    "category": "internal",
+                    "source": "runtime",
                     "message": "Job canceled by user",
-                    "retryable": false
+                    "retryable": false,
+                    "field_paths": [],
+                    "trace_id": "",
+                    "context": {}
                 }));
             }
         }
@@ -632,9 +672,14 @@ impl JobManager {
                 snapshot.stage = "canceled".to_string();
                 snapshot.message = Some(message.to_string());
                 snapshot.error = Some(serde_json::json!({
-                    "kind": "canceled",
+                    "code": "canceled",
+                    "category": "internal",
+                    "source": "runtime",
                     "message": message,
-                    "retryable": false
+                    "retryable": false,
+                    "field_paths": [],
+                    "trace_id": "",
+                    "context": {}
                 }));
             }
         }
@@ -706,8 +751,25 @@ fn validate_job_snapshot(snapshot: &JobSnapshot) -> Result<(), String> {
             }
         }
         JobStatus::Failed | JobStatus::Canceled => {
-            if snapshot.error.is_none() {
+            let Some(error) = snapshot.error.as_ref() else {
                 return Err("failed/canceled state requires error payload".to_string());
+            };
+            for required in [
+                "code",
+                "category",
+                "source",
+                "message",
+                "retryable",
+                "field_paths",
+                "trace_id",
+                "context",
+            ] {
+                if error.get(required).is_none() {
+                    return Err(format!(
+                        "failed/canceled state error payload missing key '{}'",
+                        required
+                    ));
+                }
             }
         }
         JobStatus::Queued | JobStatus::Running => {}
@@ -773,6 +835,30 @@ mod tests {
 
         let bad = JobSnapshot { output: None, ..ok };
         assert!(validate_job_snapshot(&bad).is_err());
+    }
+
+    #[test]
+    fn failed_snapshot_requires_typed_error_envelope_shape() {
+        let snapshot = JobSnapshot {
+            job_id: "job-typed-error".to_string(),
+            tool_name: "echo_tool".to_string(),
+            status: JobStatus::Failed,
+            progress_pct: 50,
+            stage: "failed".to_string(),
+            message: Some("failed".to_string()),
+            output: None,
+            error: Some(serde_json::json!({
+                "code": "validation_error",
+                "category": "validation",
+                "source": "tool",
+                "message": "missing message",
+                "retryable": false,
+                "field_paths": ["/message"],
+                "trace_id": "trace-test",
+                "context": {}
+            })),
+        };
+        assert!(validate_job_snapshot(&snapshot).is_ok());
     }
 
     #[test]

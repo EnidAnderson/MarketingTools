@@ -1,12 +1,10 @@
 use crate::contracts::ToolError;
 use crate::invariants::{ensure_json_pointer, ensure_non_empty_trimmed, ensure_range_usize};
-use crate::tools::tool_definition::Tool; // Added Tool trait import
 use crate::tools::tool_registry::ToolRegistry;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::error::Error; // Added Error trait import
 
 /// # NDOC
 /// component: `pipeline`
@@ -143,7 +141,7 @@ pub async fn execute_pipeline(
             }
         };
 
-        let Some(tool) = registry.get_tool_instance(&step.tool) else {
+        if registry.get_tool_instance(&step.tool).is_none() {
             run_succeeded = false;
             step_results.push(PipelineStepResult {
                 step_id: step.id.clone(),
@@ -161,9 +159,12 @@ pub async fn execute_pipeline(
                 })),
             });
             break;
-        };
+        }
 
-        match tool.execute(resolved_input.clone()).await {
+        match registry
+            .execute_tool(&step.tool, resolved_input.clone())
+            .await
+        {
             Ok(output_value) => {
                 step_outputs.insert(step.id.clone(), output_value.clone());
                 step_results.push(PipelineStepResult {
@@ -190,9 +191,14 @@ pub async fn execute_pipeline(
                     resolved_input,
                     output: None,
                     error: Some(serde_json::json!({
-                        "kind": "tool_execution_error",
-                        "message": err.to_string(),
-                        "retryable": false
+                        "code": err.code,
+                        "category": err.category,
+                        "source": err.source,
+                        "message": err.message,
+                        "retryable": err.retryable,
+                        "field_paths": err.field_paths,
+                        "trace_id": err.trace_id,
+                        "context": err.context
                     })),
                 });
                 break;

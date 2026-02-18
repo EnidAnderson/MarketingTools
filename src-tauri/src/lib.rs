@@ -9,7 +9,7 @@ use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
 use app_core::tools::screenshot_tool::ScreenshotTool;
 use app_core::tools::tool_definition::{
-    ParameterDefinition, ToolComplexity, ToolDefinition, ToolUIMetadata,
+    ParameterDefinition, ToolComplexity, ToolDefinition, ToolMaturity, ToolUIMetadata,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 
@@ -109,6 +109,26 @@ fn get_tools() -> Result<Vec<ToolDefinition>, String> {
         description:
             "Deterministic mock analytics pipeline with persistence, drift checks, and narratives."
                 .to_string(),
+        maturity: ToolMaturity::Stable,
+        human_workflow: "Review decision_feed and publish_export_gate, then approve only if all blockers are cleared."
+            .to_string(),
+        output_artifact_kind: "analytics.mock_artifact.v1".to_string(),
+        requires_review: true,
+        default_input_template: json!({
+            "start_date": "2026-02-01",
+            "end_date": "2026-02-07",
+            "profile_id": "marketing_default",
+            "include_narratives": true,
+            "budget_envelope": {
+                "max_retrieval_units": 20000,
+                "max_analysis_units": 10000,
+                "max_llm_tokens_in": 15000,
+                "max_llm_tokens_out": 8000,
+                "max_total_cost_micros": 50000000,
+                "policy": "fail_closed",
+                "provenance_ref": "ui_example.v1"
+            }
+        }),
         ui_metadata: ToolUIMetadata {
             category: "Analytics".to_string(),
             display_name: "Mock Analytics Pipeline".to_string(),
@@ -158,16 +178,7 @@ fn get_tools() -> Result<Vec<ToolDefinition>, String> {
             "start_date": "2026-02-01",
             "end_date": "2026-02-07",
             "profile_id": "marketing_default",
-            "include_narratives": true,
-            "budget_envelope": {
-                "max_retrieval_units": 20000,
-                "max_analysis_units": 10000,
-                "max_llm_tokens_in": 15000,
-                "max_llm_tokens_out": 8000,
-                "max_total_cost_micros": 50000000,
-                "policy": "fail_closed",
-                "provenance_ref": "ui_example.v1"
-            }
+            "include_narratives": true
         })],
         output_schema: Some(json!({
             "type": "object",

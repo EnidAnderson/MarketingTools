@@ -1,9 +1,9 @@
+use crate::contracts::ToolErrorEnvelope;
 use async_trait::async_trait;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::error::Error;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ParameterDefinition {
     pub name: String,
     pub r#type: String, // `type` is a Rust keyword, so we use r#type
@@ -11,7 +11,7 @@ pub struct ParameterDefinition {
     pub optional: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolComplexity {
     Simple,
@@ -19,7 +19,15 @@ pub enum ToolComplexity {
     Advanced,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolMaturity {
+    Stable,
+    Experimental,
+    Disabled,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ToolUIMetadata {
     pub category: String,
     pub display_name: String,
@@ -42,10 +50,15 @@ impl Default for ToolUIMetadata {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
+    pub maturity: ToolMaturity,
+    pub human_workflow: String,
+    pub output_artifact_kind: String,
+    pub requires_review: bool,
+    pub default_input_template: Value,
     pub ui_metadata: ToolUIMetadata,
     pub parameters: Vec<ParameterDefinition>,
     pub input_examples: Vec<Value>,
@@ -53,9 +66,8 @@ pub struct ToolDefinition {
 }
 
 #[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> String;
-    fn description(&self) -> String;
-    fn metadata(&self) -> ToolDefinition;
-    async fn execute(&self, args: Value) -> Result<Value, Box<dyn Error + Send + Sync>>;
+pub trait ToolRuntime: Send + Sync {
+    fn definition(&self) -> ToolDefinition;
+    fn is_available(&self) -> bool;
+    async fn execute(&self, args: Value) -> Result<Value, ToolErrorEnvelope>;
 }

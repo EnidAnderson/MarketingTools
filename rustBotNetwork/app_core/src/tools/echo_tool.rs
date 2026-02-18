@@ -1,11 +1,11 @@
 // rustBotNetwork/app_core/src/tools/echo_tool.rs
 
+use crate::contracts::{ToolErrorCategory, ToolErrorEnvelope, ToolErrorSource};
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::error::Error;
 
 use super::tool_definition::{
-    ParameterDefinition, Tool, ToolComplexity, ToolDefinition, ToolUIMetadata,
+    ParameterDefinition, ToolComplexity, ToolDefinition, ToolMaturity, ToolRuntime, ToolUIMetadata,
 };
 
 pub struct EchoTool;
@@ -17,19 +17,22 @@ impl EchoTool {
 }
 
 #[async_trait]
-impl Tool for EchoTool {
-    fn name(&self) -> String {
-        "echo_tool".to_string()
-    }
-
-    fn description(&self) -> String {
-        "An example tool that echoes back the input it receives.".to_string()
-    }
-
-    fn metadata(&self) -> ToolDefinition {
+impl ToolRuntime for EchoTool {
+    fn definition(&self) -> ToolDefinition {
         ToolDefinition {
-            name: self.name(),
-            description: self.description(),
+            name: "echo_tool".to_string(),
+            description: "Echoes input text; used as a deterministic execution healthcheck."
+                .to_string(),
+            maturity: ToolMaturity::Stable,
+            human_workflow:
+                "Review echoed_message; if it matches intent, proceed to the next campaign step."
+                    .to_string(),
+            output_artifact_kind: "utility.echo_result.v1".to_string(),
+            requires_review: false,
+            default_input_template: json!({
+                "message": "Nature's Diet workflow smoke test",
+                "uppercase": false
+            }),
             ui_metadata: ToolUIMetadata {
                 category: "Utility".to_string(),
                 display_name: "Echo Tool".to_string(),
@@ -67,8 +70,32 @@ impl Tool for EchoTool {
         }
     }
 
-    async fn execute(&self, args: Value) -> Result<Value, Box<dyn Error + Send + Sync>> {
-        let message = args["message"].as_str().unwrap_or_default();
+    fn is_available(&self) -> bool {
+        true
+    }
+
+    async fn execute(&self, args: Value) -> Result<Value, ToolErrorEnvelope> {
+        let Some(message) = args.get("message").and_then(Value::as_str) else {
+            return Err(ToolErrorEnvelope::new(
+                "missing_required_field",
+                ToolErrorCategory::Validation,
+                ToolErrorSource::Tool,
+                "echo_tool requires a non-empty string field 'message'",
+                false,
+            )
+            .with_field_paths(vec!["/message".to_string()]));
+        };
+        if message.trim().is_empty() {
+            return Err(ToolErrorEnvelope::new(
+                "invalid_argument",
+                ToolErrorCategory::Validation,
+                ToolErrorSource::Tool,
+                "echo_tool requires 'message' to be non-empty",
+                false,
+            )
+            .with_field_paths(vec!["/message".to_string()]));
+        }
+
         let uppercase = args["uppercase"].as_bool().unwrap_or(false);
 
         let echoed_message = if uppercase {

@@ -1,10 +1,111 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// # NDOC
 /// component: `contracts`
 /// purpose: Standard result alias for typed tool contracts.
 pub type ToolResult<T> = Result<T, ToolError>;
+
+/// # NDOC
+/// component: `contracts::tool_error_envelope`
+/// purpose: Canonical runtime error category for transport-safe envelopes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolErrorCategory {
+    Validation,
+    Configuration,
+    Provider,
+    RateLimit,
+    Timeout,
+    Permission,
+    Internal,
+}
+
+/// # NDOC
+/// component: `contracts::tool_error_envelope`
+/// purpose: Origin of error within runtime architecture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolErrorSource {
+    Policy,
+    Runtime,
+    Tool,
+    Connector,
+    Storage,
+}
+
+/// # NDOC
+/// component: `contracts::tool_error_envelope`
+/// purpose: Canonical typed error envelope used across app_core and Tauri boundaries.
+/// invariants:
+///   - `trace_id` is always non-empty.
+///   - `message` is user-safe and non-panic text.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolErrorEnvelope {
+    pub code: String,
+    pub category: ToolErrorCategory,
+    pub source: ToolErrorSource,
+    pub message: String,
+    pub retryable: bool,
+    #[serde(default)]
+    pub field_paths: Vec<String>,
+    pub trace_id: String,
+    #[serde(default)]
+    pub context: Value,
+}
+
+impl ToolErrorEnvelope {
+    pub fn new(
+        code: impl Into<String>,
+        category: ToolErrorCategory,
+        source: ToolErrorSource,
+        message: impl Into<String>,
+        retryable: bool,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            category,
+            source,
+            message: message.into(),
+            retryable,
+            field_paths: Vec::new(),
+            trace_id: next_trace_id(),
+            context: Value::Null,
+        }
+    }
+
+    pub fn internal_runtime(message: impl Into<String>) -> Self {
+        Self::new(
+            "internal_error",
+            ToolErrorCategory::Internal,
+            ToolErrorSource::Runtime,
+            message,
+            false,
+        )
+    }
+
+    pub fn with_field_paths(mut self, field_paths: Vec<String>) -> Self {
+        self.field_paths = field_paths;
+        self
+    }
+
+    pub fn with_context(mut self, context: Value) -> Self {
+        self.context = context;
+        self
+    }
+}
+
+fn next_trace_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros())
+        .unwrap_or(0);
+    format!("trace-{}-{}", ts, counter)
+}
 
 /// # NDOC
 /// component: `contracts`
@@ -106,6 +207,34 @@ impl From<std::io::Error> for ToolError {
 impl From<serde_json::Error> for ToolError {
     fn from(value: serde_json::Error) -> Self {
         ToolError::validation(value.to_string())
+    }
+}
+
+impl From<ToolError> for ToolErrorEnvelope {
+    fn from(value: ToolError) -> Self {
+        let (category, code) = match value.kind {
+            ToolErrorKind::ValidationError => (ToolErrorCategory::Validation, "validation_error"),
+            ToolErrorKind::ConfigurationError => {
+                (ToolErrorCategory::Configuration, "configuration_error")
+            }
+            ToolErrorKind::ProviderError => (ToolErrorCategory::Provider, "provider_error"),
+            ToolErrorKind::RateLimitError => (ToolErrorCategory::RateLimit, "rate_limit"),
+            ToolErrorKind::TimeoutError => (ToolErrorCategory::Timeout, "timeout"),
+            ToolErrorKind::PermissionError => (ToolErrorCategory::Permission, "permission_error"),
+            ToolErrorKind::InternalError => (ToolErrorCategory::Internal, "internal_error"),
+        };
+
+        let mut envelope = ToolErrorEnvelope::new(
+            code,
+            category,
+            ToolErrorSource::Tool,
+            value.message,
+            value.retryable,
+        );
+        if let Some(details) = value.details {
+            envelope.context = details;
+        }
+        envelope
     }
 }
 
