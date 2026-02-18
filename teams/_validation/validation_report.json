@@ -1,7 +1,8 @@
 {
-  "generated_at_utc": "2026-02-16T22:18:45Z",
+  "generated_at_utc": "2026-02-18T23:50:54Z",
   "base_ref": "HEAD",
-  "overall_status": "pass",
+  "pipeline_mode": "lite",
+  "overall_status": "fail",
   "checks": [
     {
       "check_id": "RQ-029",
@@ -9,7 +10,7 @@
       "rule_ref": "teams/shared/OPERATING_DOCTRINE.md",
       "status": "pass",
       "exit_code": 0,
-      "diagnostic": "PASS[RQ-029|RQ-MGR-002] pipeline order valid via team_registry phases; doctrine=teams/shared/OPERATING_DOCTRINE.md"
+      "diagnostic": "PASS[RQ-029|RQ-MGR-002] pipeline order valid via team_registry phases; mode=lite; doctrine=teams/shared/OPERATING_DOCTRINE.md"
     },
     {
       "check_id": "RQ-030",
@@ -23,9 +24,9 @@
       "check_id": "RQ-031",
       "check_name": "check_qa_edit_authority",
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_VALIDATION_2026-02-10.md#RQ-031",
-      "status": "pass",
-      "exit_code": 0,
-      "diagnostic": "PASS[RQ-031] QA edit authority + provenance checks passed"
+      "status": "fail",
+      "exit_code": 31,
+      "diagnostic": "FAIL[RQ-031] missing provenance reference in 'rustBotNetwork/app_core/src/subsystems/marketing_data_analysis/budget.rs' (decision_id or change_request_id required)"
     },
     {
       "check_id": "RQ-034",
@@ -41,7 +42,7 @@
       "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-001",
       "status": "pass",
       "exit_code": 0,
-      "diagnostic": "PASS[RQ-MGR-001] duplicate_ids=56; resolved_via_supersedes=56; queue=/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/change_request_queue.csv"
+      "diagnostic": "PASS[RQ-MGR-001] duplicate_ids=62; resolved_via_supersedes=62; queue=/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam/data/team_ops/change_request_queue.csv"
     },
     {
       "check_id": "RQ-MGR-003",
@@ -50,6 +51,14 @@
       "status": "pass",
       "exit_code": 0,
       "diagnostic": "PASS[RQ-MGR-003] no new handoff rows added"
+    },
+    {
+      "check_id": "RQ-MGR-006",
+      "check_name": "check_pipeline_mode_registry",
+      "rule_ref": "teams/shared/OPERATING_DOCTRINE.md#Principle 3a: Adaptive pipeline modes",
+      "status": "pass",
+      "exit_code": 0,
+      "diagnostic": "PASS[RQ-MGR-006] no new run/handoff rows added"
     },
     {
       "check_id": "RQ-MGR-004",

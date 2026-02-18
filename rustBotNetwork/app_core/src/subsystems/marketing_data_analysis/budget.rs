@@ -313,12 +313,12 @@ pub fn estimate_budget_upper_bound(
     };
 
     let mut total_cost_micros = retrieval_units.saturating_mul(COST_PER_RETRIEVAL_UNIT_MICROS);
-    total_cost_micros =
-        total_cost_micros.saturating_add(analysis_units.saturating_mul(COST_PER_ANALYSIS_UNIT_MICROS));
-    total_cost_micros =
-        total_cost_micros.saturating_add(llm_tokens_in.saturating_mul(COST_PER_LLM_TOKEN_IN_MICROS));
-    total_cost_micros =
-        total_cost_micros.saturating_add(llm_tokens_out.saturating_mul(COST_PER_LLM_TOKEN_OUT_MICROS));
+    total_cost_micros = total_cost_micros
+        .saturating_add(analysis_units.saturating_mul(COST_PER_ANALYSIS_UNIT_MICROS));
+    total_cost_micros = total_cost_micros
+        .saturating_add(llm_tokens_in.saturating_mul(COST_PER_LLM_TOKEN_IN_MICROS));
+    total_cost_micros = total_cost_micros
+        .saturating_add(llm_tokens_out.saturating_mul(COST_PER_LLM_TOKEN_OUT_MICROS));
 
     if request.campaign_filter.is_some() {
         total_cost_micros = total_cost_micros.saturating_sub(500);
@@ -733,7 +733,10 @@ mod tests {
                 success_count += 1;
             }
         }
-        assert_eq!(success_count, 3, "only three 3M reservations fit within 10M");
+        assert_eq!(
+            success_count, 3,
+            "only three 3M reservations fit within 10M"
+        );
         let ledger = read_daily_ledger(&ledger_path).expect("read ledger");
         let spent = ledger.by_date.get("2026-02-17").copied().unwrap_or(0);
         assert_eq!(spent, 9_000_000);

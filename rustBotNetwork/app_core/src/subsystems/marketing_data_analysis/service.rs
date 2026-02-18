@@ -1,10 +1,10 @@
+use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
     DataQualitySummaryV1, EvidenceItem, GuidanceItem, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
     QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::ingest::{parse_ga4_event, CleaningNote};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
@@ -1040,7 +1040,8 @@ mod tests {
             assert!((0.0..=1.0).contains(&artifact.data_quality.completeness_ratio));
             assert!((0.0..=1.0).contains(&artifact.data_quality.identity_join_coverage_ratio));
             assert!(
-                artifact.budget.estimated.retrieval_units >= artifact.budget.actuals.retrieval_units
+                artifact.budget.estimated.retrieval_units
+                    >= artifact.budget.actuals.retrieval_units
             );
             assert!(
                 artifact.budget.estimated.analysis_units >= artifact.budget.actuals.analysis_units

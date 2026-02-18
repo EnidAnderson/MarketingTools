@@ -1,0 +1,8 @@
+mode_entry_id,run_id,declared_utc,pipeline_mode,declared_by,supersedes_mode_entry_id
+1,run_2026-02-10_001,2026-02-17T23:59:00Z,full,team_lead,
+2,run_2026-02-16_001,2026-02-17T23:59:00Z,full,team_lead,
+3,run_2026-02-16_002,2026-02-17T23:59:00Z,full,team_lead,
+4,run_2026-02-16_003,2026-02-17T23:59:00Z,full,team_lead,
+5,run_2026-02-16_004,2026-02-17T23:59:00Z,full,team_lead,
+6,run_2026-02-16_006,2026-02-17T23:59:00Z,full,team_lead,
+7,run_2026-02-16_007,2026-02-17T23:59:00Z,full,team_lead,

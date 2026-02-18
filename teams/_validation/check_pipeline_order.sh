@@ -8,21 +8,27 @@ HANDOFF_LOG="$ROOT/data/team_ops/handoff_log.csv"
 TEAM_REGISTRY="$ROOT/data/team_ops/team_registry.csv"
 DECISION_LOG="$ROOT/data/team_ops/decision_log.csv"
 DOCTRINE_REF="teams/shared/OPERATING_DOCTRINE.md"
+PIPELINE_MODE="${1:-${TEAMS_PIPELINE_MODE:-lite}}"
+
+if [[ "$PIPELINE_MODE" != "full" && "$PIPELINE_MODE" != "lite" ]]; then
+  echo "FAIL[RQ-029] invalid pipeline mode '$PIPELINE_MODE' (expected full|lite)" >&2
+  exit 29
+fi
 
 if [[ ! -f "$HANDOFF_LOG" ]]; then
   echo "FAIL[RQ-029] missing handoff log: $HANDOFF_LOG" >&2
   exit 29
 fi
 
-python3 - "$HANDOFF_LOG" "$TEAM_REGISTRY" "$DECISION_LOG" "$DOCTRINE_REF" <<'PY'
+python3 - "$HANDOFF_LOG" "$TEAM_REGISTRY" "$DECISION_LOG" "$DOCTRINE_REF" "$PIPELINE_MODE" <<'PY'
 import csv
 import sys
-from collections import defaultdict
 
 handoff_log = sys.argv[1]
 team_registry = sys.argv[2]
 decision_log = sys.argv[3]
 doctrine_ref = sys.argv[4]
+pipeline_mode = sys.argv[5]
 
 rows = []
 with open(handoff_log, "r", encoding="utf-8", newline="") as f:
@@ -48,6 +54,36 @@ if not phase_map:
     print(f"FAIL[RQ-MGR-002] empty team phase registry: {team_registry}", file=sys.stderr)
     sys.exit(29)
 
+phase_to_team = {v: k for k, v in phase_map.items()}
+
+if pipeline_mode == "full":
+    required_teams = {"blue", "red", "green", "black", "white", "grey", "qa_fixer"}
+else:
+    required_teams = {"blue", "red", "white", "qa_fixer"}
+
+required_phases = {phase_map[t] for t in required_teams if t in phase_map}
+
+def transition_valid(from_team: str, to_team: str):
+    from_phase = phase_map[from_team]
+    to_phase = phase_map[to_team]
+    if to_phase <= from_phase:
+        return False, from_phase, to_phase, "non-forward transition"
+    if pipeline_mode == "full":
+        return (to_phase - from_phase == 1), from_phase, to_phase, "full mode requires phase delta 1"
+
+    # lite mode: allow skipping only optional teams (green/black/grey)
+    skipped = range(from_phase + 1, to_phase)
+    skipped_required = [p for p in skipped if p in required_phases]
+    if skipped_required:
+        return (
+            False,
+            from_phase,
+            to_phase,
+            "lite mode cannot skip required teams: "
+            + ",".join(phase_to_team.get(p, str(p)) for p in skipped_required),
+        )
+    return True, from_phase, to_phase, "ok"
+
 by_run = {}
 for row in rows:
     by_run.setdefault(row["run_id"], []).append(row)
@@ -72,8 +108,7 @@ for run_id, run_rows in by_run.items():
             )
             sys.exit(29)
 
-        from_phase = phase_map[from_team]
-        to_phase = phase_map[to_team]
+        is_valid, from_phase, to_phase, reason = transition_valid(from_team, to_team)
         observed_pair = f"{from_team}->{to_team}"
 
         # Allow append-only duplicates/supersedes for the same phase pair.
@@ -90,7 +125,7 @@ for run_id, run_rows in by_run.items():
             expected_to_team = next((k for k, v in phase_map.items() if v == latest_phase + 1), None)
             expected_pair = f"{expected_from_team}->{expected_to_team}"
 
-        if to_phase - from_phase != 1:
+        if not is_valid:
             has_block_decision = any(
                 (d.get("run_id") or "").strip() == run_id
                 and "hard_fail_pipeline_order_violation" in (d.get("decision") or "")
@@ -104,7 +139,7 @@ for run_id, run_rows in by_run.items():
             observed_pair = f"{from_team}->{to_team}"
             print(
                 f"FAIL[RQ-MGR-002] run_id={run_id} out-of-order handoff; "
-                f"expected_phase_delta=1; observed_phase_delta={to_phase - from_phase}; "
+                f"mode={pipeline_mode}; expected_rule={reason}; observed_phase_delta={to_phase - from_phase}; "
                 f"expected_pair={expected_pair}; observed={observed_pair}; "
                 f"block_decision_log={block_diag}; doctrine={doctrine_ref}",
                 file=sys.stderr,
@@ -113,5 +148,5 @@ for run_id, run_rows in by_run.items():
 
         latest_phase = to_phase
 
-print(f"PASS[RQ-029|RQ-MGR-002] pipeline order valid via team_registry phases; doctrine={doctrine_ref}")
+print(f"PASS[RQ-029|RQ-MGR-002] pipeline order valid via team_registry phases; mode={pipeline_mode}; doctrine={doctrine_ref}")
 PY

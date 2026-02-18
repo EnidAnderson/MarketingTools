@@ -78,15 +78,27 @@
 
 ## Colored teams pipeline authority (required)
 
-1. Team execution must follow fixed order:
-   `blue -> red -> green -> black -> white -> grey -> qa_fixer`.
-2. Team prompts/specs live under `teams/<team>/prompt.md` and `teams/<team>/spec.md`.
-3. Pipeline artifacts under `pipeline/` are append-only and chronological.
-4. Only `qa_fixer` may edit executable artifacts (code/config/schema/scripts/hooks).
-5. Non-`qa_fixer` teams are analysis/request only and must produce actionable, testable change requests.
-6. Any violation of edit authority is a hard failure and must be logged in `data/team_ops/decision_log.csv`.
-7. If a team disagrees with a prior stage, it must file a change request; debate-only outputs are invalid.
-8. Every `qa_fixer` edit must reference at least one `decision_id` or `change_request_id`.
-9. Run team-ops cleanup routinely to keep living logs focused on active work:
+1. Team pipeline has two allowed modes:
+   `full`: `blue -> red -> green -> black -> white -> grey -> qa_fixer`
+   `lite` (lean default): `blue -> red -> white -> qa_fixer`
+2. In `lite`, `green`, `black`, and `grey` are optional wake-up teams and are consulted only when:
+   - explicit risk/constraint/synthesis need is identified, or
+   - a blocking flag requires their lane.
+3. If optional teams are skipped in `lite`, White must record:
+   - skip rationale,
+   - residual risk note,
+   - whether escalation to Black/Grey is required before publish.
+4. Team prompts/specs live under `teams/<team>/prompt.md` and `teams/<team>/spec.md`.
+5. Pipeline artifacts under `pipeline/` are append-only and chronological.
+6. Only `qa_fixer` may edit executable artifacts (code/config/schema/scripts/hooks).
+7. Non-`qa_fixer` teams are analysis/request only and must produce actionable, testable change requests.
+8. Any violation of edit authority is a hard failure and must be logged in `data/team_ops/decision_log.csv`.
+9. If a team disagrees with a prior stage, it must file a change request; debate-only outputs are invalid.
+10. Every `qa_fixer` edit must reference at least one `decision_id` or `change_request_id`.
+11. Run team-ops cleanup routinely to keep living logs focused on active work:
    `./scripts/team_ops_cleanup.sh --dry-run` then `./scripts/team_ops_cleanup.sh`.
-9. New entries in `data/team_ops/change_request_queue.csv` must use team-scoped IDs with global uniqueness: `CR-<TEAM>-<NNNN>` (example: `CR-RED-0011`).
+12. New entries in `data/team_ops/change_request_queue.csv` must use team-scoped IDs with global uniqueness: `CR-<TEAM>-<NNNN>` (example: `CR-RED-0011`).
+13. Pipeline-order validation must run with explicit mode:
+   - `TEAMS_PIPELINE_MODE=lite teams/_validation/check_pipeline_order.sh`
+   - `TEAMS_PIPELINE_MODE=full teams/_validation/check_pipeline_order.sh`
+14. Every run must declare mode in `teams/shared/run_mode_registry.csv` (`pipeline_mode` must be `full` or `lite`) before handoffs are appended.

@@ -6,21 +6,22 @@ set -euo pipefail
 ROOT="/Users/e/Documents/GUNS/ENIDSASSETS/NaturesDietMarketingTeam"
 BASE_REF="${1:-HEAD}"
 REPORT="$ROOT/teams/_validation/validation_report.json"
+PIPELINE_MODE="${TEAMS_PIPELINE_MODE:-lite}"
 mkdir -p "$ROOT/teams/_validation"
 
-python3 - "$ROOT" "$BASE_REF" "$REPORT" <<'PY'
+python3 - "$ROOT" "$BASE_REF" "$REPORT" "$PIPELINE_MODE" <<'PY'
 import json
 import subprocess
 import sys
 from datetime import datetime, timezone
 
-root, base_ref, report = sys.argv[1], sys.argv[2], sys.argv[3]
+root, base_ref, report, pipeline_mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 checks = [
     {
         "id": "RQ-029",
         "name": "check_pipeline_order",
         "rule_ref": "teams/shared/OPERATING_DOCTRINE.md",
-        "cmd": [f"{root}/teams/_validation/check_pipeline_order.sh"],
+        "cmd": [f"{root}/teams/_validation/check_pipeline_order.sh", pipeline_mode],
     },
     {
         "id": "RQ-030",
@@ -51,6 +52,12 @@ checks = [
         "name": "check_handoff_run_state_sync",
         "rule_ref": "planning/reports/TEAM_LEAD_REQUEST_QUEUE_MICROMANAGER_2026-02-10.md#RQ-MGR-003",
         "cmd": [f"{root}/teams/_validation/check_handoff_run_state_sync.sh", base_ref],
+    },
+    {
+        "id": "RQ-MGR-006",
+        "name": "check_pipeline_mode_registry",
+        "rule_ref": "teams/shared/OPERATING_DOCTRINE.md#Principle 3a: Adaptive pipeline modes",
+        "cmd": [f"{root}/teams/_validation/check_pipeline_mode_registry.sh", base_ref],
     },
     {
         "id": "RQ-MGR-004",
@@ -105,6 +112,7 @@ for c in checks:
 payload = {
     "generated_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     "base_ref": base_ref,
+    "pipeline_mode": pipeline_mode,
     "overall_status": "fail" if failed else "pass",
     "checks": results,
 }

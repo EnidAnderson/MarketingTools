@@ -9,6 +9,12 @@ Blue/Red/Green/Black/White/Grey contribute orthogonal viewpoints; they do not su
 ## Principle 3: Pipeline, not free-form conversation
 Work proceeds in fixed sequence with append-only handoff outputs.
 
+## Principle 3a: Adaptive pipeline modes
+Two modes are allowed:
+1. `full` mode: Blue -> Red -> Green -> Black -> White -> Grey -> QA Fixer.
+2. `lite` mode: Blue -> Red -> White -> QA Fixer, with Green/Black/Grey optional and wakeable.
+When `lite` skips optional teams, residual risk and escalation posture must be explicitly recorded.
+
 ## Principle 4: Actionable critique only
 Any critique must be expressed as a concrete, testable request.
 

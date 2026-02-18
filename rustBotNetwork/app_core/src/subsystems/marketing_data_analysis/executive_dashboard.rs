@@ -184,7 +184,10 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec!["ingest_cleaning_notes".to_string()],
         });
     }
-    if run.artifact.budget.clipped || run.artifact.budget.sampled || run.artifact.budget.incomplete_output {
+    if run.artifact.budget.clipped
+        || run.artifact.budget.sampled
+        || run.artifact.budget.incomplete_output
+    {
         cards.push(DecisionFeedCardV1 {
             card_id: "budget-cap-hit".to_string(),
             priority: "high".to_string(),
@@ -194,9 +197,13 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
                 "Budget policy clipped/sampled execution. skipped_modules={}",
                 run.artifact.budget.skipped_modules.join(",")
             ),
-            recommended_action: "Review budget panel and rerun with higher envelope for full-fidelity output."
-                .to_string(),
-            evidence_refs: vec!["budget.events".to_string(), "budget.skipped_modules".to_string()],
+            recommended_action:
+                "Review budget panel and rerun with higher envelope for full-fidelity output."
+                    .to_string(),
+            evidence_refs: vec![
+                "budget.events".to_string(),
+                "budget.skipped_modules".to_string(),
+            ],
         });
     }
 
@@ -698,7 +705,8 @@ mod tests {
                 profile_id: profile_id.to_string(),
                 include_narratives: true,
                 budget_envelope:
-                    crate::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(),
+                    crate::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(
+                    ),
             },
             metadata: AnalyticsRunMetadataV1 {
                 run_id: run_id.to_string(),
