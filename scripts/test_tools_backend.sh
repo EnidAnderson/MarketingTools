@@ -13,4 +13,6 @@ cargo test -p app_core test_tool_audit_report_covers_all_tool_modules
 cargo test -p app_core test_tool_audit_stable_recommendations_meet_thresholds
 cargo test -p app_core test_execute_unknown_tool_returns_typed_envelope
 cargo test -p app_core test_runtime_panic_converts_to_internal_error_with_trace_id
+cargo test -p app_core test_legacy_bridge_schema_invariant_parity
+cargo test -p app_core test_no_runtime_path_calls_legacy_analytics_modules
 echo "[tool-harness] complete"

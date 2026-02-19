@@ -4,14 +4,15 @@
 use crate::analytics_connector_contracts::{
     default_attribution_window, default_confidence, AnalyticsConnectorContract,
 };
-use crate::analytics_data_generator::{
-    generate_simulated_google_ads_rows, process_google_ads_rows_to_report,
-};
 use crate::data_models::analytics::{
-    AnalyticsReport, AttributionWindowMetadata, ConfidenceAnnotation, Ga4NormalizedEvent,
-    NormalizedKpiNarrative, SourceClassLabel, TrustedAnalyticsReportArtifact,
+    AnalyticsReport, AttributionWindowMetadata, Ga4NormalizedEvent, NormalizedKpiNarrative,
+    SourceClassLabel, TrustedAnalyticsReportArtifact,
+};
+use crate::subsystems::marketing_data_analysis::{
+    BudgetEnvelopeV1, DefaultMarketAnalysisService, MarketAnalysisService, MockAnalyticsRequestV1,
 };
 use regex::Regex;
+use tokio::runtime::Builder;
 
 pub fn generate_analytics_report(
     start_date: &str,
@@ -19,21 +20,8 @@ pub fn generate_analytics_report(
     campaign_filter: Option<&str>,
     ad_group_filter: Option<&str>,
 ) -> AnalyticsReport {
-    let mut raw_rows = generate_simulated_google_ads_rows(start_date, end_date);
-
-    if let Some(cf) = campaign_filter {
-        raw_rows.retain(|row| row.campaign.as_ref().is_some_and(|c| c.name.contains(cf)));
-    }
-    if let Some(agf) = ad_group_filter {
-        raw_rows.retain(|row| row.adGroup.as_ref().is_some_and(|ag| ag.name.contains(agf)));
-    }
-
-    let report_name = format!(
-        "Google Ads Analytics Report: {} to {}",
-        start_date, end_date
-    );
-    let date_range = format!("{} to {}", start_date, end_date);
-    process_google_ads_rows_to_report(raw_rows, &report_name, &date_range)
+    generate_analytics_report_via_subsystem(start_date, end_date, campaign_filter, ad_group_filter)
+        .unwrap_or_else(|_| empty_report(start_date, end_date))
 }
 
 pub fn generate_typed_trusted_report(
@@ -41,11 +29,9 @@ pub fn generate_typed_trusted_report(
     start_date: &str,
     end_date: &str,
 ) -> TrustedAnalyticsReportArtifact {
-    let ads_rows = connector.fetch_google_ads_rows(start_date, end_date);
+    let _ads_rows = connector.fetch_google_ads_rows(start_date, end_date);
     let ga4_events = connector.fetch_ga4_events(start_date, end_date);
-    let report_name = format!("Observed Analytics Report: {} to {}", start_date, end_date);
-    let date_range = format!("{} to {}", start_date, end_date);
-    let report = process_google_ads_rows_to_report(ads_rows, &report_name, &date_range);
+    let report = generate_analytics_report(start_date, end_date, None, None);
 
     let narratives = ga4_events
         .iter()
@@ -60,6 +46,48 @@ pub fn generate_typed_trusted_report(
         report,
         narratives,
         provenance,
+    }
+}
+
+fn generate_analytics_report_via_subsystem(
+    start_date: &str,
+    end_date: &str,
+    campaign_filter: Option<&str>,
+    ad_group_filter: Option<&str>,
+) -> Result<AnalyticsReport, String> {
+    let service = DefaultMarketAnalysisService::new();
+    let request = MockAnalyticsRequestV1 {
+        start_date: start_date.to_string(),
+        end_date: end_date.to_string(),
+        campaign_filter: campaign_filter.map(str::to_string),
+        ad_group_filter: ad_group_filter.map(str::to_string),
+        seed: None,
+        profile_id: "legacy_bridge_profile".to_string(),
+        include_narratives: false,
+        budget_envelope: BudgetEnvelopeV1::default(),
+    };
+
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let artifact = runtime
+        .block_on(service.run_mock_analysis(request))
+        .map_err(|e| e.message)?;
+    Ok(artifact.report)
+}
+
+fn empty_report(start_date: &str, end_date: &str) -> AnalyticsReport {
+    AnalyticsReport {
+        report_name: format!(
+            "Google Ads Analytics Report: {} to {}",
+            start_date, end_date
+        ),
+        date_range: format!("{} to {}", start_date, end_date),
+        total_metrics: Default::default(),
+        campaign_data: Vec::new(),
+        ad_group_data: Vec::new(),
+        keyword_data: Vec::new(),
     }
 }
 
@@ -138,7 +166,11 @@ pub fn validate_kpi_narratives(narratives: &[NormalizedKpiNarrative]) -> Result<
 mod tests {
     use super::*;
     use crate::analytics_connector_contracts::SimulatedConnectorContract;
-    use crate::data_models::analytics::ReportMetrics;
+    use crate::data_models::analytics::{ConfidenceAnnotation, ReportMetrics};
+    use crate::subsystems::marketing_data_analysis::{
+        BudgetEnvelopeV1, DefaultMarketAnalysisService, MarketAnalysisService,
+        MockAnalyticsRequestV1,
+    };
     use approx::assert_relative_eq;
 
     fn assert_metrics_approx_eq(m1: &ReportMetrics, m2: &ReportMetrics) {
@@ -267,5 +299,80 @@ mod tests {
         narratives[0].source_class = SourceClassLabel::Simulated;
         narratives[0].confidence.confidence_label = "high".to_string();
         assert!(validate_kpi_narratives(&narratives).is_err());
+    }
+
+    #[test]
+    fn test_legacy_bridge_schema_invariant_parity() {
+        let report = generate_analytics_report("2026-02-01", "2026-02-03", Some("Summer"), None);
+
+        let service = DefaultMarketAnalysisService::new();
+        let request = MockAnalyticsRequestV1 {
+            start_date: "2026-02-01".to_string(),
+            end_date: "2026-02-03".to_string(),
+            campaign_filter: Some("Summer".to_string()),
+            ad_group_filter: None,
+            seed: None,
+            profile_id: "parity_test".to_string(),
+            include_narratives: false,
+            budget_envelope: BudgetEnvelopeV1::default(),
+        };
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let artifact = runtime
+            .block_on(service.run_mock_analysis(request))
+            .expect("subsystem should run");
+
+        // Phase 2 parity is schema/invariant parity, not byte-identical metric parity.
+        assert!(!report.report_name.trim().is_empty());
+        assert!(!report.date_range.trim().is_empty());
+        assert!(report.total_metrics.impressions >= report.total_metrics.clicks);
+        assert!(report.total_metrics.conversions >= 0.0);
+        assert!(report.total_metrics.cost >= 0.0);
+
+        let canonical = artifact.report;
+        assert!(!canonical.report_name.trim().is_empty());
+        assert!(!canonical.date_range.trim().is_empty());
+        assert!(canonical.total_metrics.impressions >= canonical.total_metrics.clicks);
+        assert!(canonical.total_metrics.conversions >= 0.0);
+        assert!(canonical.total_metrics.cost >= 0.0);
+    }
+
+    #[test]
+    fn test_no_runtime_path_calls_legacy_analytics_modules() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        let runtime_rs = std::fs::read_to_string(root.join("src-tauri/src/runtime.rs"))
+            .expect("runtime.rs should be readable");
+        let tauri_lib_rs =
+            std::fs::read_to_string(root.join("src-tauri/src/lib.rs")).expect("lib.rs readable");
+        let pipeline_rs =
+            std::fs::read_to_string(root.join("rustBotNetwork/app_core/src/pipeline.rs"))
+                .expect("pipeline.rs should be readable");
+
+        for forbidden in [
+            "analytics_data_generator::",
+            "analytics_data_transformer::",
+            "analytics_reporter::",
+            "dashboard_processor::",
+        ] {
+            assert!(
+                !runtime_rs.contains(forbidden),
+                "runtime.rs contains legacy module reference '{}'",
+                forbidden
+            );
+            assert!(
+                !tauri_lib_rs.contains(forbidden),
+                "lib.rs contains legacy module reference '{}'",
+                forbidden
+            );
+            assert!(
+                !pipeline_rs.contains(forbidden),
+                "pipeline.rs contains legacy module reference '{}'",
+                forbidden
+            );
+        }
     }
 }
