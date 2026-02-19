@@ -11,5 +11,6 @@ cd "$ROOT"
 "$ROOT/scripts/check_disk_space.sh"
 "$ROOT/scripts/governance_preflight.sh"
 "$ROOT/scripts/cargo_audit.sh"
+"$ROOT/scripts/cargo_dupe_audit.sh"
 
 echo "PASS[test_preflight]"
