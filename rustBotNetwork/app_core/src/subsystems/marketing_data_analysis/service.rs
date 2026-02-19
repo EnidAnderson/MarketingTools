@@ -3,9 +3,9 @@ use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
     DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
-    QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    QualityCheckV1, ReconciliationPolicyV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use super::ingest::{parse_ga4_event, CleaningNote};
+use super::ingest::{parse_ga4_event, window_completeness, CleaningNote, TimeGranularity};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
     AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport,
@@ -13,7 +13,7 @@ use crate::data_models::analytics::{
     KeywordReportRow, MetricsData, ReportMetrics, SegmentsData, SourceClassLabel, SourceProvenance,
 };
 use async_trait::async_trait;
-use chrono::{Duration, NaiveDate};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::{Digest, Sha256};
@@ -33,8 +33,6 @@ const KEYWORD_TEXTS: &[&str] = &[
     "senior pet vitamins",
 ];
 const MIN_IDENTITY_COVERAGE_RATIO: f64 = 0.98;
-const RECONCILIATION_EPSILON: f64 = 0.01;
-const CROSS_SOURCE_REVENUE_TOLERANCE: f64 = 0.05;
 const INGEST_CONTRACT_VERSION: &str = "ingest_contract.v1";
 
 /// # NDOC
@@ -112,8 +110,11 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
         let ingest_cleaning_notes = collect_ingest_cleaning_notes(seed)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
+        let reconciliation_policy = ReconciliationPolicyV1::default();
         let provenance = build_mock_provenance(seed, ingest_cleaning_notes.len() as u32);
-        let cross_source_checks = build_cross_source_checks(&report, seed);
+        let observed_units_by_source =
+            build_mock_observed_window_units(start, budget_plan.effective_end);
+        let cross_source_checks = build_cross_source_checks(&report, seed, &reconciliation_policy);
         let (observed_evidence, inferred_guidance, mut uncertainty_notes) =
             build_evidence_and_guidance(&report, budget_plan.include_narratives);
         if budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives {
@@ -137,6 +138,10 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget_checks,
             cross_source_checks,
             &freshness_policy,
+            &reconciliation_policy,
+            start,
+            budget_plan.effective_end,
+            &observed_units_by_source,
         );
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
@@ -168,6 +173,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             quality_controls,
             data_quality,
             freshness_policy,
+            reconciliation_policy,
             budget,
             historical_analysis: Default::default(),
             operator_summary,
@@ -661,37 +667,95 @@ fn build_mock_provenance(seed: u64, cleaning_note_count: u32) -> Vec<SourceProve
     ]
 }
 
-fn build_cross_source_checks(report: &AnalyticsReport, seed: u64) -> Vec<QualityCheckV1> {
+fn build_cross_source_checks(
+    report: &AnalyticsReport,
+    seed: u64,
+    reconciliation_policy: &ReconciliationPolicyV1,
+) -> Vec<QualityCheckV1> {
     let attributed_revenue = report.total_metrics.conversions_value;
     let wix_revenue_multiplier = 0.99 + ((seed % 3) as f64 * 0.005);
     let wix_gross_revenue = round4(attributed_revenue * wix_revenue_multiplier);
-    let max_allowed = wix_gross_revenue * (1.0 + CROSS_SOURCE_REVENUE_TOLERANCE);
 
     let ga4_sessions = round4((report.total_metrics.clicks as f64) * 0.92);
     let clicks = report.total_metrics.clicks as f64;
 
+    let revenue_check_code = "cross_source_attributed_revenue_within_wix_gross";
+    let (revenue_passed, revenue_severity, revenue_expected) =
+        if let Some(tolerance) = reconciliation_policy.tolerance_for(revenue_check_code) {
+            let rel_tol = tolerance.max_relative_delta.unwrap_or(0.0).max(0.0);
+            let max_allowed = wix_gross_revenue * (1.0 + rel_tol);
+            (
+                attributed_revenue <= max_allowed,
+                tolerance.severity.clone(),
+                format!("attributed_revenue <= wix_gross * (1 + {:.2})", rel_tol),
+            )
+        } else {
+            (
+                false,
+                "high".to_string(),
+                "reconciliation policy must define revenue tolerance".to_string(),
+            )
+        };
+
+    let sessions_check_code = "cross_source_ga4_sessions_within_click_bound";
+    let (sessions_passed, sessions_severity, sessions_expected) =
+        if let Some(tolerance) = reconciliation_policy.tolerance_for(sessions_check_code) {
+            let rel_tol = tolerance.max_relative_delta.unwrap_or(0.0).max(0.0);
+            let max_allowed = clicks * (1.0 + rel_tol);
+            (
+                ga4_sessions <= max_allowed,
+                tolerance.severity.clone(),
+                format!("ga4_sessions <= ad_clicks * (1 + {:.2})", rel_tol),
+            )
+        } else {
+            (
+                false,
+                "high".to_string(),
+                "reconciliation policy must define GA4 session tolerance".to_string(),
+            )
+        };
+
     vec![
         QualityCheckV1 {
-            code: "cross_source_attributed_revenue_within_wix_gross".to_string(),
-            passed: attributed_revenue <= max_allowed,
-            severity: "high".to_string(),
+            code: revenue_check_code.to_string(),
+            passed: revenue_passed,
+            severity: revenue_severity,
             observed: format!(
                 "attributed_revenue={:.4}, wix_gross={:.4}",
                 attributed_revenue, wix_gross_revenue
             ),
-            expected: format!(
-                "attributed_revenue <= wix_gross * (1 + {:.2})",
-                CROSS_SOURCE_REVENUE_TOLERANCE
-            ),
+            expected: revenue_expected,
         },
         QualityCheckV1 {
-            code: "cross_source_ga4_sessions_within_click_bound".to_string(),
-            passed: ga4_sessions <= clicks,
-            severity: "medium".to_string(),
+            code: sessions_check_code.to_string(),
+            passed: sessions_passed,
+            severity: sessions_severity,
             observed: format!("ga4_sessions={:.4}, ad_clicks={:.4}", ga4_sessions, clicks),
-            expected: "ga4_sessions <= ad_clicks".to_string(),
+            expected: sessions_expected,
         },
     ]
+}
+
+fn build_mock_observed_window_units(
+    start: NaiveDate,
+    end: NaiveDate,
+) -> BTreeMap<String, Vec<DateTime<Utc>>> {
+    let mut by_source = BTreeMap::new();
+    for source in ["google_ads", "ga4", "wix_storefront"] {
+        let mut points = Vec::new();
+        let mut current = start;
+        while current <= end {
+            if let Some(midday) = current.and_hms_opt(12, 0, 0) {
+                points.push(midday.and_utc());
+            }
+            let Some(next) = current.checked_add_signed(Duration::days(1)) else {
+                break;
+            };
+            current = next;
+        }
+        by_source.insert(source.to_string(), points);
+    }
+    by_source
 }
 
 fn build_quality_controls(
@@ -700,6 +764,10 @@ fn build_quality_controls(
     budget_checks: Vec<QualityCheckV1>,
     cross_source_checks: Vec<QualityCheckV1>,
     freshness_policy: &FreshnessSlaPolicyV1,
+    reconciliation_policy: &ReconciliationPolicyV1,
+    start: NaiveDate,
+    end: NaiveDate,
+    observed_units_by_source: &BTreeMap<String, Vec<DateTime<Utc>>>,
 ) -> AnalyticsQualityControlsV1 {
     let keyword_coverage_ratio = if report.keyword_data.is_empty() {
         1.0
@@ -777,6 +845,26 @@ fn build_quality_controls(
             expected: "every provenance entry has validated_contract_version".to_string(),
         },
     ];
+    let reconciliation_code = "identity_campaign_rollup_reconciliation";
+    let reconciliation_tol = reconciliation_policy.tolerance_for(reconciliation_code);
+    let spend_delta = (sum_campaign_spend - report.total_metrics.cost).abs();
+    let revenue_delta = (sum_campaign_revenue - report.total_metrics.conversions_value).abs();
+    let (reconciliation_passed, reconciliation_severity, reconciliation_expected) =
+        if let Some(tol) = reconciliation_tol {
+            let epsilon = tol.max_abs_delta.unwrap_or(0.0).max(0.0);
+            (
+                spend_delta <= epsilon && revenue_delta <= epsilon,
+                tol.severity.clone(),
+                format!("abs(delta) <= {:.4}", epsilon),
+            )
+        } else {
+            (
+                false,
+                "high".to_string(),
+                "reconciliation policy must define absolute tolerance".to_string(),
+            )
+        };
+
     let identity_resolution_checks = vec![
         QualityCheckV1 {
             code: "identity_ad_group_linked_to_campaign".to_string(),
@@ -793,12 +881,9 @@ fn build_quality_controls(
             expected: format!("coverage >= {:.2}", MIN_IDENTITY_COVERAGE_RATIO),
         },
         QualityCheckV1 {
-            code: "identity_campaign_rollup_reconciliation".to_string(),
-            passed: (sum_campaign_spend - report.total_metrics.cost).abs()
-                <= RECONCILIATION_EPSILON
-                && (sum_campaign_revenue - report.total_metrics.conversions_value).abs()
-                    <= RECONCILIATION_EPSILON,
-            severity: "high".to_string(),
+            code: reconciliation_code.to_string(),
+            passed: reconciliation_passed,
+            severity: reconciliation_severity,
             observed: format!(
                 "campaign_spend={:.4}, campaign_rev={:.4}, total_spend={:.4}, total_rev={:.4}",
                 sum_campaign_spend,
@@ -806,14 +891,22 @@ fn build_quality_controls(
                 report.total_metrics.cost,
                 report.total_metrics.conversions_value
             ),
-            expected: format!("abs(delta) <= {:.2}", RECONCILIATION_EPSILON),
+            expected: reconciliation_expected,
         },
     ];
-    let freshness_sla_checks = provenance
-        .iter()
-        .map(|item| {
-            let maybe_threshold = freshness_policy.threshold_for(&item.source_system);
-            let (passed, severity, expected) = if let Some(threshold) = maybe_threshold {
+    let start_utc = start
+        .and_hms_opt(0, 0, 0)
+        .expect("start date should support midnight")
+        .and_utc();
+    let end_utc = end
+        .and_hms_opt(23, 0, 0)
+        .expect("end date should support hour boundary")
+        .and_utc();
+    let mut freshness_sla_checks = Vec::new();
+    for item in provenance {
+        let maybe_threshold = freshness_policy.threshold_for(&item.source_system);
+        let (freshness_passed, freshness_severity, freshness_expected) =
+            if let Some(threshold) = maybe_threshold {
                 (
                     item.freshness_minutes <= threshold.max_freshness_minutes,
                     threshold.severity.clone(),
@@ -826,16 +919,66 @@ fn build_quality_controls(
                     "source_system must have an explicit freshness SLA threshold".to_string(),
                 )
             };
+        freshness_sla_checks.push(QualityCheckV1 {
+            code: format!("freshness_sla_{}", item.source_system),
+            passed: freshness_passed,
+            severity: freshness_severity.clone(),
+            observed: format!("freshness={}m", item.freshness_minutes),
+            expected: freshness_expected,
+        });
 
-            QualityCheckV1 {
-                code: format!("freshness_sla_{}", item.source_system),
-                passed,
-                severity,
-                observed: format!("freshness={}m", item.freshness_minutes),
-                expected,
+        let (
+            completeness_passed,
+            completeness_severity,
+            completeness_observed,
+            completeness_expected,
+        ) = if let Some(threshold) = maybe_threshold {
+            let tz_result = threshold.timezone.parse::<chrono_tz::Tz>();
+            if let Ok(timezone) = tz_result {
+                let observed = observed_units_by_source
+                    .get(&item.source_system)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let window = window_completeness(
+                    start_utc,
+                    end_utc,
+                    TimeGranularity::Day,
+                    timezone,
+                    observed,
+                );
+                (
+                    window.completeness_ratio >= threshold.min_completeness_ratio,
+                    threshold.severity.clone(),
+                    format!(
+                        "observed={}/{} ratio={:.3}",
+                        window.observed_units, window.expected_units, window.completeness_ratio
+                    ),
+                    format!("ratio >= {:.2}", threshold.min_completeness_ratio),
+                )
+            } else {
+                (
+                    false,
+                    "high".to_string(),
+                    format!("invalid_timezone={}", threshold.timezone),
+                    "timezone must parse to a valid IANA name".to_string(),
+                )
             }
-        })
-        .collect::<Vec<_>>();
+        } else {
+            (
+                false,
+                "high".to_string(),
+                "no observed source window policy".to_string(),
+                "source_system must have completeness threshold policy".to_string(),
+            )
+        };
+        freshness_sla_checks.push(QualityCheckV1 {
+            code: format!("completeness_sla_{}", item.source_system),
+            passed: completeness_passed,
+            severity: completeness_severity,
+            observed: completeness_observed,
+            expected: completeness_expected,
+        });
+    }
 
     let is_healthy = schema_drift_checks
         .iter()
@@ -1137,6 +1280,7 @@ mod tests {
             assert!((0.0..=1.0).contains(&artifact.data_quality.quality_score));
             assert!((0.0..=1.0).contains(&artifact.data_quality.completeness_ratio));
             assert!((0.0..=1.0).contains(&artifact.data_quality.identity_join_coverage_ratio));
+            assert!((0.0..=1.0).contains(&artifact.data_quality.cross_source_pass_ratio));
             assert!(
                 artifact.budget.estimated.retrieval_units
                     >= artifact.budget.actuals.retrieval_units
@@ -1199,6 +1343,7 @@ mod tests {
                 ..Default::default()
             },
             freshness_policy: FreshnessSlaPolicyV1::default(),
+            reconciliation_policy: ReconciliationPolicyV1::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

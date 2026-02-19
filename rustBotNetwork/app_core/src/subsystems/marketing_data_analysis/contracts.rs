@@ -171,17 +171,19 @@ pub struct AnalyticsQualityControlsV1 {
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Source-level freshness SLA threshold.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SourceFreshnessSlaV1 {
     pub source_system: String,
     pub max_freshness_minutes: u32,
+    pub min_completeness_ratio: f64,
+    pub timezone: String,
     pub severity: String,
 }
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Explicit freshness policy contract used to evaluate source latency.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FreshnessSlaPolicyV1 {
     pub policy_id: String,
     pub thresholds: Vec<SourceFreshnessSlaV1>,
@@ -195,20 +197,84 @@ impl Default for FreshnessSlaPolicyV1 {
                 SourceFreshnessSlaV1 {
                     source_system: "google_ads".to_string(),
                     max_freshness_minutes: 180,
+                    min_completeness_ratio: 0.98,
+                    timezone: "UTC".to_string(),
                     severity: "high".to_string(),
                 },
                 SourceFreshnessSlaV1 {
                     source_system: "ga4".to_string(),
                     max_freshness_minutes: 120,
+                    min_completeness_ratio: 0.98,
+                    timezone: "UTC".to_string(),
                     severity: "high".to_string(),
                 },
                 SourceFreshnessSlaV1 {
                     source_system: "wix_storefront".to_string(),
                     max_freshness_minutes: 240,
+                    min_completeness_ratio: 0.95,
+                    timezone: "UTC".to_string(),
                     severity: "medium".to_string(),
                 },
             ],
         }
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Tolerance configuration for reconciliation checks.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReconciliationToleranceV1 {
+    pub check_code: String,
+    #[serde(default)]
+    pub max_abs_delta: Option<f64>,
+    #[serde(default)]
+    pub max_relative_delta: Option<f64>,
+    pub severity: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Explicit policy contract for within-source and cross-source reconciliation rules.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReconciliationPolicyV1 {
+    pub policy_id: String,
+    pub tolerances: Vec<ReconciliationToleranceV1>,
+}
+
+impl Default for ReconciliationPolicyV1 {
+    fn default() -> Self {
+        Self {
+            policy_id: "reconciliation_policy.default.v1".to_string(),
+            tolerances: vec![
+                ReconciliationToleranceV1 {
+                    check_code: "identity_campaign_rollup_reconciliation".to_string(),
+                    max_abs_delta: Some(0.01),
+                    max_relative_delta: None,
+                    severity: "high".to_string(),
+                },
+                ReconciliationToleranceV1 {
+                    check_code: "cross_source_attributed_revenue_within_wix_gross".to_string(),
+                    max_abs_delta: None,
+                    max_relative_delta: Some(0.05),
+                    severity: "high".to_string(),
+                },
+                ReconciliationToleranceV1 {
+                    check_code: "cross_source_ga4_sessions_within_click_bound".to_string(),
+                    max_abs_delta: None,
+                    max_relative_delta: Some(0.0),
+                    severity: "medium".to_string(),
+                },
+            ],
+        }
+    }
+}
+
+impl ReconciliationPolicyV1 {
+    pub fn tolerance_for(&self, check_code: &str) -> Option<&ReconciliationToleranceV1> {
+        self.tolerances
+            .iter()
+            .find(|item| item.check_code == check_code)
     }
 }
 
@@ -431,6 +497,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub data_quality: DataQualitySummaryV1,
     #[serde(default)]
     pub freshness_policy: FreshnessSlaPolicyV1,
+    #[serde(default)]
+    pub reconciliation_policy: ReconciliationPolicyV1,
     #[serde(default)]
     pub budget: BudgetSummaryV1,
     #[serde(default)]

@@ -462,7 +462,16 @@ pub fn enforce_daily_hard_cap(
 fn default_daily_ledger_path() -> PathBuf {
     #[cfg(test)]
     {
-        return std::env::temp_dir().join("nd_marketing_daily_spend_ledger_test.json");
+        let exe_tag = std::env::current_exe()
+            .ok()
+            .and_then(|path| {
+                path.file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+            })
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("pid{}", std::process::id()));
+        return std::env::temp_dir()
+            .join(format!("nd_marketing_daily_spend_ledger_{}.json", exe_tag));
     }
     #[cfg(not(test))]
     {

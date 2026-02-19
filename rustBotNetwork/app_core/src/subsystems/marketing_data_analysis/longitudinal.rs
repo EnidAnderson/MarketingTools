@@ -273,6 +273,7 @@ mod tests {
             quality_controls: Default::default(),
             data_quality: Default::default(),
             freshness_policy: Default::default(),
+            reconciliation_policy: Default::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

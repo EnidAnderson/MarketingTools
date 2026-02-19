@@ -204,6 +204,29 @@ pub fn validate_mock_analytics_artifact_v1(
         freshness_policy_covers_sources,
         "freshness policy must define thresholds for each provenance source",
     ));
+    let freshness_policy_thresholds_valid =
+        artifact.freshness_policy.thresholds.iter().all(|item| {
+            (0.0..=1.0).contains(&item.min_completeness_ratio)
+                && item.timezone.parse::<chrono_tz::Tz>().is_ok()
+        });
+    checks.push(check(
+        "freshness_policy_threshold_validity",
+        freshness_policy_thresholds_valid,
+        "freshness policy thresholds must have valid ratio bounds and parseable timezone",
+    ));
+    let reconciliation_policy_codes = [
+        "identity_campaign_rollup_reconciliation",
+        "cross_source_attributed_revenue_within_wix_gross",
+        "cross_source_ga4_sessions_within_click_bound",
+    ];
+    let reconciliation_policy_covers_checks = reconciliation_policy_codes
+        .iter()
+        .all(|code| artifact.reconciliation_policy.tolerance_for(code).is_some());
+    checks.push(check(
+        "reconciliation_policy_coverage",
+        reconciliation_policy_covers_checks,
+        "reconciliation policy must define tolerances for required checks",
+    ));
     let budget_exceeded = artifact
         .budget
         .events
@@ -343,6 +366,7 @@ mod tests {
             quality_controls: Default::default(),
             data_quality: Default::default(),
             freshness_policy: Default::default(),
+            reconciliation_policy: Default::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

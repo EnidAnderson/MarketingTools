@@ -48,6 +48,15 @@ impl MarketingPlatformAdapterTrait for FacebookAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock should be acquirable")
+    }
     use serde_json::json;
     use std::collections::HashMap;
     #[allow(unused_imports)] // Used by TestEnvGuard implicitly
@@ -93,6 +102,7 @@ mod tests {
 
     #[test]
     fn test_facebook_adapter_is_available_true() {
+        let _lock = env_lock();
         let _guard = TestEnvGuard::new();
         let mut vars_to_set = HashMap::new();
         vars_to_set.insert("FACEBOOK_API_KEY", "test_key");
@@ -104,6 +114,7 @@ mod tests {
 
     #[test]
     fn test_facebook_adapter_is_available_false() {
+        let _lock = env_lock();
         let _guard = TestEnvGuard::new();
         env::remove_var("FACEBOOK_API_KEY"); // Ensure it's not set
         let adapter = FacebookAdapter::new();
@@ -112,6 +123,7 @@ mod tests {
 
     #[tokio::test] // Changed to tokio::test
     async fn test_facebook_adapter_deploy_campaign_success() {
+        let _lock = env_lock();
         // Added async
         let _guard = TestEnvGuard::new();
         let mut vars_to_set = HashMap::new();
@@ -131,6 +143,7 @@ mod tests {
 
     #[tokio::test] // Changed to tokio::test
     async fn test_facebook_adapter_deploy_campaign_failure_budget_low() {
+        let _lock = env_lock();
         // Added async
         let _guard = TestEnvGuard::new();
         let mut vars_to_set = HashMap::new();
