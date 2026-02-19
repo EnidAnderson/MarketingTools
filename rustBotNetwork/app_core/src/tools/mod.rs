@@ -20,6 +20,7 @@ pub mod memory_retrieval;
 pub mod product_crawler;
 pub mod screenshot_tool;
 pub mod seo_analyzer;
+pub mod tool_audit;
 pub mod tool_definition;
 pub mod tool_registry;
 pub mod video_generator_tool;

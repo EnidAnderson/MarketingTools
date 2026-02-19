@@ -8,6 +8,7 @@ use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
 use app_core::tools::html_bundler::HtmlBundlerTool;
 use app_core::tools::screenshot_tool::ScreenshotTool;
+use app_core::tools::tool_audit::{build_tool_audit_report_v1, ToolAuditReportV1};
 use app_core::tools::tool_definition::{
     ParameterDefinition, ToolComplexity, ToolDefinition, ToolMaturity, ToolUIMetadata,
 };
@@ -186,6 +187,14 @@ fn get_tools() -> Result<Vec<ToolDefinition>, String> {
         })),
     });
     Ok(tools)
+}
+
+/// # NDOC
+/// component: `tauri_commands::get_tool_audit_report`
+/// purpose: Return full tool usability audit for operator and release-gate review.
+#[tauri::command]
+fn get_tool_audit_report() -> Result<ToolAuditReportV1, String> {
+    Ok(build_tool_audit_report_v1())
 }
 
 /// # NDOC
@@ -537,6 +546,7 @@ pub fn run() {
             analyze_css,
             bundle_html,
             get_tools,
+            get_tool_audit_report,
             run_tool,
             start_tool_job,
             start_tool_job_governed,

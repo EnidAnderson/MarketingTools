@@ -266,6 +266,8 @@ fn convert_tool_error(err: Box<dyn std::error::Error + Send + Sync>) -> ToolErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contracts::ToolErrorCategory;
+    use async_trait::async_trait;
 
     #[test]
     fn test_tool_registry_stable_tools_have_runnable_defaults() {
@@ -390,5 +392,65 @@ mod tests {
                 def.name
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_execute_unknown_tool_returns_typed_envelope() {
+        let registry = ToolRegistry::with_config(ToolRegistryConfig {
+            include_experimental: false,
+        });
+        let err = registry
+            .execute_tool("missing_tool", json!({"x":1}))
+            .await
+            .expect_err("unknown tool should fail");
+        assert_eq!(err.code, "tool_unavailable");
+        assert_eq!(err.category, ToolErrorCategory::Validation);
+        assert_eq!(err.source, ToolErrorSource::Runtime);
+        assert!(!err.trace_id.trim().is_empty());
+    }
+
+    struct PanicTool;
+
+    #[async_trait]
+    impl ToolRuntime for PanicTool {
+        fn definition(&self) -> ToolDefinition {
+            ToolDefinition {
+                name: "panic_tool".to_string(),
+                description: "panic tool for runtime guard test".to_string(),
+                maturity: ToolMaturity::Experimental,
+                human_workflow: "none".to_string(),
+                output_artifact_kind: "test".to_string(),
+                requires_review: false,
+                default_input_template: json!({}),
+                ui_metadata: ToolUIMetadata::default(),
+                parameters: vec![],
+                input_examples: vec![],
+                output_schema: None,
+            }
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        async fn execute(&self, _args: Value) -> Result<Value, ToolErrorEnvelope> {
+            panic!("panic tool runtime test")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_runtime_panic_converts_to_internal_error_with_trace_id() {
+        let mut registry = ToolRegistry::with_config(ToolRegistryConfig {
+            include_experimental: true,
+        });
+        registry.register_tool(Arc::new(PanicTool));
+        let err = registry
+            .execute_tool("panic_tool", json!({}))
+            .await
+            .expect_err("panic should be converted");
+        assert_eq!(err.code, "internal_error");
+        assert_eq!(err.category, ToolErrorCategory::Internal);
+        assert_eq!(err.source, ToolErrorSource::Runtime);
+        assert!(!err.trace_id.trim().is_empty());
     }
 }
