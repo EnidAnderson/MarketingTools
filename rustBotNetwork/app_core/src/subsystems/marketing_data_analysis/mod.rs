@@ -23,11 +23,11 @@ pub use contracts::{
     AnalyticsValidationReportV1, ArtifactPersistenceRefV1, BudgetActualsV1, BudgetEnvelopeV1,
     BudgetEventV1, BudgetPolicyModeV1, BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1,
     DataQualitySummaryV1, DriftFlagV1, EvidenceItem, ExecutiveDashboardSnapshotV1,
-    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1,
-    IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
+    ForecastSummaryV1, FreshnessSlaPolicyV1, FunnelStageV1, FunnelSummaryV1, GuidanceItem,
+    HistoricalAnalysisV1, IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, QualityCheckV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
-    ValidationCheck,
+    PortfolioRowV1, QualityCheckV1, SourceFreshnessSlaV1, StorefrontBehaviorRowV1,
+    StorefrontBehaviorSummaryV1, ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use ingest::{

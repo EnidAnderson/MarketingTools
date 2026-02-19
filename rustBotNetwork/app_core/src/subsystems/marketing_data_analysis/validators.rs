@@ -170,6 +170,8 @@ pub fn validate_mock_analytics_artifact_v1(
         .iter()
         .chain(artifact.quality_controls.identity_resolution_checks.iter())
         .chain(artifact.quality_controls.freshness_sla_checks.iter())
+        .chain(artifact.quality_controls.cross_source_checks.iter())
+        .chain(artifact.quality_controls.budget_checks.iter())
         .any(|check| !check.passed && check.severity.eq_ignore_ascii_case("high"));
     let all_quality_checks_passed = artifact
         .quality_controls
@@ -177,6 +179,7 @@ pub fn validate_mock_analytics_artifact_v1(
         .iter()
         .chain(artifact.quality_controls.identity_resolution_checks.iter())
         .chain(artifact.quality_controls.freshness_sla_checks.iter())
+        .chain(artifact.quality_controls.cross_source_checks.iter())
         .chain(artifact.quality_controls.budget_checks.iter())
         .all(|check| check.passed);
     checks.push(check(
@@ -189,6 +192,17 @@ pub fn validate_mock_analytics_artifact_v1(
         "quality_controls_consistency",
         artifact.quality_controls.is_healthy == all_quality_checks_passed,
         "quality control health should match quality check pass/fail aggregate",
+    ));
+    let freshness_policy_covers_sources = artifact.provenance.iter().all(|item| {
+        artifact
+            .freshness_policy
+            .threshold_for(&item.source_system)
+            .is_some()
+    });
+    checks.push(check(
+        "freshness_policy_coverage",
+        freshness_policy_covers_sources,
+        "freshness policy must define thresholds for each provenance source",
     ));
     let budget_exceeded = artifact
         .budget
@@ -220,6 +234,7 @@ pub fn validate_mock_analytics_artifact_v1(
         artifact.data_quality.identity_join_coverage_ratio,
         artifact.data_quality.freshness_pass_ratio,
         artifact.data_quality.reconciliation_pass_ratio,
+        artifact.data_quality.cross_source_pass_ratio,
         artifact.data_quality.budget_pass_ratio,
         artifact.data_quality.quality_score,
     ]
@@ -327,6 +342,7 @@ mod tests {
             },
             quality_controls: Default::default(),
             data_quality: Default::default(),
+            freshness_policy: Default::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

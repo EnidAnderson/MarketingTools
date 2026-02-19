@@ -1,7 +1,7 @@
 use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
-    DataQualitySummaryV1, EvidenceItem, GuidanceItem, IngestCleaningNoteV1,
+    DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
     QualityCheckV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
@@ -34,6 +34,7 @@ const KEYWORD_TEXTS: &[&str] = &[
 ];
 const MIN_IDENTITY_COVERAGE_RATIO: f64 = 0.98;
 const RECONCILIATION_EPSILON: f64 = 0.01;
+const CROSS_SOURCE_REVENUE_TOLERANCE: f64 = 0.05;
 const INGEST_CONTRACT_VERSION: &str = "ingest_contract.v1";
 
 /// # NDOC
@@ -110,16 +111,9 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
 
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
         let ingest_cleaning_notes = collect_ingest_cleaning_notes(seed)?;
-        let provenance = vec![SourceProvenance {
-            connector_id: "mock_analytics_connector_v1".to_string(),
-            source_class: SourceClassLabel::Simulated,
-            source_system: "mock_analytics".to_string(),
-            collected_at_utc: "deterministic-simulated".to_string(),
-            freshness_minutes: 0,
-            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
-            rejected_rows_count: 0,
-            cleaning_note_count: ingest_cleaning_notes.len() as u32,
-        }];
+        let freshness_policy = FreshnessSlaPolicyV1::default();
+        let provenance = build_mock_provenance(seed, ingest_cleaning_notes.len() as u32);
+        let cross_source_checks = build_cross_source_checks(&report, seed);
         let (observed_evidence, inferred_guidance, mut uncertainty_notes) =
             build_evidence_and_guidance(&report, budget_plan.include_narratives);
         if budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives {
@@ -137,7 +131,13 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives,
         );
         let budget_checks = build_budget_checks(&budget);
-        let quality_controls = build_quality_controls(&report, &provenance, budget_checks);
+        let quality_controls = build_quality_controls(
+            &report,
+            &provenance,
+            budget_checks,
+            cross_source_checks,
+            &freshness_policy,
+        );
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
 
@@ -167,6 +167,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             },
             quality_controls,
             data_quality,
+            freshness_policy,
             budget,
             historical_analysis: Default::default(),
             operator_summary,
@@ -621,10 +622,84 @@ fn build_evidence_and_guidance(
     (evidence, guidance, uncertainty)
 }
 
+fn build_mock_provenance(seed: u64, cleaning_note_count: u32) -> Vec<SourceProvenance> {
+    // Keep provenance byte-stable for replay while still simulating source-specific lag.
+    let ga4_freshness = 30 + ((seed % 40) as u32);
+    let ads_freshness = 60 + ((seed % 50) as u32);
+    let wix_freshness = 90 + ((seed % 60) as u32);
+    vec![
+        SourceProvenance {
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            source_class: SourceClassLabel::Simulated,
+            source_system: "google_ads".to_string(),
+            collected_at_utc: "deterministic-simulated".to_string(),
+            freshness_minutes: ads_freshness,
+            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+            rejected_rows_count: 0,
+            cleaning_note_count: 0,
+        },
+        SourceProvenance {
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            source_class: SourceClassLabel::Simulated,
+            source_system: "ga4".to_string(),
+            collected_at_utc: "deterministic-simulated".to_string(),
+            freshness_minutes: ga4_freshness,
+            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+            rejected_rows_count: 0,
+            cleaning_note_count,
+        },
+        SourceProvenance {
+            connector_id: "mock_analytics_connector_v1".to_string(),
+            source_class: SourceClassLabel::Simulated,
+            source_system: "wix_storefront".to_string(),
+            collected_at_utc: "deterministic-simulated".to_string(),
+            freshness_minutes: wix_freshness,
+            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+            rejected_rows_count: 0,
+            cleaning_note_count: 0,
+        },
+    ]
+}
+
+fn build_cross_source_checks(report: &AnalyticsReport, seed: u64) -> Vec<QualityCheckV1> {
+    let attributed_revenue = report.total_metrics.conversions_value;
+    let wix_revenue_multiplier = 0.99 + ((seed % 3) as f64 * 0.005);
+    let wix_gross_revenue = round4(attributed_revenue * wix_revenue_multiplier);
+    let max_allowed = wix_gross_revenue * (1.0 + CROSS_SOURCE_REVENUE_TOLERANCE);
+
+    let ga4_sessions = round4((report.total_metrics.clicks as f64) * 0.92);
+    let clicks = report.total_metrics.clicks as f64;
+
+    vec![
+        QualityCheckV1 {
+            code: "cross_source_attributed_revenue_within_wix_gross".to_string(),
+            passed: attributed_revenue <= max_allowed,
+            severity: "high".to_string(),
+            observed: format!(
+                "attributed_revenue={:.4}, wix_gross={:.4}",
+                attributed_revenue, wix_gross_revenue
+            ),
+            expected: format!(
+                "attributed_revenue <= wix_gross * (1 + {:.2})",
+                CROSS_SOURCE_REVENUE_TOLERANCE
+            ),
+        },
+        QualityCheckV1 {
+            code: "cross_source_ga4_sessions_within_click_bound".to_string(),
+            passed: ga4_sessions <= clicks,
+            severity: "medium".to_string(),
+            observed: format!("ga4_sessions={:.4}, ad_clicks={:.4}", ga4_sessions, clicks),
+            expected: "ga4_sessions <= ad_clicks".to_string(),
+        },
+    ]
+}
+
 fn build_quality_controls(
     report: &AnalyticsReport,
     provenance: &[SourceProvenance],
     budget_checks: Vec<QualityCheckV1>,
+    cross_source_checks: Vec<QualityCheckV1>,
+    freshness_policy: &FreshnessSlaPolicyV1,
 ) -> AnalyticsQualityControlsV1 {
     let keyword_coverage_ratio = if report.keyword_data.is_empty() {
         1.0
@@ -736,12 +811,29 @@ fn build_quality_controls(
     ];
     let freshness_sla_checks = provenance
         .iter()
-        .map(|item| QualityCheckV1 {
-            code: format!("freshness_sla_{}", item.connector_id),
-            passed: item.freshness_minutes <= 60,
-            severity: "medium".to_string(),
-            observed: format!("freshness={}m", item.freshness_minutes),
-            expected: "freshness <= 60 minutes".to_string(),
+        .map(|item| {
+            let maybe_threshold = freshness_policy.threshold_for(&item.source_system);
+            let (passed, severity, expected) = if let Some(threshold) = maybe_threshold {
+                (
+                    item.freshness_minutes <= threshold.max_freshness_minutes,
+                    threshold.severity.clone(),
+                    format!("freshness <= {} minutes", threshold.max_freshness_minutes),
+                )
+            } else {
+                (
+                    false,
+                    "high".to_string(),
+                    "source_system must have an explicit freshness SLA threshold".to_string(),
+                )
+            };
+
+            QualityCheckV1 {
+                code: format!("freshness_sla_{}", item.source_system),
+                passed,
+                severity,
+                observed: format!("freshness={}m", item.freshness_minutes),
+                expected,
+            }
         })
         .collect::<Vec<_>>();
 
@@ -749,6 +841,7 @@ fn build_quality_controls(
         .iter()
         .chain(identity_resolution_checks.iter())
         .chain(freshness_sla_checks.iter())
+        .chain(cross_source_checks.iter())
         .chain(budget_checks.iter())
         .all(|c| c.passed);
 
@@ -756,6 +849,7 @@ fn build_quality_controls(
         schema_drift_checks,
         identity_resolution_checks,
         freshness_sla_checks,
+        cross_source_checks,
         budget_checks,
         is_healthy,
     }
@@ -773,21 +867,25 @@ fn build_data_quality_summary(
         .find(|check| check.code == "identity_campaign_rollup_reconciliation")
         .map(|check| if check.passed { 1.0 } else { 0.0 })
         .unwrap_or(0.0);
+    let cross_source_pass_ratio = pass_ratio(&quality_controls.cross_source_checks);
     let budget_pass_ratio = pass_ratio(&quality_controls.budget_checks);
 
     let quality_score = round4(
-        completeness_ratio * 0.30
-            + identity_join_coverage_ratio * 0.25
+        completeness_ratio * 0.25
+            + identity_join_coverage_ratio * 0.20
             + freshness_pass_ratio * 0.15
             + reconciliation_pass_ratio * 0.15
-            + budget_pass_ratio * 0.15,
+            + cross_source_pass_ratio * 0.15
+            + budget_pass_ratio * 0.10,
     );
+    assert!((0.0..=1.0).contains(&quality_score));
 
     DataQualitySummaryV1 {
         completeness_ratio,
         identity_join_coverage_ratio,
         freshness_pass_ratio,
         reconciliation_pass_ratio,
+        cross_source_pass_ratio,
         budget_pass_ratio,
         quality_score,
     }
@@ -1100,6 +1198,7 @@ mod tests {
                 quality_score: 1.4,
                 ..Default::default()
             },
+            freshness_policy: FreshnessSlaPolicyV1::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

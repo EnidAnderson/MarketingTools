@@ -148,6 +148,26 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec!["quality_controls.identity_resolution_checks".to_string()],
         });
     }
+    let failed_cross_source = quality
+        .cross_source_checks
+        .iter()
+        .filter(|check| !check.passed)
+        .count();
+    if failed_cross_source > 0 {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "cross-source-reconciliation".to_string(),
+            priority: "high".to_string(),
+            status: "action_required".to_string(),
+            title: "Cross-source reconciliation degraded".to_string(),
+            summary: format!(
+                "{failed_cross_source} cross-source checks failed; attribution assumptions may be unstable."
+            ),
+            recommended_action:
+                "Reconcile GA4 / Google Ads / Wix rollups before publishing executive guidance."
+                    .to_string(),
+            evidence_refs: vec!["quality_controls.cross_source_checks".to_string()],
+        });
+    }
 
     for anomaly in historical.anomaly_flags.iter().take(3) {
         cards.push(DecisionFeedCardV1 {
@@ -255,6 +275,14 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     {
         blocking_reasons.push("High-severity identity-resolution failure present.".to_string());
     }
+    if !quality
+        .cross_source_checks
+        .iter()
+        .all(|check| check.passed || check.severity != "high")
+    {
+        blocking_reasons
+            .push("High-severity cross-source reconciliation failure present.".to_string());
+    }
 
     if historical
         .anomaly_flags
@@ -284,6 +312,12 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }
     if data_quality.reconciliation_pass_ratio < 1.0 {
         warning_reasons.push("Reconciliation checks not fully passing.".to_string());
+    }
+    if data_quality.cross_source_pass_ratio < 0.95 {
+        warning_reasons.push(format!(
+            "Cross-source pass ratio degraded: {:.2}%",
+            data_quality.cross_source_pass_ratio * 100.0
+        ));
     }
     if data_quality.budget_pass_ratio < 1.0 {
         blocking_reasons.push("Budget checks not fully passing.".to_string());
@@ -351,6 +385,7 @@ fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) {
     assert!((0.0..=1.0).contains(&data_quality.identity_join_coverage_ratio));
     assert!((0.0..=1.0).contains(&data_quality.freshness_pass_ratio));
     assert!((0.0..=1.0).contains(&data_quality.reconciliation_pass_ratio));
+    assert!((0.0..=1.0).contains(&data_quality.cross_source_pass_ratio));
     assert!((0.0..=1.0).contains(&data_quality.budget_pass_ratio));
     assert!((0.0..=1.0).contains(&data_quality.quality_score));
 }
@@ -729,6 +764,7 @@ mod tests {
             },
             quality_controls: Default::default(),
             data_quality: Default::default(),
+            freshness_policy: Default::default(),
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),

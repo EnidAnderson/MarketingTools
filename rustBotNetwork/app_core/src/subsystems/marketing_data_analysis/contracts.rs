@@ -163,8 +163,61 @@ pub struct AnalyticsQualityControlsV1 {
     pub schema_drift_checks: Vec<QualityCheckV1>,
     pub identity_resolution_checks: Vec<QualityCheckV1>,
     pub freshness_sla_checks: Vec<QualityCheckV1>,
+    pub cross_source_checks: Vec<QualityCheckV1>,
     pub budget_checks: Vec<QualityCheckV1>,
     pub is_healthy: bool,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Source-level freshness SLA threshold.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SourceFreshnessSlaV1 {
+    pub source_system: String,
+    pub max_freshness_minutes: u32,
+    pub severity: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Explicit freshness policy contract used to evaluate source latency.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FreshnessSlaPolicyV1 {
+    pub policy_id: String,
+    pub thresholds: Vec<SourceFreshnessSlaV1>,
+}
+
+impl Default for FreshnessSlaPolicyV1 {
+    fn default() -> Self {
+        Self {
+            policy_id: "freshness_policy.default.v1".to_string(),
+            thresholds: vec![
+                SourceFreshnessSlaV1 {
+                    source_system: "google_ads".to_string(),
+                    max_freshness_minutes: 180,
+                    severity: "high".to_string(),
+                },
+                SourceFreshnessSlaV1 {
+                    source_system: "ga4".to_string(),
+                    max_freshness_minutes: 120,
+                    severity: "high".to_string(),
+                },
+                SourceFreshnessSlaV1 {
+                    source_system: "wix_storefront".to_string(),
+                    max_freshness_minutes: 240,
+                    severity: "medium".to_string(),
+                },
+            ],
+        }
+    }
+}
+
+impl FreshnessSlaPolicyV1 {
+    pub fn threshold_for(&self, source_system: &str) -> Option<&SourceFreshnessSlaV1> {
+        self.thresholds
+            .iter()
+            .find(|item| item.source_system == source_system)
+    }
 }
 
 /// # NDOC
@@ -176,6 +229,7 @@ pub struct DataQualitySummaryV1 {
     pub identity_join_coverage_ratio: f64,
     pub freshness_pass_ratio: f64,
     pub reconciliation_pass_ratio: f64,
+    pub cross_source_pass_ratio: f64,
     pub budget_pass_ratio: f64,
     pub quality_score: f64,
 }
@@ -187,6 +241,7 @@ impl Default for DataQualitySummaryV1 {
             identity_join_coverage_ratio: 1.0,
             freshness_pass_ratio: 1.0,
             reconciliation_pass_ratio: 1.0,
+            cross_source_pass_ratio: 1.0,
             budget_pass_ratio: 1.0,
             quality_score: 1.0,
         }
@@ -199,6 +254,7 @@ impl Default for AnalyticsQualityControlsV1 {
             schema_drift_checks: Vec::new(),
             identity_resolution_checks: Vec::new(),
             freshness_sla_checks: Vec::new(),
+            cross_source_checks: Vec::new(),
             budget_checks: Vec::new(),
             is_healthy: true,
         }
@@ -373,6 +429,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub quality_controls: AnalyticsQualityControlsV1,
     #[serde(default)]
     pub data_quality: DataQualitySummaryV1,
+    #[serde(default)]
+    pub freshness_policy: FreshnessSlaPolicyV1,
     #[serde(default)]
     pub budget: BudgetSummaryV1,
     #[serde(default)]
