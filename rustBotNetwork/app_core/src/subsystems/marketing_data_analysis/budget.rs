@@ -610,6 +610,7 @@ mod tests {
             seed: Some(1),
             profile_id: "p1".to_string(),
             include_narratives: true,
+            source_window_observations: Vec::new(),
             budget_envelope: BudgetEnvelopeV1 {
                 max_retrieval_units: 10,
                 max_analysis_units: 10,

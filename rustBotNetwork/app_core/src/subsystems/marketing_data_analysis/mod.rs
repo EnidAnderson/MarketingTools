@@ -27,7 +27,8 @@ pub use contracts::{
     HistoricalAnalysisV1, IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
     PortfolioRowV1, QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1,
-    SourceFreshnessSlaV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
+    SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
+    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use ingest::{

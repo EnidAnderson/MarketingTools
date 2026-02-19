@@ -2,7 +2,7 @@ use super::contracts::{
     AnalyticsError, AnalyticsValidationReportV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
     ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use validator::Validate;
 
 const MAX_DATE_SPAN_DAYS: i64 = 93;
@@ -52,6 +52,33 @@ pub fn validate_mock_analytics_request_v1(
             "budget_envelope.provenance_ref is required",
             "budget_envelope.provenance_ref",
         ));
+    }
+    for (obs_idx, obs) in req.source_window_observations.iter().enumerate() {
+        if obs.source_system.trim().is_empty() {
+            return Err(AnalyticsError::new(
+                "invalid_source_window_observation_source",
+                "source_window_observations.source_system is required",
+                vec![format!(
+                    "source_window_observations[{obs_idx}].source_system"
+                )],
+                None,
+            ));
+        }
+        for (ts_idx, ts) in obs.observed_timestamps_utc.iter().enumerate() {
+            if DateTime::parse_from_rfc3339(ts)
+                .map(|parsed| parsed.with_timezone(&Utc))
+                .is_err()
+            {
+                return Err(AnalyticsError::new(
+                    "invalid_source_window_observation_timestamp",
+                    "source_window_observations timestamps must use RFC3339",
+                    vec![format!(
+                        "source_window_observations[{obs_idx}].observed_timestamps_utc[{ts_idx}]"
+                    )],
+                    None,
+                ));
+            }
+        }
     }
 
     let start = NaiveDate::parse_from_str(&req.start_date, "%Y-%m-%d").map_err(|_| {
@@ -299,6 +326,27 @@ mod tests {
             seed: None,
             profile_id: "small".to_string(),
             include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+        assert!(validate_mock_analytics_request_v1(&bad).is_err());
+    }
+
+    #[test]
+    fn request_validator_rejects_bad_source_window_timestamp() {
+        let bad = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-02".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: None,
+            profile_id: "small".to_string(),
+            include_narratives: true,
+            source_window_observations: vec![super::super::contracts::SourceWindowObservationV1 {
+                source_system: "ga4".to_string(),
+                granularity: super::super::contracts::SourceWindowGranularityV1::Day,
+                observed_timestamps_utc: vec!["not-rfc3339".to_string()],
+            }],
             budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
         assert!(validate_mock_analytics_request_v1(&bad).is_err());
@@ -316,6 +364,7 @@ mod tests {
                 seed: Some(1),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                source_window_observations: Vec::new(),
                 budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             },
             metadata: AnalyticsRunMetadataV1 {

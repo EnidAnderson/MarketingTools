@@ -245,6 +245,7 @@ mod tests {
             seed: Some(1),
             profile_id: profile_id.to_string(),
             include_narratives: true,
+            source_window_observations: Vec::new(),
             budget_envelope:
                 crate::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(),
         };

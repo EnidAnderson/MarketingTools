@@ -10,6 +10,7 @@ use crate::data_models::analytics::{
 };
 use crate::subsystems::marketing_data_analysis::{
     BudgetEnvelopeV1, DefaultMarketAnalysisService, MarketAnalysisService, MockAnalyticsRequestV1,
+    SourceWindowGranularityV1, SourceWindowObservationV1,
 };
 use regex::Regex;
 use tokio::runtime::Builder;
@@ -20,8 +21,14 @@ pub fn generate_analytics_report(
     campaign_filter: Option<&str>,
     ad_group_filter: Option<&str>,
 ) -> AnalyticsReport {
-    generate_analytics_report_via_subsystem(start_date, end_date, campaign_filter, ad_group_filter)
-        .unwrap_or_else(|_| empty_report(start_date, end_date))
+    generate_analytics_report_via_subsystem(
+        start_date,
+        end_date,
+        campaign_filter,
+        ad_group_filter,
+        Vec::new(),
+    )
+    .unwrap_or_else(|_| empty_report(start_date, end_date))
 }
 
 pub fn generate_typed_trusted_report(
@@ -30,7 +37,14 @@ pub fn generate_typed_trusted_report(
     end_date: &str,
 ) -> TrustedAnalyticsReportArtifact {
     let ga4_events = connector.fetch_ga4_events(start_date, end_date);
-    let report = generate_analytics_report(start_date, end_date, None, None);
+    let report = generate_analytics_report_via_subsystem(
+        start_date,
+        end_date,
+        None,
+        None,
+        source_window_observations_from_ga4_events(&ga4_events),
+    )
+    .unwrap_or_else(|_| empty_report(start_date, end_date));
 
     let narratives = ga4_events
         .iter()
@@ -53,6 +67,7 @@ fn generate_analytics_report_via_subsystem(
     end_date: &str,
     campaign_filter: Option<&str>,
     ad_group_filter: Option<&str>,
+    source_window_observations: Vec<SourceWindowObservationV1>,
 ) -> Result<AnalyticsReport, String> {
     let service = DefaultMarketAnalysisService::new();
     let request = MockAnalyticsRequestV1 {
@@ -63,6 +78,7 @@ fn generate_analytics_report_via_subsystem(
         seed: None,
         profile_id: "legacy_bridge_profile".to_string(),
         include_narratives: false,
+        source_window_observations,
         budget_envelope: BudgetEnvelopeV1::default(),
     };
 
@@ -88,6 +104,22 @@ fn empty_report(start_date: &str, end_date: &str) -> AnalyticsReport {
         ad_group_data: Vec::new(),
         keyword_data: Vec::new(),
     }
+}
+
+fn source_window_observations_from_ga4_events(
+    ga4_events: &[Ga4NormalizedEvent],
+) -> Vec<SourceWindowObservationV1> {
+    if ga4_events.is_empty() {
+        return Vec::new();
+    }
+    vec![SourceWindowObservationV1 {
+        source_system: "ga4".to_string(),
+        granularity: SourceWindowGranularityV1::Day,
+        observed_timestamps_utc: ga4_events
+            .iter()
+            .map(|event| event.event_timestamp_utc.clone())
+            .collect(),
+    }]
 }
 
 fn build_kpi_narrative(event: &Ga4NormalizedEvent) -> NormalizedKpiNarrative {
@@ -313,6 +345,7 @@ mod tests {
             seed: None,
             profile_id: "parity_test".to_string(),
             include_narratives: false,
+            source_window_observations: Vec::new(),
             budget_envelope: BudgetEnvelopeV1::default(),
         };
         let runtime = Builder::new_current_thread()

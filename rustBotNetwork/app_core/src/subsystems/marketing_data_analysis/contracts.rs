@@ -23,7 +23,30 @@ pub struct MockAnalyticsRequestV1 {
     #[validate(length(min = 1, max = 128))]
     pub profile_id: String,
     pub include_narratives: bool,
+    #[serde(default)]
+    pub source_window_observations: Vec<SourceWindowObservationV1>,
     pub budget_envelope: BudgetEnvelopeV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Time granularity for source-window completeness evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceWindowGranularityV1 {
+    Day,
+    Hour,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Source-window observation payload supplied by connectors or ingestion jobs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SourceWindowObservationV1 {
+    pub source_system: String,
+    pub granularity: SourceWindowGranularityV1,
+    #[serde(default)]
+    pub observed_timestamps_utc: Vec<String>,
 }
 
 /// # NDOC

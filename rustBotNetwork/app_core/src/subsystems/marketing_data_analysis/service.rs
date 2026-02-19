@@ -3,7 +3,8 @@ use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
     DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
-    QualityCheckV1, ReconciliationPolicyV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    QualityCheckV1, ReconciliationPolicyV1, SourceWindowGranularityV1,
+    MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::ingest::{parse_ga4_event, window_completeness, CleaningNote, TimeGranularity};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
@@ -17,7 +18,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 const CAMPAIGN_NAMES: &[&str] = &[
     "Summer Pet Food Promo",
@@ -112,8 +113,8 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         let freshness_policy = FreshnessSlaPolicyV1::default();
         let reconciliation_policy = ReconciliationPolicyV1::default();
         let provenance = build_mock_provenance(seed, ingest_cleaning_notes.len() as u32);
-        let observed_units_by_source =
-            build_mock_observed_window_units(start, budget_plan.effective_end);
+        let (observed_units_by_source, granularity_by_source, provided_observation_sources) =
+            resolve_source_window_inputs(&request, start, budget_plan.effective_end)?;
         let cross_source_checks = build_cross_source_checks(&report, seed, &reconciliation_policy);
         let (observed_evidence, inferred_guidance, mut uncertainty_notes) =
             build_evidence_and_guidance(&report, budget_plan.include_narratives);
@@ -142,6 +143,8 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             start,
             budget_plan.effective_end,
             &observed_units_by_source,
+            &granularity_by_source,
+            provided_observation_sources.as_ref(),
         );
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
@@ -205,6 +208,16 @@ fn resolve_seed(request: &MockAnalyticsRequestV1) -> u64 {
     }
     if let Some(v) = &request.ad_group_filter {
         hasher.update(v.as_bytes());
+    }
+    for observation in &request.source_window_observations {
+        hasher.update(observation.source_system.as_bytes());
+        match observation.granularity {
+            SourceWindowGranularityV1::Day => hasher.update(b"day"),
+            SourceWindowGranularityV1::Hour => hasher.update(b"hour"),
+        }
+        for ts in &observation.observed_timestamps_utc {
+            hasher.update(ts.as_bytes());
+        }
     }
     hasher.update(if request.include_narratives {
         b"1"
@@ -736,11 +749,15 @@ fn build_cross_source_checks(
     ]
 }
 
-fn build_mock_observed_window_units(
+fn build_mock_observed_window_inputs(
     start: NaiveDate,
     end: NaiveDate,
-) -> BTreeMap<String, Vec<DateTime<Utc>>> {
+) -> (
+    BTreeMap<String, Vec<DateTime<Utc>>>,
+    BTreeMap<String, TimeGranularity>,
+) {
     let mut by_source = BTreeMap::new();
+    let mut granularity_by_source = BTreeMap::new();
     for source in ["google_ads", "ga4", "wix_storefront"] {
         let mut points = Vec::new();
         let mut current = start;
@@ -754,8 +771,79 @@ fn build_mock_observed_window_units(
             current = next;
         }
         by_source.insert(source.to_string(), points);
+        granularity_by_source.insert(source.to_string(), TimeGranularity::Day);
     }
-    by_source
+    (by_source, granularity_by_source)
+}
+
+fn resolve_source_window_inputs(
+    request: &MockAnalyticsRequestV1,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<
+    (
+        BTreeMap<String, Vec<DateTime<Utc>>>,
+        BTreeMap<String, TimeGranularity>,
+        Option<BTreeSet<String>>,
+    ),
+    AnalyticsError,
+> {
+    let (mut observed_by_source, mut granularity_by_source) =
+        build_mock_observed_window_inputs(start, end);
+    if request.source_window_observations.is_empty() {
+        return Ok((observed_by_source, granularity_by_source, None));
+    }
+
+    let start_utc = start
+        .and_hms_opt(0, 0, 0)
+        .expect("start date should support midnight")
+        .and_utc();
+    let end_utc = end
+        .and_hms_opt(23, 59, 59)
+        .expect("end date should support second boundary")
+        .and_utc();
+
+    let mut provided_sources = BTreeSet::new();
+    for (idx, observation) in request.source_window_observations.iter().enumerate() {
+        let source = observation.source_system.trim();
+        if source.is_empty() {
+            return Err(AnalyticsError::new(
+                "invalid_source_window_observation_source",
+                "source_window_observations.source_system cannot be empty",
+                vec![format!("source_window_observations[{idx}].source_system")],
+                None,
+            ));
+        }
+        let granularity = match observation.granularity {
+            SourceWindowGranularityV1::Day => TimeGranularity::Day,
+            SourceWindowGranularityV1::Hour => TimeGranularity::Hour,
+        };
+        let mut parsed_points = Vec::new();
+        for (ts_idx, raw) in observation.observed_timestamps_utc.iter().enumerate() {
+            let parsed = DateTime::parse_from_rfc3339(raw).map_err(|_| {
+                AnalyticsError::new(
+                    "invalid_source_window_observation_timestamp",
+                    "source_window_observations timestamps must be RFC3339",
+                    vec![format!(
+                        "source_window_observations[{idx}].observed_timestamps_utc[{ts_idx}]"
+                    )],
+                    None,
+                )
+            })?;
+            let utc = parsed.with_timezone(&Utc);
+            if utc >= start_utc && utc <= end_utc {
+                parsed_points.push(utc);
+            }
+        }
+        provided_sources.insert(source.to_string());
+        observed_by_source.insert(source.to_string(), parsed_points);
+        granularity_by_source.insert(source.to_string(), granularity);
+    }
+    Ok((
+        observed_by_source,
+        granularity_by_source,
+        Some(provided_sources),
+    ))
 }
 
 fn build_quality_controls(
@@ -768,6 +856,8 @@ fn build_quality_controls(
     start: NaiveDate,
     end: NaiveDate,
     observed_units_by_source: &BTreeMap<String, Vec<DateTime<Utc>>>,
+    granularity_by_source: &BTreeMap<String, TimeGranularity>,
+    provided_observation_sources: Option<&BTreeSet<String>>,
 ) -> AnalyticsQualityControlsV1 {
     let keyword_coverage_ratio = if report.keyword_data.is_empty() {
         1.0
@@ -942,7 +1032,10 @@ fn build_quality_controls(
                 let window = window_completeness(
                     start_utc,
                     end_utc,
-                    TimeGranularity::Day,
+                    granularity_by_source
+                        .get(&item.source_system)
+                        .copied()
+                        .unwrap_or(TimeGranularity::Day),
                     timezone,
                     observed,
                 );
@@ -978,6 +1071,22 @@ fn build_quality_controls(
             observed: completeness_observed,
             expected: completeness_expected,
         });
+        if let Some(provided_sources) = provided_observation_sources {
+            freshness_sla_checks.push(QualityCheckV1 {
+                code: format!("source_window_observation_present_{}", item.source_system),
+                passed: provided_sources.contains(&item.source_system),
+                severity: "medium".to_string(),
+                observed: format!(
+                    "provided_sources={}",
+                    provided_sources
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+                expected: "source observation provided for each provenance source".to_string(),
+            });
+        }
     }
 
     let is_healthy = schema_drift_checks
@@ -1204,6 +1313,7 @@ mod tests {
             seed: Some(42),
             profile_id: "small".to_string(),
             include_narratives: true,
+            source_window_observations: Vec::new(),
             budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
 
@@ -1242,6 +1352,7 @@ mod tests {
             seed: None,
             profile_id: "small".to_string(),
             include_narratives: false,
+            source_window_observations: Vec::new(),
             budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
         };
         let first = svc
@@ -1268,6 +1379,7 @@ mod tests {
                 seed: Some(seed),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                source_window_observations: Vec::new(),
                 budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             };
             let artifact = svc
@@ -1295,6 +1407,44 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn source_window_observations_can_drive_completeness_fail_closed() {
+        let svc = DefaultMarketAnalysisService::new();
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-02".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(99),
+            profile_id: "small".to_string(),
+            include_narratives: false,
+            source_window_observations: vec![
+                super::super::contracts::SourceWindowObservationV1 {
+                    source_system: "google_ads".to_string(),
+                    granularity: super::super::contracts::SourceWindowGranularityV1::Day,
+                    observed_timestamps_utc: Vec::new(),
+                },
+                super::super::contracts::SourceWindowObservationV1 {
+                    source_system: "ga4".to_string(),
+                    granularity: super::super::contracts::SourceWindowGranularityV1::Day,
+                    observed_timestamps_utc: Vec::new(),
+                },
+                super::super::contracts::SourceWindowObservationV1 {
+                    source_system: "wix_storefront".to_string(),
+                    granularity: super::super::contracts::SourceWindowGranularityV1::Day,
+                    observed_timestamps_utc: Vec::new(),
+                },
+            ],
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let err = svc
+            .run_mock_analysis(req)
+            .await
+            .expect_err("artifact should fail closed when completeness SLAs are unmet");
+        assert_eq!(err.code, "artifact_invariant_violation");
+    }
+
     #[test]
     fn data_quality_summary_rejects_out_of_bound_ratio_via_artifact_validator() {
         let mut artifact = MockAnalyticsArtifactV1 {
@@ -1307,6 +1457,7 @@ mod tests {
                 seed: Some(1),
                 profile_id: "small".to_string(),
                 include_narratives: true,
+                source_window_observations: Vec::new(),
                 budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
             },
             metadata: AnalyticsRunMetadataV1 {
