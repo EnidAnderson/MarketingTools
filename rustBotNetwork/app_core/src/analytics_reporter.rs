@@ -29,7 +29,6 @@ pub fn generate_typed_trusted_report(
     start_date: &str,
     end_date: &str,
 ) -> TrustedAnalyticsReportArtifact {
-    let _ads_rows = connector.fetch_google_ads_rows(start_date, end_date);
     let ga4_events = connector.fetch_ga4_events(start_date, end_date);
     let report = generate_analytics_report(start_date, end_date, None, None);
 

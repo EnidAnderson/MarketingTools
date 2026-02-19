@@ -1,13 +1,11 @@
 // provenance: decision_id=DEC-0003; change_request_id=CR-WHITE-0016
 
-use crate::analytics_data_generator::generate_simulated_google_ads_rows;
 use crate::data_models::analytics::{
-    AttributionWindowMetadata, ConfidenceAnnotation, Ga4NormalizedEvent, GoogleAdsRow,
-    SourceClassLabel, SourceProvenance,
+    AttributionWindowMetadata, ConfidenceAnnotation, Ga4NormalizedEvent, SourceClassLabel,
+    SourceProvenance,
 };
 
 pub trait AnalyticsConnectorContract {
-    fn fetch_google_ads_rows(&self, start_date: &str, end_date: &str) -> Vec<GoogleAdsRow>;
     fn fetch_ga4_events(&self, start_date: &str, end_date: &str) -> Vec<Ga4NormalizedEvent>;
 }
 
@@ -20,10 +18,6 @@ impl SimulatedConnectorContract {
 }
 
 impl AnalyticsConnectorContract for SimulatedConnectorContract {
-    fn fetch_google_ads_rows(&self, start_date: &str, end_date: &str) -> Vec<GoogleAdsRow> {
-        generate_simulated_google_ads_rows(start_date, end_date)
-    }
-
     fn fetch_ga4_events(&self, _start_date: &str, _end_date: &str) -> Vec<Ga4NormalizedEvent> {
         vec![Ga4NormalizedEvent {
             event_name: "purchase".to_string(),
