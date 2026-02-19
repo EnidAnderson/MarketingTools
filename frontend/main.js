@@ -296,7 +296,9 @@ function renderQuality(quality) {
   const allChecks = [
     ...(quality.schema_drift_checks || []),
     ...(quality.identity_resolution_checks || []),
-    ...(quality.freshness_sla_checks || [])
+    ...(quality.freshness_sla_checks || []),
+    ...(quality.cross_source_checks || []),
+    ...(quality.budget_checks || [])
   ];
   if (allChecks.length === 0) {
     el.qualityList.innerHTML = '<li class="signal-item warn">No quality checks available yet.</li>';
@@ -329,6 +331,8 @@ function renderDataQuality(dq) {
     ['Join Coverage', dq.identity_join_coverage_ratio],
     ['Freshness Pass', dq.freshness_pass_ratio],
     ['Reconciliation Pass', dq.reconciliation_pass_ratio],
+    ['Cross-Source Pass', dq.cross_source_pass_ratio],
+    ['Budget Pass', dq.budget_pass_ratio],
     ['Composite Score', dq.quality_score]
   ];
 
@@ -561,7 +565,9 @@ function fallbackSnapshot(profileId, opts) {
     quality_controls: {
       schema_drift_checks: [{ code: 'schema_campaign_required_fields', passed: true, severity: 'high', observed: 'stable fields' }],
       identity_resolution_checks: [{ code: 'identity_keyword_linked_to_ad_group', passed: true, severity: 'high', observed: 'join coverage good' }],
-      freshness_sla_checks: [{ code: 'freshness_sla_mock', passed: true, severity: 'medium', observed: '0m freshness' }]
+      freshness_sla_checks: [{ code: 'freshness_sla_mock', passed: true, severity: 'medium', observed: '0m freshness' }],
+      cross_source_checks: [{ code: 'cross_source_attributed_revenue_within_wix_gross', passed: true, severity: 'high', observed: 'revenue aligned' }],
+      budget_checks: [{ code: 'budget_no_blocked_spend', passed: true, severity: 'high', observed: 'blocked_events=0' }]
     },
     historical_analysis: {
       period_over_period_deltas: [
@@ -605,6 +611,8 @@ function fallbackSnapshot(profileId, opts) {
       identity_join_coverage_ratio: 0.99,
       freshness_pass_ratio: 0.96,
       reconciliation_pass_ratio: 1.0,
+      cross_source_pass_ratio: 1.0,
+      budget_pass_ratio: 1.0,
       quality_score: 0.988
     },
     operator_summary: {
