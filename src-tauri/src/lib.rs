@@ -1,5 +1,8 @@
 use app_core::image_generator::generate_image;
 use app_core::pipeline::PipelineDefinition;
+use app_core::subsystems::campaign_orchestration::{
+    prioritized_text_graph_templates_v1, runtime::TextWorkflowRunRequestV1,
+};
 use app_core::subsystems::marketing_data_analysis::{
     build_executive_dashboard_snapshot, AnalyticsRunStore, MockAnalyticsRequestV1,
     SnapshotBuildOptions,
@@ -184,6 +187,91 @@ fn get_tools() -> Result<Vec<ToolDefinition>, String> {
         output_schema: Some(json!({
             "type": "object",
             "required": ["schema_version", "metadata", "report", "validation", "quality_controls", "historical_analysis"]
+        })),
+    });
+    tools.push(ToolDefinition {
+        name: "text::workflow_pipeline".to_string(),
+        description:
+            "Deterministic graph-based text workflow run (message house, email+landing, ad variants) with weighted gate decisions."
+                .to_string(),
+        maturity: ToolMaturity::Stable,
+        human_workflow:
+            "Run workflow, inspect gate decision and critical findings, then publish only when blockers are zero."
+                .to_string(),
+        output_artifact_kind: "text_workflow_run.v1".to_string(),
+        requires_review: true,
+        default_input_template: json!({
+            "template_id": "tpl.email_landing_sequence.v1",
+            "variant_count": 12,
+            "paid_calls_allowed": false,
+            "budget": {
+                "remaining_daily_budget_usd": 10.0,
+                "max_cost_per_run_usd": 2.0,
+                "max_total_input_tokens": 24000,
+                "max_total_output_tokens": 8000,
+                "hard_daily_cap_usd": 10.0
+            },
+            "campaign_spine": {
+                "campaign_spine_id": "spine.default.v1",
+                "product_name": "Nature's Diet Raw Mix",
+                "offer_summary": "Save 20% on first order",
+                "audience_segments": ["new puppy owners", "sensitive stomach"],
+                "positioning_statement": "Raw-first nutrition with practical prep",
+                "message_house": {
+                    "big_idea": "Fresh confidence in every bowl",
+                    "pillars": [{"pillar_id":"p1","title":"Digestive comfort","supporting_points":["gentle proteins"]}],
+                    "proof_points": [{"claim_id":"claim1","claim_text":"high digestibility blend","evidence_ref_ids":["ev1"]}],
+                    "do_not_say": ["cure claims"],
+                    "tone_guide": ["clear", "grounded"]
+                },
+                "evidence_refs": [{"evidence_id":"ev1","source_ref":"internal.digestibility.v1","excerpt":"digestibility improved 11% vs baseline"}]
+            }
+        }),
+        ui_metadata: ToolUIMetadata {
+            category: "Content".to_string(),
+            display_name: "Text Workflow Pipeline".to_string(),
+            icon: Some("automation".to_string()),
+            complexity: ToolComplexity::Advanced,
+            estimated_time_seconds: 3,
+            tags: vec![
+                "agent-graph".to_string(),
+                "text-generation".to_string(),
+                "weighted-gate".to_string(),
+            ],
+        },
+        parameters: vec![
+            ParameterDefinition {
+                name: "template_id".to_string(),
+                r#type: "string".to_string(),
+                description: "Template id (tpl.message_house.v1 | tpl.email_landing_sequence.v1 | tpl.ad_variant_pack.v1).".to_string(),
+                optional: false,
+            },
+            ParameterDefinition {
+                name: "campaign_spine".to_string(),
+                r#type: "object".to_string(),
+                description: "Shared campaign spine used for all workflow sections.".to_string(),
+                optional: false,
+            },
+            ParameterDefinition {
+                name: "variant_count".to_string(),
+                r#type: "integer".to_string(),
+                description: "Variant count for ad-variant workflow (1..=30).".to_string(),
+                optional: true,
+            },
+            ParameterDefinition {
+                name: "paid_calls_allowed".to_string(),
+                r#type: "boolean".to_string(),
+                description: "When false, all node routes use local zero-cost mock provider.".to_string(),
+                optional: false,
+            },
+        ],
+        input_examples: vec![json!({
+            "template_id": "tpl.email_landing_sequence.v1",
+            "paid_calls_allowed": false
+        })],
+        output_schema: Some(json!({
+            "type": "object",
+            "required": ["schema_version", "template_id", "execution_order", "traces", "artifact"]
         })),
     });
     Ok(tools)
@@ -413,6 +501,33 @@ fn start_mock_analytics_job(
 }
 
 /// # NDOC
+/// component: `tauri_commands::start_mock_text_workflow_job`
+/// purpose: Start async deterministic text workflow run and return job id for polling.
+#[tauri::command]
+fn start_mock_text_workflow_job(
+    app_handle: AppHandle,
+    state: State<'_, JobManager>,
+    request: TextWorkflowRunRequestV1,
+) -> Result<JobHandle, String> {
+    state.start_mock_text_workflow_job(&app_handle, request)
+}
+
+/// # NDOC
+/// component: `tauri_commands::get_text_workflow_templates`
+/// purpose: Expose prioritized text workflow templates for operator/template selection UI.
+#[tauri::command]
+fn get_text_workflow_templates(campaign_spine_id: String) -> Result<Value, String> {
+    let spine = campaign_spine_id.trim();
+    if spine.is_empty() {
+        return Err("campaign_spine_id cannot be empty".to_string());
+    }
+    let templates = prioritized_text_graph_templates_v1(spine)
+        .map_err(|err| format!("failed to build text workflow templates: {err}"))?;
+    serde_json::to_value(templates)
+        .map_err(|err| format!("failed to serialize text workflow templates: {err}"))
+}
+
+/// # NDOC
 /// component: `tauri_commands::get_mock_analytics_run_history`
 /// purpose: Retrieve persisted analytics runs for operator trend inspection.
 #[tauri::command]
@@ -453,6 +568,21 @@ fn get_analysis_workflows() -> Result<Value, String> {
                 "completed"
             ],
             "discoverability_tags": ["analytics", "trend", "drift", "anomaly", "operator"],
+            "governance_ready": true
+        },
+        {
+            "workflow_id": "wf.text.workflow_pipeline.v1",
+            "title": "Text Workflow Pipeline",
+            "entrypoint": "start_mock_text_workflow_job",
+            "templates_entrypoint": "get_text_workflow_templates",
+            "stages": [
+                "validating_graph",
+                "planning_routes",
+                "generating_artifact",
+                "evaluating_gate",
+                "completed"
+            ],
+            "discoverability_tags": ["text", "agent-graph", "campaign-spine", "weighted-gate"],
             "governance_ready": true
         }
     ]))
@@ -557,8 +687,10 @@ pub fn run() {
             get_tool_job,
             cancel_tool_job,
             start_mock_analytics_job,
+            start_mock_text_workflow_job,
             get_mock_analytics_run_history,
             get_analysis_workflows,
+            get_text_workflow_templates,
             get_executive_dashboard_snapshot,
             get_dashboard_chart_definitions,
             generate_image_command,

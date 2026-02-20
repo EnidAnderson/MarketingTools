@@ -462,6 +462,8 @@ pub fn enforce_daily_hard_cap(
 fn default_daily_ledger_path() -> PathBuf {
     #[cfg(test)]
     {
+        static TEST_LEDGER_COUNTER: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
         let exe_tag = std::env::current_exe()
             .ok()
             .and_then(|path| {
@@ -470,8 +472,12 @@ fn default_daily_ledger_path() -> PathBuf {
             })
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| format!("pid{}", std::process::id()));
+        let nonce = TEST_LEDGER_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return std::env::temp_dir()
-            .join(format!("nd_marketing_daily_spend_ledger_{}.json", exe_tag));
+            .join(format!(
+                "nd_marketing_daily_spend_ledger_{}_{}.json",
+                exe_tag, nonce
+            ));
     }
     #[cfg(not(test))]
     {

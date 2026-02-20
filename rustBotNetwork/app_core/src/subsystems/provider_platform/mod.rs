@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod model_routing;
 pub mod spend_policy;
 
 /// # NDOC

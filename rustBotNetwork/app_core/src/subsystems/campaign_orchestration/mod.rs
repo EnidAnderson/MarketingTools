@@ -6,6 +6,8 @@ use crate::subsystems::text_intelligence::TextWorkflowKindV1;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+pub mod runtime;
+
 /// # NDOC
 /// component: `subsystems::campaign_orchestration`
 /// purpose: Domain contracts for campaign execution plans and run state.
