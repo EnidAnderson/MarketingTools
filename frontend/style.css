@@ -130,6 +130,7 @@ input {
 .control-actions {
   margin-top: 10px;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   align-items: center;
 }
@@ -164,6 +165,22 @@ input {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.studio-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.text-workflow-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.text-workflow-meta {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .job-status {
@@ -302,6 +319,10 @@ input {
 
 .signal-item.bad {
   border-left: 4px solid var(--bad);
+}
+
+.signal-item.neutral {
+  border-left: 4px solid #2f6ea5;
 }
 
 .history-item {

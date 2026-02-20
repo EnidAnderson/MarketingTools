@@ -62,9 +62,95 @@
       <div id="jobStatus" class="job-status">Ready.</div>
     </section>
 
+    <section class="card">
+      <div class="panel-head">
+        <h2>Text Workflow Studio</h2>
+        <div class="studio-actions">
+          <button id="loadTextTemplatesButton" class="btn btn-secondary">Load Templates</button>
+          <button id="runTextWorkflowButton" class="btn btn-primary">Run Text Workflow</button>
+        </div>
+      </div>
+      <div class="text-workflow-grid">
+        <label>Campaign Spine ID
+          <input id="textCampaignSpineId" type="text" value="spine.default.v1" />
+        </label>
+        <label>Workflow Template
+          <select id="textTemplateSelect"></select>
+        </label>
+        <label>Variant Count (ad variants)
+          <input id="textVariantCount" type="number" min="1" max="30" value="12" />
+        </label>
+        <label>Product Name
+          <input id="textProductName" type="text" value="Nature's Diet Raw Mix" />
+        </label>
+        <label>Offer Summary
+          <input id="textOfferSummary" type="text" value="Save 20% on first order" />
+        </label>
+        <label>Audience Segments (comma separated)
+          <input id="textAudienceSegments" type="text" value="new puppy owners,sensitive stomach" />
+        </label>
+        <label>Positioning Statement
+          <input id="textPositioningStatement" type="text" value="Raw-first nutrition with practical prep" />
+        </label>
+        <label>Message Big Idea
+          <input id="textBigIdea" type="text" value="Fresh confidence in every bowl" />
+        </label>
+        <label>Primary Proof Claim
+          <input id="textProofClaim" type="text" value="high digestibility blend" />
+        </label>
+      </div>
+      <div class="control-actions">
+        <label class="toggle-wrap">
+          <input id="textIncludeEvidence" type="checkbox" checked />
+          Include Evidence Ref
+        </label>
+        <label class="toggle-wrap">
+          <input id="textPaidCallsAllowed" type="checkbox" />
+          Allow Paid Calls (subject to hard cap)
+        </label>
+      </div>
+      <div id="textWorkflowStatus" class="job-status">Text workflow ready.</div>
+      <div id="textTemplateSummary" class="narrative-item">Load templates to view graph and workflow metadata.</div>
+    </section>
+
     <section class="kpi-grid" id="kpiGrid"></section>
 
     <section class="content-grid">
+      <article class="card panel-wide">
+        <h2>Text Workflow Gate</h2>
+        <div id="textWorkflowGatePanel" class="publish-gate-panel"></div>
+      </article>
+
+      <article class="card panel-wide">
+        <h2>Text Workflow Node Trace</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Node</th>
+                <th>Role</th>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Input Tokens</th>
+                <th>Output Tokens</th>
+                <th>Est. Cost</th>
+              </tr>
+            </thead>
+            <tbody id="textWorkflowTraceBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card panel">
+        <h2>Generated Sections</h2>
+        <div id="textWorkflowSections" class="narrative-list"></div>
+      </article>
+
+      <article class="card panel">
+        <h2>Critique Findings</h2>
+        <ul id="textWorkflowFindings" class="signal-list"></ul>
+      </article>
+
       <article class="card panel-wide">
         <div class="panel-head">
           <h2>Period-Over-Period Deltas</h2>

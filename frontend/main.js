@@ -2,7 +2,9 @@ const state = {
   currentSnapshot: null,
   deltaChart: null,
   channelMixChart: null,
-  historyRuns: []
+  historyRuns: [],
+  textWorkflowTemplates: [],
+  textWorkflowResult: null
 };
 
 const el = {
@@ -33,13 +35,34 @@ const el = {
   decisionFeedList: document.getElementById('decisionFeedList'),
   exportPacketButton: document.getElementById('exportPacketButton'),
   narrativeList: document.getElementById('narrativeList'),
-  historyList: document.getElementById('historyList')
+  historyList: document.getElementById('historyList'),
+  loadTextTemplatesButton: document.getElementById('loadTextTemplatesButton'),
+  runTextWorkflowButton: document.getElementById('runTextWorkflowButton'),
+  textCampaignSpineId: document.getElementById('textCampaignSpineId'),
+  textTemplateSelect: document.getElementById('textTemplateSelect'),
+  textVariantCount: document.getElementById('textVariantCount'),
+  textProductName: document.getElementById('textProductName'),
+  textOfferSummary: document.getElementById('textOfferSummary'),
+  textAudienceSegments: document.getElementById('textAudienceSegments'),
+  textPositioningStatement: document.getElementById('textPositioningStatement'),
+  textBigIdea: document.getElementById('textBigIdea'),
+  textProofClaim: document.getElementById('textProofClaim'),
+  textIncludeEvidence: document.getElementById('textIncludeEvidence'),
+  textPaidCallsAllowed: document.getElementById('textPaidCallsAllowed'),
+  textWorkflowStatus: document.getElementById('textWorkflowStatus'),
+  textTemplateSummary: document.getElementById('textTemplateSummary'),
+  textWorkflowGatePanel: document.getElementById('textWorkflowGatePanel'),
+  textWorkflowTraceBody: document.getElementById('textWorkflowTraceBody'),
+  textWorkflowSections: document.getElementById('textWorkflowSections'),
+  textWorkflowFindings: document.getElementById('textWorkflowFindings')
 };
 
 boot();
 
 async function boot() {
   wireEvents();
+  await loadTextWorkflowTemplates();
+  renderTextWorkflowResult(null);
   await refreshDashboard();
   setInterval(() => {
     refreshHistoryOnly().catch(() => {
@@ -51,6 +74,8 @@ async function boot() {
 function wireEvents() {
   el.runButton.addEventListener('click', () => generateRunAndRefresh());
   el.refreshButton.addEventListener('click', () => refreshDashboard());
+  el.loadTextTemplatesButton?.addEventListener('click', () => loadTextWorkflowTemplates());
+  el.runTextWorkflowButton?.addEventListener('click', () => runTextWorkflowAndRender());
   el.exportPacketButton?.addEventListener('click', () => {
     status('Export packet is not yet wired to a file command. Gate status is active.');
   });
@@ -66,6 +91,10 @@ async function invoke(command, payload = {}) {
 
 function status(text) {
   el.jobStatus.textContent = text;
+}
+
+function textWorkflowStatus(text) {
+  el.textWorkflowStatus.textContent = text;
 }
 
 function stampNow(prefix = 'Updated') {
@@ -126,6 +155,220 @@ async function generateRunAndRefresh() {
   } catch (err) {
     status(`Run failed: ${String(err)}`);
   }
+}
+
+async function loadTextWorkflowTemplates() {
+  const campaignSpineId = cleanText(el.textCampaignSpineId?.value) || 'spine.default.v1';
+  textWorkflowStatus('Loading text workflow templates...');
+  try {
+    const templates = await invoke('get_text_workflow_templates', { campaignSpineId });
+    const rows = Array.isArray(templates) ? templates : [];
+    state.textWorkflowTemplates = rows;
+    renderTemplateOptions(rows);
+    textWorkflowStatus(`Loaded ${rows.length} text workflow templates.`);
+  } catch (err) {
+    const message = String(err || 'Unknown error');
+    textWorkflowStatus(`Template load failed: ${message}`);
+  }
+}
+
+function renderTemplateOptions(templates) {
+  if (!el.textTemplateSelect) return;
+  if (!templates.length) {
+    el.textTemplateSelect.innerHTML = '<option value="">No templates available</option>';
+    el.textTemplateSummary.textContent = 'No templates available for this campaign spine id.';
+    return;
+  }
+  el.textTemplateSelect.innerHTML = templates
+    .map(t => `<option value="${escapeHtml(t.template_id)}">${escapeHtml(t.title || t.template_id)}</option>`)
+    .join('');
+  const active = templates[0];
+  renderTemplateSummary(active);
+  el.textTemplateSelect.onchange = () => {
+    const selected = templates.find(t => t.template_id === el.textTemplateSelect.value);
+    if (selected) renderTemplateSummary(selected);
+  };
+}
+
+function renderTemplateSummary(template) {
+  if (!template) {
+    el.textTemplateSummary.textContent = 'No template selected.';
+    return;
+  }
+  const nodeCount = Array.isArray(template.graph?.nodes) ? template.graph.nodes.length : 0;
+  const edgeCount = Array.isArray(template.graph?.edges) ? template.graph.edges.length : 0;
+  const workflow = template.workflow_kind || 'unknown';
+  el.textTemplateSummary.innerHTML = `<div class="text-workflow-meta">
+    <strong>${escapeHtml(template.title || template.template_id)}</strong><br/>
+    Template: ${escapeHtml(template.template_id)}<br/>
+    Workflow: ${escapeHtml(workflow)} | Graph: ${escapeHtml(template.graph?.graph_id || 'n/a')}<br/>
+    Nodes: ${nodeCount} | Edges: ${edgeCount}
+  </div>`;
+}
+
+async function runTextWorkflowAndRender() {
+  const request = buildTextWorkflowRequest();
+  textWorkflowStatus('Submitting text workflow job...');
+  try {
+    const handle = await invoke('start_mock_text_workflow_job', { request });
+    textWorkflowStatus(`Text workflow job ${handle.job_id} started...`);
+
+    while (true) {
+      const snapshot = await invoke('get_tool_job', { jobId: handle.job_id });
+      textWorkflowStatus(`${snapshot.progress_pct}% - ${snapshot.stage} (${snapshot.message || 'running'})`);
+
+      if (snapshot.status === 'succeeded') {
+        state.textWorkflowResult = snapshot.output || null;
+        renderTextWorkflowResult(state.textWorkflowResult);
+        textWorkflowStatus('Text workflow completed.');
+        return;
+      }
+      if (snapshot.status === 'failed' || snapshot.status === 'canceled') {
+        const errMsg = snapshot?.error?.message || snapshot.message || 'execution failed';
+        textWorkflowStatus(`${snapshot.status.toUpperCase()}: ${errMsg}`);
+        return;
+      }
+      await sleep(300);
+    }
+  } catch (err) {
+    textWorkflowStatus(`Text workflow failed: ${String(err)}`);
+  }
+}
+
+function buildTextWorkflowRequest() {
+  const campaignSpineId = cleanText(el.textCampaignSpineId.value) || 'spine.default.v1';
+  const templateId = cleanText(el.textTemplateSelect.value) || 'tpl.email_landing_sequence.v1';
+  const audienceSegments = String(el.textAudienceSegments.value || '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
+  const includeEvidence = !!el.textIncludeEvidence.checked;
+  const proofClaim = cleanText(el.textProofClaim.value) || 'high digestibility blend';
+  const evidenceRefs = includeEvidence
+    ? [{
+      evidence_id: 'ev1',
+      source_ref: 'internal.digestibility.v1',
+      excerpt: 'digestibility improved 11% vs baseline'
+    }]
+    : [];
+
+  return {
+    template_id: templateId,
+    variant_count: parseOptionalInt(el.textVariantCount.value) || 12,
+    paid_calls_allowed: !!el.textPaidCallsAllowed.checked,
+    budget: {
+      remaining_daily_budget_usd: 10.0,
+      max_cost_per_run_usd: 2.0,
+      max_total_input_tokens: 24000,
+      max_total_output_tokens: 8000,
+      hard_daily_cap_usd: 10.0
+    },
+    campaign_spine: {
+      campaign_spine_id: campaignSpineId,
+      product_name: cleanText(el.textProductName.value) || "Nature's Diet Raw Mix",
+      offer_summary: cleanText(el.textOfferSummary.value) || 'Save 20% on first order',
+      audience_segments: audienceSegments.length ? audienceSegments : ['new puppy owners', 'sensitive stomach'],
+      positioning_statement: cleanText(el.textPositioningStatement.value) || 'Raw-first nutrition with practical prep',
+      message_house: {
+        big_idea: cleanText(el.textBigIdea.value) || 'Fresh confidence in every bowl',
+        pillars: [
+          {
+            pillar_id: 'p1',
+            title: 'Digestive comfort',
+            supporting_points: ['gentle proteins']
+          }
+        ],
+        proof_points: [
+          {
+            claim_id: 'claim1',
+            claim_text: proofClaim,
+            evidence_ref_ids: includeEvidence ? ['ev1'] : []
+          }
+        ],
+        do_not_say: ['cure claims'],
+        tone_guide: ['clear', 'grounded']
+      },
+      evidence_refs: evidenceRefs
+    }
+  };
+}
+
+function renderTextWorkflowResult(result) {
+  const gatePanel = el.textWorkflowGatePanel;
+  const traceBody = el.textWorkflowTraceBody;
+  const sectionsPanel = el.textWorkflowSections;
+  const findingsPanel = el.textWorkflowFindings;
+  if (!gatePanel || !traceBody || !sectionsPanel || !findingsPanel) return;
+
+  if (!result) {
+    gatePanel.innerHTML = `
+      <div class="gate-card">
+        <h3>Status</h3>
+        <p>No text workflow run yet.</p>
+      </div>`;
+    traceBody.innerHTML = '<tr><td colspan="7">No trace rows yet.</td></tr>';
+    sectionsPanel.innerHTML = '<div class="narrative-item">No sections generated yet.</div>';
+    findingsPanel.innerHTML = '<li class="signal-item neutral">No findings yet.</li>';
+    return;
+  }
+
+  const gate = result?.artifact?.gate_decision || {};
+  const blocked = gate.blocked === true;
+  const blocking = Array.isArray(gate.blocking_reasons) ? gate.blocking_reasons : [];
+  const warnings = Array.isArray(gate.warning_reasons) ? gate.warning_reasons : [];
+  const gateStatus = blocked ? 'blocked' : (warnings.length ? 'review_required' : 'ready');
+  gatePanel.innerHTML = `
+    <div class="gate-card">
+      <h3>Run Summary</h3>
+      <p>Template: <strong>${escapeHtml(result.template_id || 'n/a')}</strong></p>
+      <p>Workflow: <strong>${escapeHtml(result.workflow_kind || 'n/a')}</strong></p>
+      <p>Input tokens: <strong>${fmtInt(result.total_estimated_input_tokens || 0)}</strong></p>
+      <p>Output tokens: <strong>${fmtInt(result.total_estimated_output_tokens || 0)}</strong></p>
+      <p>Estimated cost: <strong>$${fmtNum(result.total_estimated_cost_usd || 0, 4)}</strong></p>
+    </div>
+    <div class="gate-card">
+      <h3>Gate Status</h3>
+      <div class="gate-status ${escapeHtml(gateStatus)}">${escapeHtml(gateStatus.replace('_', ' '))}</div>
+      <p>Blocked: <strong>${blocked ? 'yes' : 'no'}</strong></p>
+    </div>
+    <div class="gate-card">
+      <h3>Blocking Reasons</h3>
+      <p>${blocking.length ? escapeHtml(blocking.join(' | ')) : 'None'}</p>
+    </div>
+    <div class="gate-card">
+      <h3>Warnings</h3>
+      <p>${warnings.length ? escapeHtml(warnings.join(' | ')) : 'None'}</p>
+    </div>`;
+
+  const traces = Array.isArray(result.traces) ? result.traces : [];
+  traceBody.innerHTML = traces.length
+    ? traces.map(trace => `<tr>
+      <td>${escapeHtml(trace.node_id || 'n/a')}</td>
+      <td>${escapeHtml(trace.node_kind || 'n/a')}</td>
+      <td>${escapeHtml(trace.route?.provider || 'n/a')}</td>
+      <td>${escapeHtml(trace.route?.model || 'n/a')}</td>
+      <td>${fmtInt(trace.estimated_input_tokens || 0)}</td>
+      <td>${fmtInt(trace.estimated_output_tokens || 0)}</td>
+      <td>$${fmtNum(trace.estimated_cost_usd || 0, 4)}</td>
+    </tr>`).join('')
+    : '<tr><td colspan="7">No trace rows generated.</td></tr>';
+
+  const sections = Array.isArray(result?.artifact?.sections) ? result.artifact.sections : [];
+  sectionsPanel.innerHTML = sections.length
+    ? sections.slice(0, 8).map(section => `<div class="narrative-item">
+        <strong>${escapeHtml(section.section_title || section.section_id || 'Section')}</strong><br/>
+        ${escapeHtml(section.content || '')}
+      </div>`).join('')
+    : '<div class="narrative-item">No sections generated.</div>';
+
+  const findings = Array.isArray(result?.artifact?.critique_findings) ? result.artifact.critique_findings : [];
+  findingsPanel.innerHTML = findings.length
+    ? findings.map(finding => {
+      const sev = String(finding.severity || '').toLowerCase();
+      const cls = sev === 'critical' || sev === 'high' ? 'bad' : (sev === 'medium' ? 'warn' : 'neutral');
+      return `<li class="signal-item ${cls}"><strong>${escapeHtml(finding.code || 'finding')}</strong><br/>${escapeHtml(finding.message || '')}</li>`;
+    }).join('')
+    : '<li class="signal-item ok">No critique findings.</li>';
 }
 
 async function refreshDashboard() {
