@@ -1,6 +1,6 @@
 // rustBotNetwork/app_core/src/llm_client.rs
 
-use crate::tools::generation_budget_manager;
+use crate::tools::generation_budget_manager::{self, PaidCallPermit};
 use once_cell::sync::Lazy; // For lazy static initialization
 use reqwest::Client;
 use serde_json::{json, Value}; // Import json! macro and Value type
@@ -86,7 +86,7 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
             .map_err(|err| {
                 std::io::Error::other(format!("unable to estimate model cost: {err}"))
             })?;
-    let reservation = generation_budget_manager::reserve_for_paid_call(
+    let permit = PaidCallPermit::reserve(
         estimated_cost,
         "llm_client.send_text_prompt",
         "google",
@@ -123,15 +123,9 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
     let response = match response_result {
         Ok(resp) => match resp.json::<Value>().await {
             Ok(v) => v,
-            Err(err) => {
-                let _ = generation_budget_manager::refund_paid_call(&reservation);
-                return Err(Box::new(err));
-            }
+            Err(err) => return Err(Box::new(err)),
         },
-        Err(err) => {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            return Err(Box::new(err));
-        }
+        Err(err) => return Err(Box::new(err)),
     };
 
     // Extract the text from the first candidate
@@ -141,7 +135,7 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
             .and_then(|arr| arr.get(0))
         {
             if let Some(text) = part["text"].as_str() {
-                generation_budget_manager::commit_paid_call(&reservation).map_err(|err| {
+                permit.commit().map_err(|err| {
                     std::io::Error::other(format!("failed to commit spend reservation: {err}"))
                 })?;
                 return Ok(text.to_string());
@@ -149,6 +143,5 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
         }
     }
 
-    let _ = generation_budget_manager::refund_paid_call(&reservation);
     Err("Failed to get text from Gemini API response".into())
 }

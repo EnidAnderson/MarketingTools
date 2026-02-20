@@ -1,4 +1,4 @@
-use crate::tools::generation_budget_manager;
+use crate::tools::generation_budget_manager::{self, PaidCallPermit};
 use dotenv::dotenv;
 use log::{error, info};
 use serde_json::json;
@@ -41,7 +41,7 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
         .unwrap_or_else(|_| "gemini-image-generation".to_string());
     let estimated_cost = generation_budget_manager::estimate_image_cost_strict(&model_name)
         .map_err(|e| format!("failed to estimate image model cost: {e}"))?;
-    let reservation = generation_budget_manager::reserve_for_paid_call(
+    let permit = PaidCallPermit::reserve(
         estimated_cost,
         "image_generator.generate_image",
         "google",
@@ -67,35 +67,23 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
 
     let response = match client.post(&url).json(&request_body).send().await {
         Ok(resp) => resp,
-        Err(err) => {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            return Err(format!("Failed to send request to Gemini API: {}", err));
-        }
+        Err(err) => return Err(format!("Failed to send request to Gemini API: {}", err)),
     };
 
     let response_body: serde_json::Value = match response.json().await {
         Ok(body) => body,
-        Err(err) => {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            return Err(format!("Failed to parse Gemini API response: {}", err));
-        }
+        Err(err) => return Err(format!("Failed to parse Gemini API response: {}", err)),
     };
 
     // Extract image data
     let image_data_base64 = response_body["candidates"][0]["content"]["parts"][0]["inlineData"]
         ["data"]
         .as_str()
-        .ok_or_else(|| {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            "Could not find image data in Gemini API response.".to_string()
-        })?;
+        .ok_or_else(|| "Could not find image data in Gemini API response.".to_string())?;
 
     let decoded_image_data = general_purpose::STANDARD
         .decode(image_data_base64)
-        .map_err(|e| {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            format!("Failed to decode base64 image data: {}", e)
-        })?;
+        .map_err(|e| format!("Failed to decode base64 image data: {}", e))?;
 
     info!(
         "Decoded image data size: {} bytes.",
@@ -108,10 +96,8 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
         "Attempting to create campaign directory: {:?}",
         campaign_path
     );
-    fs::create_dir_all(&campaign_path).map_err(|e| {
-        let _ = generation_budget_manager::refund_paid_call(&reservation);
-        format!("Failed to create campaign directory: {}", e)
-    })?;
+    fs::create_dir_all(&campaign_path)
+        .map_err(|e| format!("Failed to create campaign directory: {}", e))?;
     info!("Campaign directory created/exists: {:?}", campaign_path);
 
     // Generate unique filename
@@ -121,17 +107,14 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
     info!("Generated output path for image: {:?}", output_path);
 
     info!("Attempting to create and write image file.");
-    let mut file = fs::File::create(&output_path).map_err(|e| {
-        let _ = generation_budget_manager::refund_paid_call(&reservation);
-        format!("Failed to create output file: {}", e)
-    })?;
-    file.write_all(&decoded_image_data).map_err(|e| {
-        let _ = generation_budget_manager::refund_paid_call(&reservation);
-        format!("Failed to write image data to file: {}", e)
-    })?;
+    let mut file = fs::File::create(&output_path)
+        .map_err(|e| format!("Failed to create output file: {}", e))?;
+    file.write_all(&decoded_image_data)
+        .map_err(|e| format!("Failed to write image data to file: {}", e))?;
     info!("Image file successfully written to: {:?}", output_path);
 
-    generation_budget_manager::commit_paid_call(&reservation)
+    permit
+        .commit()
         .map_err(|e| format!("Failed to commit spend reservation: {}", e))?;
 
     Ok(output_path)

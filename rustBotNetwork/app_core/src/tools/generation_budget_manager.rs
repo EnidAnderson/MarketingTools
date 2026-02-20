@@ -1,3 +1,12 @@
+//! Spend governor for all paid provider API calls.
+//!
+//! Policy:
+//! 1. Hard daily cap is enforced at `$10.00` (`HARD_DAILY_BUDGET_USD`).
+//! 2. Any configured daily cap above hard cap is rejected (fail-closed).
+//! 3. Paid calls must reserve budget before network requests.
+//! 4. Preferred API for callers is `PaidCallPermit::reserve(...)`.
+//! 5. `PaidCallPermit` auto-refunds on drop unless explicitly committed.
+
 use chrono::{DateTime, Duration, Utc};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
@@ -84,6 +93,53 @@ impl std::fmt::Display for SpendGuardError {
 }
 
 impl std::error::Error for SpendGuardError {}
+
+/// # NDOC
+/// component: `tools::generation_budget_manager::paid_call_permit`
+/// purpose: Fail-safe reservation guard for paid API calls.
+/// invariants:
+///   - Reservation is created before network call.
+///   - If guard is dropped without commit, reservation is automatically refunded.
+///   - Commit is explicit and one-way.
+pub struct PaidCallPermit {
+    reservation: Option<SpendReservation>,
+    committed: bool,
+}
+
+impl PaidCallPermit {
+    pub fn reserve(
+        cost_usd: f64,
+        tool: &str,
+        provider: &str,
+        model: &str,
+    ) -> Result<Self, SpendGuardError> {
+        let reservation = reserve_for_paid_call(cost_usd, tool, provider, model)?;
+        Ok(Self {
+            reservation: Some(reservation),
+            committed: false,
+        })
+    }
+
+    pub fn commit(mut self) -> Result<(), SpendGuardError> {
+        let reservation = self.reservation.take().ok_or_else(|| {
+            SpendGuardError::new("invalid_paid_call_permit", "missing reservation")
+        })?;
+        commit_paid_call(&reservation)?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for PaidCallPermit {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        if let Some(reservation) = self.reservation.take() {
+            let _ = refund_paid_call(&reservation);
+        }
+    }
+}
 
 /// # NDOC
 /// component: `tools::generation_budget_manager::spend_governor`
@@ -638,8 +694,9 @@ mod tests {
             let text = fs::read_to_string(&full)
                 .unwrap_or_else(|e| panic!("failed to read {}: {e}", full.display()));
             assert!(
-                text.contains("reserve_for_paid_call("),
-                "paid API module '{}' must reserve spend via reserve_for_paid_call",
+                text.contains("PaidCallPermit::reserve(")
+                    || text.contains("reserve_for_paid_call("),
+                "paid API module '{}' must reserve spend via PaidCallPermit::reserve",
                 file
             );
         }
@@ -673,12 +730,50 @@ mod tests {
                 let has_paid_key = key_markers.iter().any(|marker| text.contains(marker));
                 if has_paid_key {
                     assert!(
-                        text.contains("reserve_for_paid_call("),
+                        text.contains("PaidCallPermit::reserve(")
+                            || text.contains("reserve_for_paid_call("),
                         "module '{}' references paid API keys but does not reserve spend",
                         p.display()
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    fn permit_auto_refunds_when_not_committed() {
+        let dir = tempdir().expect("tempdir");
+        set_test_budget_file_path(Some(dir.path().join("budget.json")));
+        std::env::set_var("DAILY_BUDGET_USD", "10.0");
+
+        {
+            let _permit = PaidCallPermit::reserve(1.0, "test_tool", "openai", "gpt-test")
+                .expect("permit reserve");
+            let mid = get_budget_state();
+            assert_eq!(mid.daily_spend, 1.0);
+        }
+
+        let after = get_budget_state();
+        assert_eq!(after.daily_spend, 0.0);
+
+        std::env::remove_var("DAILY_BUDGET_USD");
+        set_test_budget_file_path(None);
+    }
+
+    #[test]
+    fn permit_commit_persists_spend() {
+        let dir = tempdir().expect("tempdir");
+        set_test_budget_file_path(Some(dir.path().join("budget.json")));
+        std::env::set_var("DAILY_BUDGET_USD", "10.0");
+
+        let permit =
+            PaidCallPermit::reserve(1.25, "test_tool", "openai", "gpt-test").expect("reserve");
+        permit.commit().expect("commit");
+
+        let state = get_budget_state();
+        assert_eq!(state.daily_spend, 1.25);
+
+        std::env::remove_var("DAILY_BUDGET_USD");
+        set_test_budget_file_path(None);
     }
 }

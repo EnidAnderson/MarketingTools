@@ -28,7 +28,7 @@ pub fn generate_image(
     let model_name = "stable-diffusion-xl-1024-v1-0";
     let cost = generation_budget_manager::estimate_image_cost_strict(model_name)
         .map_err(|e| format!("failed to estimate model cost: {e}"))?;
-    let reservation = generation_budget_manager::reserve_for_paid_call(
+    let permit = generation_budget_manager::PaidCallPermit::reserve(
         cost,
         "image_generation",
         "stability",
@@ -77,14 +77,12 @@ pub fn generate_image(
 
     match call_result {
         Ok(path) => {
-            generation_budget_manager::commit_paid_call(&reservation)
+            permit
+                .commit()
                 .map_err(|e| format!("failed to commit spend reservation: {e}"))?;
             Ok(path)
         }
-        Err(err) => {
-            let _ = generation_budget_manager::refund_paid_call(&reservation);
-            Err(err)
-        }
+        Err(err) => Err(err),
     }
 }
 
