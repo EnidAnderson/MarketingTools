@@ -25,47 +25,66 @@ pub fn generate_image(
 
     let api_key = env::var("STABILITY_API_KEY").map_err(|_| "STABILITY_API_KEY not set")?;
 
-    let cost = 0.02; // Example cost
-    if !generation_budget_manager::can_generate(cost) {
-        return Err("Budget exceeded".into());
-    }
+    let model_name = "stable-diffusion-xl-1024-v1-0";
+    let cost = generation_budget_manager::estimate_image_cost_strict(model_name)
+        .map_err(|e| format!("failed to estimate model cost: {e}"))?;
+    let reservation = generation_budget_manager::reserve_for_paid_call(
+        cost,
+        "image_generation",
+        "stability",
+        model_name,
+    )
+    .map_err(|e| format!("paid call blocked by spend governor: {e}"))?;
 
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(api_url.as_str())
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&json!({
-            "text_prompts": [{
-                "text": prompt
-            }],
-            "cfg_scale": 7,
-            "height": 1024,
-            "width": 1024,
-            "samples": 1,
-            "steps": 30,
-        }))
-        .send()?;
+    let call_result: Result<String, Box<dyn std::error::Error>> = (|| {
+        let client = reqwest::blocking::Client::new();
+        let response = client
+            .post(api_url.as_str())
+            .header("Authorization", format!("Bearer {}", api_key))
+            .json(&json!({
+                "text_prompts": [{
+                    "text": prompt
+                }],
+                "cfg_scale": 7,
+                "height": 1024,
+                "width": 1024,
+                "samples": 1,
+                "steps": 30,
+            }))
+            .send()?;
 
-    if response.status().is_success() {
-        let body: serde_json::Value = response.json()?;
-        if let Some(artifacts) = body.get("artifacts").and_then(|a| a.as_array()) {
-            for artifact in artifacts {
-                if let Some(base64) = artifact.get("base64").and_then(|b| b.as_str()) {
-                    let image_data = general_purpose::STANDARD.decode(base64)?;
-                    let img_path = PathBuf::from(campaign_dir).join("generated_image.png");
-                    fs::write(&img_path, &image_data)?;
-                    generation_budget_manager::record_generation(cost, "stability-sdk");
-                    return Ok(img_path.to_string_lossy().into_owned());
+        if response.status().is_success() {
+            let body: serde_json::Value = response.json()?;
+            if let Some(artifacts) = body.get("artifacts").and_then(|a| a.as_array()) {
+                for artifact in artifacts {
+                    if let Some(base64) = artifact.get("base64").and_then(|b| b.as_str()) {
+                        let image_data = general_purpose::STANDARD.decode(base64)?;
+                        let img_path = PathBuf::from(campaign_dir).join("generated_image.png");
+                        fs::write(&img_path, &image_data)?;
+                        return Ok(img_path.to_string_lossy().into_owned());
+                    }
                 }
             }
+            Err("No image data found in response".into())
+        } else {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .unwrap_or_else(|_| "Could not read error body".to_string());
+            Err(format!("Failed to generate image: {} - {}", status, error_text).into())
         }
-        Err("No image data found in response".into())
-    } else {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .unwrap_or_else(|_| "Could not read error body".to_string());
-        Err(format!("Failed to generate image: {} - {}", status, error_text).into())
+    })();
+
+    match call_result {
+        Ok(path) => {
+            generation_budget_manager::commit_paid_call(&reservation)
+                .map_err(|e| format!("failed to commit spend reservation: {e}"))?;
+            Ok(path)
+        }
+        Err(err) => {
+            let _ = generation_budget_manager::refund_paid_call(&reservation);
+            Err(err)
+        }
     }
 }
 
@@ -143,7 +162,7 @@ mod tests {
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
             temp_dir_instance.path(),
-            r#"{"stability-sdk": {"input": 0.0001, "output": 0.0001}}"#,
+            r#"{"stable-diffusion-xl-1024-v1-0": {"per_image": 0.02}}"#,
         );
         let budget_path = create_dummy_budget_file(
             temp_dir_instance.path(),
@@ -195,7 +214,7 @@ mod tests {
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
             temp_dir_instance.path(),
-            r#"{"stability-sdk": {"input": 0.0001, "output": 0.0001}}"#,
+            r#"{"stable-diffusion-xl-1024-v1-0": {"per_image": 0.02}}"#,
         );
         let budget_path = create_dummy_budget_file(
             temp_dir_instance.path(),
@@ -215,7 +234,10 @@ mod tests {
         budget_manager_mock::set_test_budget_file_path(None);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Budget exceeded"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("paid call blocked"));
     }
 
     #[test]
@@ -237,7 +259,7 @@ mod tests {
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
             temp_dir_instance.path(),
-            r#"{"stability-sdk": {"input": 0.0001, "output": 0.0001}}"#,
+            r#"{"stable-diffusion-xl-1024-v1-0": {"per_image": 0.02}}"#,
         );
         let budget_path = create_dummy_budget_file(
             temp_dir_instance.path(),
@@ -282,7 +304,7 @@ mod tests {
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
             temp_dir_instance.path(),
-            r#"{"stability-sdk": {"input": 0.0001, "output": 0.0001}}"#,
+            r#"{"stable-diffusion-xl-1024-v1-0": {"per_image": 0.02}}"#,
         );
         let budget_path = create_dummy_budget_file(
             temp_dir_instance.path(),

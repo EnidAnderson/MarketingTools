@@ -1,5 +1,6 @@
 // rustBotNetwork/app_core/src/llm_client.rs
 
+use crate::tools::generation_budget_manager;
 use once_cell::sync::Lazy; // For lazy static initialization
 use reqwest::Client;
 use serde_json::{json, Value}; // Import json! macro and Value type
@@ -77,7 +78,22 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
         .map_err(|_| "GEMINI_API_KEY not set in environment variables")?;
 
     let client = Client::new();
-    let model_name = "gemini-pro"; // Using gemini-pro for text-only, will use gemini-flash later as specified by user.
+    let model_name =
+        env::var("GOOGLE_MODEL_TEXT_FALLBACK").unwrap_or_else(|_| "gemini-2.5-pro".to_string());
+    let estimated_output = "x".repeat(4096);
+    let estimated_cost =
+        generation_budget_manager::estimate_llm_cost_strict(&model_name, prompt, &estimated_output)
+            .map_err(|err| {
+                std::io::Error::other(format!("unable to estimate model cost: {err}"))
+            })?;
+    let reservation = generation_budget_manager::reserve_for_paid_call(
+        estimated_cost,
+        "llm_client.send_text_prompt",
+        "google",
+        &model_name,
+    )
+    .map_err(|err| std::io::Error::other(format!("paid call blocked: {err}")))?;
+
     let api_url = format!(
         "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
         model_name, api_key
@@ -102,13 +118,21 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
         }
     });
 
-    let response = client
-        .post(&api_url)
-        .json(&request_body)
-        .send()
-        .await?
-        .json::<Value>()
-        .await?;
+    let response_result = client.post(&api_url).json(&request_body).send().await;
+
+    let response = match response_result {
+        Ok(resp) => match resp.json::<Value>().await {
+            Ok(v) => v,
+            Err(err) => {
+                let _ = generation_budget_manager::refund_paid_call(&reservation);
+                return Err(Box::new(err));
+            }
+        },
+        Err(err) => {
+            let _ = generation_budget_manager::refund_paid_call(&reservation);
+            return Err(Box::new(err));
+        }
+    };
 
     // Extract the text from the first candidate
     if let Some(candidate) = response["candidates"].as_array().and_then(|arr| arr.get(0)) {
@@ -117,10 +141,14 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
             .and_then(|arr| arr.get(0))
         {
             if let Some(text) = part["text"].as_str() {
+                generation_budget_manager::commit_paid_call(&reservation).map_err(|err| {
+                    std::io::Error::other(format!("failed to commit spend reservation: {err}"))
+                })?;
                 return Ok(text.to_string());
             }
         }
     }
 
+    let _ = generation_budget_manager::refund_paid_call(&reservation);
     Err("Failed to get text from Gemini API response".into())
 }
