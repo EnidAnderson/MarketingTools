@@ -68,6 +68,7 @@
         <div class="studio-actions">
           <button id="loadTextTemplatesButton" class="btn btn-secondary">Load Templates</button>
           <button id="runTextWorkflowButton" class="btn btn-primary">Run Text Workflow</button>
+          <button id="textExportPacketButton" class="btn btn-secondary" disabled>Export Text Packet</button>
         </div>
       </div>
       <div class="text-workflow-grid">
@@ -79,6 +80,13 @@
         </label>
         <label>Variant Count (ad variants)
           <input id="textVariantCount" type="number" min="1" max="30" value="12" />
+        </label>
+        <label>Route Policy
+          <select id="textRoutePolicy">
+            <option value="economy">Economy</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="quality">Quality</option>
+          </select>
         </label>
         <label>Product Name
           <input id="textProductName" type="text" value="Nature's Diet Raw Mix" />
@@ -110,6 +118,7 @@
         </label>
       </div>
       <div id="textWorkflowStatus" class="job-status">Text workflow ready.</div>
+      <div id="textBudgetSummary" class="narrative-item"></div>
       <div id="textTemplateSummary" class="narrative-item">Load templates to view graph and workflow metadata.</div>
     </section>
 

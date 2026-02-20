@@ -5,8 +5,8 @@
   "main": "main.js",
   "scripts": {
     "dev": "live-server . --port=3000 --no-browser --no-open",
-    "build": "rm -rf dist && mkdir dist && cp index.html main.js style.css dist/",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "rm -rf dist && mkdir dist && cp index.html main.js style.css text_workflow_helpers.mjs dist/",
+    "test": "node --test tests/*.test.mjs"
   },
   "keywords": [],
   "author": "",

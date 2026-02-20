@@ -1,3 +1,13 @@
+import {
+  buildTextWorkflowExportFilename,
+  buildTextWorkflowExportPacketMarkdown,
+  buildTextWorkflowGateMarkup,
+  buildTextWorkflowRequestFromInputs,
+  deriveTextWorkflowGateState,
+  resolveRoutePolicyPreset,
+  runTextWorkflowJobLifecycle
+} from './text_workflow_helpers.mjs';
+
 const state = {
   currentSnapshot: null,
   deltaChart: null,
@@ -47,8 +57,11 @@ const el = {
   textPositioningStatement: document.getElementById('textPositioningStatement'),
   textBigIdea: document.getElementById('textBigIdea'),
   textProofClaim: document.getElementById('textProofClaim'),
+  textRoutePolicy: document.getElementById('textRoutePolicy'),
   textIncludeEvidence: document.getElementById('textIncludeEvidence'),
   textPaidCallsAllowed: document.getElementById('textPaidCallsAllowed'),
+  textBudgetSummary: document.getElementById('textBudgetSummary'),
+  textExportPacketButton: document.getElementById('textExportPacketButton'),
   textWorkflowStatus: document.getElementById('textWorkflowStatus'),
   textTemplateSummary: document.getElementById('textTemplateSummary'),
   textWorkflowGatePanel: document.getElementById('textWorkflowGatePanel'),
@@ -61,6 +74,7 @@ boot();
 
 async function boot() {
   wireEvents();
+  updateTextBudgetSummary();
   await loadTextWorkflowTemplates();
   renderTextWorkflowResult(null);
   await refreshDashboard();
@@ -76,6 +90,8 @@ function wireEvents() {
   el.refreshButton.addEventListener('click', () => refreshDashboard());
   el.loadTextTemplatesButton?.addEventListener('click', () => loadTextWorkflowTemplates());
   el.runTextWorkflowButton?.addEventListener('click', () => runTextWorkflowAndRender());
+  el.textExportPacketButton?.addEventListener('click', () => exportTextWorkflowPacket());
+  el.textRoutePolicy?.addEventListener('change', () => updateTextBudgetSummary());
   el.exportPacketButton?.addEventListener('click', () => {
     status('Export packet is not yet wired to a file command. Gate status is active.');
   });
@@ -95,6 +111,18 @@ function status(text) {
 
 function textWorkflowStatus(text) {
   el.textWorkflowStatus.textContent = text;
+}
+
+function updateTextBudgetSummary() {
+  const preset = resolveRoutePolicyPreset(el.textRoutePolicy?.value);
+  if (!el.textBudgetSummary) return;
+  el.textBudgetSummary.innerHTML = `<div class="text-workflow-meta">
+    <strong>Route Policy: ${escapeHtml(preset.label)}</strong><br/>
+    Max cost/run: $${fmtNum(preset.max_cost_per_run_usd, 2)} |
+    Input tokens: ${fmtInt(preset.max_total_input_tokens)} |
+    Output tokens: ${fmtInt(preset.max_total_output_tokens)}<br/>
+    Hard daily cap: $${fmtNum(preset.hard_daily_cap_usd, 2)} (enforced)
+  </div>`;
 }
 
 function stampNow(prefix = 'Updated') {
@@ -210,87 +238,50 @@ async function runTextWorkflowAndRender() {
   const request = buildTextWorkflowRequest();
   textWorkflowStatus('Submitting text workflow job...');
   try {
-    const handle = await invoke('start_mock_text_workflow_job', { request });
-    textWorkflowStatus(`Text workflow job ${handle.job_id} started...`);
-
-    while (true) {
-      const snapshot = await invoke('get_tool_job', { jobId: handle.job_id });
-      textWorkflowStatus(`${snapshot.progress_pct}% - ${snapshot.stage} (${snapshot.message || 'running'})`);
-
-      if (snapshot.status === 'succeeded') {
-        state.textWorkflowResult = snapshot.output || null;
-        renderTextWorkflowResult(state.textWorkflowResult);
-        textWorkflowStatus('Text workflow completed.');
-        return;
+    const lifecycle = await runTextWorkflowJobLifecycle({
+      invoke,
+      request,
+      pollIntervalMs: 300,
+      onSnapshot: (snapshot) => {
+        textWorkflowStatus(
+          `${snapshot.progress_pct}% - ${snapshot.stage} (${snapshot.message || 'running'})`
+        );
       }
-      if (snapshot.status === 'failed' || snapshot.status === 'canceled') {
-        const errMsg = snapshot?.error?.message || snapshot.message || 'execution failed';
-        textWorkflowStatus(`${snapshot.status.toUpperCase()}: ${errMsg}`);
-        return;
-      }
-      await sleep(300);
+    });
+
+    if (lifecycle.status === 'succeeded') {
+      state.textWorkflowResult = lifecycle.result;
+      renderTextWorkflowResult(state.textWorkflowResult);
+      textWorkflowStatus('Text workflow completed.');
+      return;
     }
+
+    textWorkflowStatus(
+      `${String(lifecycle.status || 'failed').toUpperCase()}: ${
+        lifecycle.errorMessage || 'execution failed'
+      }`
+    );
   } catch (err) {
     textWorkflowStatus(`Text workflow failed: ${String(err)}`);
   }
 }
 
 function buildTextWorkflowRequest() {
-  const campaignSpineId = cleanText(el.textCampaignSpineId.value) || 'spine.default.v1';
-  const templateId = cleanText(el.textTemplateSelect.value) || 'tpl.email_landing_sequence.v1';
-  const audienceSegments = String(el.textAudienceSegments.value || '')
-    .split(',')
-    .map(v => v.trim())
-    .filter(Boolean);
-  const includeEvidence = !!el.textIncludeEvidence.checked;
-  const proofClaim = cleanText(el.textProofClaim.value) || 'high digestibility blend';
-  const evidenceRefs = includeEvidence
-    ? [{
-      evidence_id: 'ev1',
-      source_ref: 'internal.digestibility.v1',
-      excerpt: 'digestibility improved 11% vs baseline'
-    }]
-    : [];
-
-  return {
-    template_id: templateId,
-    variant_count: parseOptionalInt(el.textVariantCount.value) || 12,
-    paid_calls_allowed: !!el.textPaidCallsAllowed.checked,
-    budget: {
-      remaining_daily_budget_usd: 10.0,
-      max_cost_per_run_usd: 2.0,
-      max_total_input_tokens: 24000,
-      max_total_output_tokens: 8000,
-      hard_daily_cap_usd: 10.0
-    },
-    campaign_spine: {
-      campaign_spine_id: campaignSpineId,
-      product_name: cleanText(el.textProductName.value) || "Nature's Diet Raw Mix",
-      offer_summary: cleanText(el.textOfferSummary.value) || 'Save 20% on first order',
-      audience_segments: audienceSegments.length ? audienceSegments : ['new puppy owners', 'sensitive stomach'],
-      positioning_statement: cleanText(el.textPositioningStatement.value) || 'Raw-first nutrition with practical prep',
-      message_house: {
-        big_idea: cleanText(el.textBigIdea.value) || 'Fresh confidence in every bowl',
-        pillars: [
-          {
-            pillar_id: 'p1',
-            title: 'Digestive comfort',
-            supporting_points: ['gentle proteins']
-          }
-        ],
-        proof_points: [
-          {
-            claim_id: 'claim1',
-            claim_text: proofClaim,
-            evidence_ref_ids: includeEvidence ? ['ev1'] : []
-          }
-        ],
-        do_not_say: ['cure claims'],
-        tone_guide: ['clear', 'grounded']
-      },
-      evidence_refs: evidenceRefs
-    }
-  };
+  return buildTextWorkflowRequestFromInputs({
+    routePolicyId: el.textRoutePolicy?.value || 'balanced',
+    templateId: cleanText(el.textTemplateSelect.value) || 'tpl.email_landing_sequence.v1',
+    variantCount: parseOptionalInt(el.textVariantCount.value) || 12,
+    paidCallsAllowed: !!el.textPaidCallsAllowed.checked,
+    campaignSpineId: cleanText(el.textCampaignSpineId.value) || 'spine.default.v1',
+    productName: cleanText(el.textProductName.value) || "Nature's Diet Raw Mix",
+    offerSummary: cleanText(el.textOfferSummary.value) || 'Save 20% on first order',
+    audienceSegments: cleanText(el.textAudienceSegments.value) || '',
+    positioningStatement:
+      cleanText(el.textPositioningStatement.value) || 'Raw-first nutrition with practical prep',
+    bigIdea: cleanText(el.textBigIdea.value) || 'Fresh confidence in every bowl',
+    proofClaim: cleanText(el.textProofClaim.value) || 'high digestibility blend',
+    includeEvidence: !!el.textIncludeEvidence.checked
+  });
 }
 
 function renderTextWorkflowResult(result) {
@@ -309,36 +300,21 @@ function renderTextWorkflowResult(result) {
     traceBody.innerHTML = '<tr><td colspan="7">No trace rows yet.</td></tr>';
     sectionsPanel.innerHTML = '<div class="narrative-item">No sections generated yet.</div>';
     findingsPanel.innerHTML = '<li class="signal-item neutral">No findings yet.</li>';
+    if (el.textExportPacketButton) {
+      el.textExportPacketButton.disabled = true;
+      el.textExportPacketButton.title = 'No text workflow run available to export.';
+    }
     return;
   }
 
-  const gate = result?.artifact?.gate_decision || {};
-  const blocked = gate.blocked === true;
-  const blocking = Array.isArray(gate.blocking_reasons) ? gate.blocking_reasons : [];
-  const warnings = Array.isArray(gate.warning_reasons) ? gate.warning_reasons : [];
-  const gateStatus = blocked ? 'blocked' : (warnings.length ? 'review_required' : 'ready');
-  gatePanel.innerHTML = `
-    <div class="gate-card">
-      <h3>Run Summary</h3>
-      <p>Template: <strong>${escapeHtml(result.template_id || 'n/a')}</strong></p>
-      <p>Workflow: <strong>${escapeHtml(result.workflow_kind || 'n/a')}</strong></p>
-      <p>Input tokens: <strong>${fmtInt(result.total_estimated_input_tokens || 0)}</strong></p>
-      <p>Output tokens: <strong>${fmtInt(result.total_estimated_output_tokens || 0)}</strong></p>
-      <p>Estimated cost: <strong>$${fmtNum(result.total_estimated_cost_usd || 0, 4)}</strong></p>
-    </div>
-    <div class="gate-card">
-      <h3>Gate Status</h3>
-      <div class="gate-status ${escapeHtml(gateStatus)}">${escapeHtml(gateStatus.replace('_', ' '))}</div>
-      <p>Blocked: <strong>${blocked ? 'yes' : 'no'}</strong></p>
-    </div>
-    <div class="gate-card">
-      <h3>Blocking Reasons</h3>
-      <p>${blocking.length ? escapeHtml(blocking.join(' | ')) : 'None'}</p>
-    </div>
-    <div class="gate-card">
-      <h3>Warnings</h3>
-      <p>${warnings.length ? escapeHtml(warnings.join(' | ')) : 'None'}</p>
-    </div>`;
+  const gate = deriveTextWorkflowGateState(result);
+  gatePanel.innerHTML = buildTextWorkflowGateMarkup(result);
+  if (el.textExportPacketButton) {
+    el.textExportPacketButton.disabled = !gate.canExport;
+    el.textExportPacketButton.title = gate.canExport
+      ? 'Export governance packet for this text workflow run.'
+      : gate.exportBlockReason;
+  }
 
   const traces = Array.isArray(result.traces) ? result.traces : [];
   traceBody.innerHTML = traces.length
@@ -369,6 +345,33 @@ function renderTextWorkflowResult(result) {
       return `<li class="signal-item ${cls}"><strong>${escapeHtml(finding.code || 'finding')}</strong><br/>${escapeHtml(finding.message || '')}</li>`;
     }).join('')
     : '<li class="signal-item ok">No critique findings.</li>';
+}
+
+function exportTextWorkflowPacket() {
+  try {
+    const gate = deriveTextWorkflowGateState(state.textWorkflowResult);
+    if (!gate.canExport) {
+      textWorkflowStatus(gate.exportBlockReason || 'Export blocked by gate policy.');
+      return;
+    }
+
+    const markdown = buildTextWorkflowExportPacketMarkdown(state.textWorkflowResult);
+    const filename = buildTextWorkflowExportFilename(state.textWorkflowResult, new Date());
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    textWorkflowStatus(`Exported text workflow packet: ${filename}`);
+  } catch (err) {
+    textWorkflowStatus(`Export failed: ${String(err)}`);
+  }
 }
 
 async function refreshDashboard() {
