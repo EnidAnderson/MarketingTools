@@ -1,3 +1,4 @@
+pub mod agent_graph;
 /// # NDOC
 /// component: `subsystems`
 /// purpose: High-level domain subsystem boundaries for long-term platform growth.
@@ -9,3 +10,4 @@ pub mod campaign_orchestration;
 pub mod marketing_data_analysis;
 pub mod provider_platform;
 pub mod review_and_compliance;
+pub mod text_intelligence;
