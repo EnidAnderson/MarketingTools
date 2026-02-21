@@ -86,7 +86,7 @@ test('deriveTextWorkflowGateState blocks export when critical blockers exist', (
   assert.equal(gate.blocked, true);
   assert.equal(gate.canExport, false);
   assert.equal(gate.gateStatus, 'blocked');
-  assert.match(gate.exportBlockReason, /Export blocked/);
+  assert.match(gate.exportBlockReason, /Export is paused/);
 });
 
 test('buildTextWorkflowGateMarkup includes gate status class and summary content', () => {
@@ -120,7 +120,7 @@ test('buildTextWorkflowExportPacketMarkdown throws when gate is blocked', () => 
 
   assert.throws(
     () => buildTextWorkflowExportPacketMarkdown(blockedResult),
-    /Export blocked/
+    /Export is paused/
   );
 });
 

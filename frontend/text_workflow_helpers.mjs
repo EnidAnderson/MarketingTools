@@ -99,7 +99,7 @@ export function deriveTextWorkflowGateState(result) {
       blockingReasons: [],
       warningReasons: [],
       canExport: false,
-      exportBlockReason: 'No text workflow result is available.'
+      exportBlockReason: 'No workflow result is available yet.'
     };
   }
 
@@ -116,7 +116,7 @@ export function deriveTextWorkflowGateState(result) {
     warningReasons,
     canExport: !blocked,
     exportBlockReason: blocked
-      ? `Export blocked until gate blockers are resolved: ${blockingReasons.join(' | ') || 'blocked gate'}`
+      ? `Export is paused until review blockers are resolved: ${blockingReasons.join(' | ') || 'gate requires review'}`
       : ''
   };
 }
@@ -136,7 +136,7 @@ export function buildTextWorkflowGateMarkup(result) {
     <div class="gate-card">
       <h3>Gate Status</h3>
       <div class="gate-status ${escapeHtml(gate.gateStatus)}">${escapeHtml(gate.gateStatus.replace('_', ' '))}</div>
-      <p>Blocked: <strong>${gate.blocked ? 'yes' : 'no'}</strong></p>
+      <p>Requires review: <strong>${gate.blocked ? 'yes' : 'no'}</strong></p>
     </div>
     <div class="gate-card">
       <h3>Blocking Reasons</h3>
@@ -151,10 +151,10 @@ export function buildTextWorkflowGateMarkup(result) {
 export function buildTextWorkflowExportPacketMarkdown(result, nowIso = new Date().toISOString()) {
   const gate = deriveTextWorkflowGateState(result);
   if (!result) {
-    throw new Error('Cannot export packet: missing workflow result.');
+    throw new Error('Cannot export packet: workflow result is missing.');
   }
   if (!gate.canExport) {
-    throw new Error(gate.exportBlockReason || 'Cannot export packet: gate is blocked.');
+    throw new Error(gate.exportBlockReason || 'Cannot export packet: export is paused by the review gate.');
   }
 
   const lines = [];

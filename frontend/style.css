@@ -1,14 +1,15 @@
 :root {
-  --bg: #f6f5f2;
-  --ink: #17202a;
-  --muted: #56606d;
-  --card: rgba(255, 255, 255, 0.86);
-  --line: rgba(23, 32, 42, 0.12);
-  --accent: #d8572a;
-  --accent-2: #0b8f8c;
+  --bg: #f4f6f6;
+  --ink: #1b232b;
+  --muted: #61707d;
+  --card: rgba(255, 255, 255, 0.92);
+  --line: rgba(27, 35, 43, 0.12);
+  --accent: #2b7a78;
+  --accent-2: #c77d3a;
   --ok: #1f9d55;
   --warn: #e0a600;
   --bad: #d33f49;
+  --shadow-soft: 0 10px 30px rgba(18, 25, 33, 0.08);
 }
 
 * {
@@ -19,8 +20,8 @@ body {
   margin: 0;
   font-family: "IBM Plex Sans", "Avenir Next", "Trebuchet MS", sans-serif;
   color: var(--ink);
-  background: radial-gradient(1200px 700px at 10% -10%, #ffe5d6 0%, transparent 55%),
-    radial-gradient(1000px 500px at 95% -20%, #cdebe8 0%, transparent 50%),
+  background: radial-gradient(1200px 700px at 10% -10%, #e5f3f1 0%, transparent 55%),
+    radial-gradient(1000px 500px at 95% -20%, #f7eadc 0%, transparent 50%),
     var(--bg);
   min-height: 100vh;
 }
@@ -40,7 +41,7 @@ body {
   width: min(1400px, 96vw);
   margin: 20px auto 40px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
 .hero {
@@ -91,6 +92,37 @@ h1 {
   background: var(--card);
   backdrop-filter: blur(6px);
   padding: 14px;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+
+.card:hover {
+  box-shadow: 0 12px 34px rgba(18, 25, 33, 0.11);
+  transform: translateY(-1px);
+}
+
+.section-head h2 {
+  margin: 0 0 4px;
+}
+
+.section-head p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.soft-callout {
+  border-style: dashed;
+  border-color: rgba(43, 122, 120, 0.35);
+  background: linear-gradient(180deg, rgba(43, 122, 120, 0.07), rgba(255, 255, 255, 0.9));
+  display: grid;
+  gap: 4px;
+}
+
+.soft-callout p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .controls h2,
@@ -119,12 +151,22 @@ button {
   font: inherit;
 }
 
-input {
+input,
+select {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 9px 10px;
   color: var(--ink);
   background: rgba(255, 255, 255, 0.9);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: none;
+  border-color: rgba(43, 122, 120, 0.55);
+  box-shadow: 0 0 0 3px rgba(43, 122, 120, 0.16);
 }
 
 .control-actions {
@@ -140,7 +182,7 @@ input {
   border-radius: 10px;
   padding: 10px 14px;
   cursor: pointer;
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition: transform 120ms ease, opacity 120ms ease, filter 120ms ease;
 }
 
 .btn:hover {
@@ -152,13 +194,20 @@ input {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), #f08b5f);
+  background: linear-gradient(135deg, var(--accent), #45a39f);
   color: #fff;
 }
 
 .btn-secondary {
-  background: #ebf1f4;
+  background: #eef4f4;
   color: #1f2a35;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  filter: grayscale(0.1);
 }
 
 .toggle-wrap {
@@ -169,7 +218,9 @@ input {
 
 .studio-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .text-workflow-grid {
@@ -190,6 +241,31 @@ input {
   border: 1px solid var(--line);
   background: #fff;
   font-size: 13px;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.job-status.is-info {
+  background: #f0f7f7;
+  border-color: rgba(43, 122, 120, 0.28);
+  color: #245f5d;
+}
+
+.job-status.is-success {
+  background: #eef8f2;
+  border-color: rgba(31, 157, 85, 0.28);
+  color: #157246;
+}
+
+.job-status.is-warn {
+  background: #fff9e8;
+  border-color: rgba(224, 166, 0, 0.28);
+  color: #8a6700;
+}
+
+.job-status.is-danger {
+  background: #feeff2;
+  border-color: rgba(211, 63, 73, 0.28);
+  color: #9f2530;
 }
 
 .kpi-grid {
@@ -236,13 +312,14 @@ input {
 .panel-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .pill {
   font-size: 11px;
   color: #fff;
-  background: #1f2a35;
+  background: #385061;
   border-radius: 999px;
   padding: 5px 8px;
 }
@@ -331,6 +408,11 @@ input {
 
 .history-item:hover {
   background: #f8fbff;
+}
+
+.history-item:focus-visible {
+  outline: 2px solid rgba(43, 122, 120, 0.5);
+  outline-offset: 2px;
 }
 
 .table-wrap {

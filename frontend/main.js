@@ -106,22 +106,71 @@ async function invoke(command, payload = {}) {
 }
 
 function status(text) {
-  el.jobStatus.textContent = text;
+  setStatusTone(el.jobStatus, text, inferToneFromMessage(text));
 }
 
 function textWorkflowStatus(text) {
-  el.textWorkflowStatus.textContent = text;
+  setStatusTone(el.textWorkflowStatus, text, inferToneFromMessage(text));
+}
+
+function setStatusTone(element, text, tone = 'info') {
+  if (!element) return;
+  element.textContent = text;
+  element.classList.remove('is-info', 'is-success', 'is-warn', 'is-danger');
+  element.classList.add(`is-${tone}`);
+}
+
+function inferToneFromMessage(text) {
+  const normalized = String(text || '').toLowerCase();
+  if (
+    normalized.includes('failed') ||
+    normalized.includes('error')
+  ) {
+    return 'danger';
+  }
+  if (
+    normalized.includes('canceled') ||
+    normalized.includes('warning') ||
+    normalized.includes('needs review') ||
+    normalized.includes('needs attention') ||
+    normalized.includes('paused')
+  ) {
+    return 'warn';
+  }
+  if (
+    normalized.includes('completed') ||
+    normalized.includes('loaded') ||
+    normalized.includes('ready')
+  ) {
+    return 'success';
+  }
+  return 'info';
+}
+
+function setButtonBusy(button, busy) {
+  if (!button) return;
+  if (busy) {
+    button.dataset.originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Working...';
+    return;
+  }
+  button.disabled = false;
+  if (button.dataset.originalLabel) {
+    button.textContent = button.dataset.originalLabel;
+    delete button.dataset.originalLabel;
+  }
 }
 
 function updateTextBudgetSummary() {
   const preset = resolveRoutePolicyPreset(el.textRoutePolicy?.value);
   if (!el.textBudgetSummary) return;
   el.textBudgetSummary.innerHTML = `<div class="text-workflow-meta">
-    <strong>Route Policy: ${escapeHtml(preset.label)}</strong><br/>
-    Max cost/run: $${fmtNum(preset.max_cost_per_run_usd, 2)} |
-    Input tokens: ${fmtInt(preset.max_total_input_tokens)} |
-    Output tokens: ${fmtInt(preset.max_total_output_tokens)}<br/>
-    Hard daily cap: $${fmtNum(preset.hard_daily_cap_usd, 2)} (enforced)
+    <strong>Routing mode: ${escapeHtml(preset.label)}</strong><br/>
+    Estimated max per run: $${fmtNum(preset.max_cost_per_run_usd, 2)} |
+    Input token budget: ${fmtInt(preset.max_total_input_tokens)} |
+    Output token budget: ${fmtInt(preset.max_total_output_tokens)}<br/>
+    Daily hard cap remains $${fmtNum(preset.hard_daily_cap_usd, 2)} regardless of mode.
   </div>`;
 }
 
@@ -150,7 +199,8 @@ function currentPhaseOptions() {
 }
 
 async function generateRunAndRefresh() {
-  status('Submitting analytics run...');
+  status('Submitting analytics snapshot request...');
+  setButtonBusy(el.runButton, true);
   const request = {
     start_date: el.startDate.value,
     end_date: el.endDate.value,
@@ -163,40 +213,48 @@ async function generateRunAndRefresh() {
 
   try {
     const handle = await invoke('start_mock_analytics_job', { request });
-    status(`Job ${handle.job_id} started...`);
+    status(`Snapshot job ${handle.job_id} started.`);
 
     while (true) {
       const snapshot = await invoke('get_tool_job', { jobId: handle.job_id });
-      status(`${snapshot.progress_pct}% - ${snapshot.stage} (${snapshot.message || 'running'})`);
+      status(`${snapshot.progress_pct}% • ${snapshot.stage} • ${snapshot.message || 'running'}`);
 
       if (snapshot.status === 'succeeded') break;
       if (snapshot.status === 'failed' || snapshot.status === 'canceled') {
-        status(`${snapshot.status.toUpperCase()}: ${snapshot.message || 'execution failed'}`);
+        const reason = snapshot.message || 'execution failed';
+        status(snapshot.status === 'canceled'
+          ? `Run canceled: ${reason}`
+          : `Run needs attention: ${reason}`);
         return;
       }
       await sleep(350);
     }
 
     await refreshDashboard();
-    status('Run completed and dashboard refreshed.');
+    status('Snapshot completed and dashboard refreshed.');
     stampNow('Run complete');
   } catch (err) {
-    status(`Run failed: ${String(err)}`);
+    status(`We couldn't complete that run: ${String(err)}`);
+  } finally {
+    setButtonBusy(el.runButton, false);
   }
 }
 
 async function loadTextWorkflowTemplates() {
   const campaignSpineId = cleanText(el.textCampaignSpineId?.value) || 'spine.default.v1';
-  textWorkflowStatus('Loading text workflow templates...');
+  textWorkflowStatus('Loading available workflow templates...');
+  setButtonBusy(el.loadTextTemplatesButton, true);
   try {
     const templates = await invoke('get_text_workflow_templates', { campaignSpineId });
     const rows = Array.isArray(templates) ? templates : [];
     state.textWorkflowTemplates = rows;
     renderTemplateOptions(rows);
-    textWorkflowStatus(`Loaded ${rows.length} text workflow templates.`);
+    textWorkflowStatus(`Loaded ${rows.length} templates for ${campaignSpineId}.`);
   } catch (err) {
     const message = String(err || 'Unknown error');
-    textWorkflowStatus(`Template load failed: ${message}`);
+    textWorkflowStatus(`Couldn't load templates yet: ${message}`);
+  } finally {
+    setButtonBusy(el.loadTextTemplatesButton, false);
   }
 }
 
@@ -204,7 +262,7 @@ function renderTemplateOptions(templates) {
   if (!el.textTemplateSelect) return;
   if (!templates.length) {
     el.textTemplateSelect.innerHTML = '<option value="">No templates available</option>';
-    el.textTemplateSummary.textContent = 'No templates available for this campaign spine id.';
+    el.textTemplateSummary.textContent = 'No templates were found for this campaign spine id. Try loading again or confirm the ID.';
     return;
   }
   el.textTemplateSelect.innerHTML = templates
@@ -236,7 +294,11 @@ function renderTemplateSummary(template) {
 
 async function runTextWorkflowAndRender() {
   const request = buildTextWorkflowRequest();
-  textWorkflowStatus('Submitting text workflow job...');
+  textWorkflowStatus('Starting text workflow run...');
+  setButtonBusy(el.runTextWorkflowButton, true);
+  if (el.textExportPacketButton) {
+    el.textExportPacketButton.disabled = true;
+  }
   try {
     const lifecycle = await runTextWorkflowJobLifecycle({
       invoke,
@@ -244,7 +306,7 @@ async function runTextWorkflowAndRender() {
       pollIntervalMs: 300,
       onSnapshot: (snapshot) => {
         textWorkflowStatus(
-          `${snapshot.progress_pct}% - ${snapshot.stage} (${snapshot.message || 'running'})`
+          `${snapshot.progress_pct}% • ${snapshot.stage} • ${snapshot.message || 'running'}`
         );
       }
     });
@@ -252,17 +314,20 @@ async function runTextWorkflowAndRender() {
     if (lifecycle.status === 'succeeded') {
       state.textWorkflowResult = lifecycle.result;
       renderTextWorkflowResult(state.textWorkflowResult);
-      textWorkflowStatus('Text workflow completed.');
+      textWorkflowStatus('Text workflow finished and is ready for review.');
       return;
     }
 
+    const reason = lifecycle.errorMessage || 'execution failed';
     textWorkflowStatus(
-      `${String(lifecycle.status || 'failed').toUpperCase()}: ${
-        lifecycle.errorMessage || 'execution failed'
-      }`
+      lifecycle.status === 'canceled'
+        ? `Workflow canceled: ${reason}`
+        : `Workflow needs attention: ${reason}`
     );
   } catch (err) {
-    textWorkflowStatus(`Text workflow failed: ${String(err)}`);
+    textWorkflowStatus(`Couldn't run workflow: ${String(err)}`);
+  } finally {
+    setButtonBusy(el.runTextWorkflowButton, false);
   }
 }
 
@@ -351,7 +416,7 @@ function exportTextWorkflowPacket() {
   try {
     const gate = deriveTextWorkflowGateState(state.textWorkflowResult);
     if (!gate.canExport) {
-      textWorkflowStatus(gate.exportBlockReason || 'Export blocked by gate policy.');
+      textWorkflowStatus(gate.exportBlockReason || 'Export is unavailable until review items are resolved.');
       return;
     }
 
@@ -368,9 +433,9 @@ function exportTextWorkflowPacket() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    textWorkflowStatus(`Exported text workflow packet: ${filename}`);
+    textWorkflowStatus(`Exported review packet: ${filename}`);
   } catch (err) {
-    textWorkflowStatus(`Export failed: ${String(err)}`);
+    textWorkflowStatus(`We couldn't export that packet: ${String(err)}`);
   }
 }
 
@@ -389,17 +454,17 @@ async function refreshDashboard() {
     });
     state.currentSnapshot = executive;
     renderExecutiveDashboard(executive);
-    status('Loaded executive snapshot.');
+    status('Dashboard data loaded.');
     stampNow('Loaded');
   } catch (err) {
     const message = String(err || 'Unknown error');
     if (message.includes('No persisted analytics runs found')) {
       renderExecutiveDashboard(fallbackSnapshot(profileId, opts));
-      status('No persisted runs yet. Showing demo snapshot.');
+      status('No saved runs yet. Showing a guided demo snapshot.');
       stampNow('Demo');
       return;
     }
-    status(`Refresh failed: ${message}`);
+    status(`We couldn't refresh the dashboard: ${message}`);
   }
 }
 

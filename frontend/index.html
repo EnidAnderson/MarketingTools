@@ -12,19 +12,27 @@
     <header class="hero">
       <div>
         <p class="eyebrow">Nature's Diet</p>
-        <h1>Executive Marketing Dashboard</h1>
-        <p class="subtitle">Live mock analytics with persistent run history, drift signals, and operator guidance.</p>
+        <h1>Marketing Command Center</h1>
+        <p class="subtitle">A calm, guided workspace for campaign analytics, planning, and review-ready content workflows.</p>
       </div>
       <div class="hero-actions">
         <span id="refreshStamp" class="refresh-stamp">Not loaded yet</span>
-        <button id="refreshButton" class="btn btn-secondary">Refresh Data</button>
+        <button id="refreshButton" class="btn btn-secondary">Refresh dashboard</button>
       </div>
     </header>
 
+    <section class="card soft-callout">
+      <p><strong>Good to know:</strong> This environment uses mock/simulated data by default and applies budget guardrails automatically.</p>
+      <p>When a run needs review, the UI explains why and what to do next.</p>
+    </section>
+
     <section class="controls card">
-      <h2>Run Controls</h2>
+      <div class="section-head">
+        <h2>Analytics Run Setup</h2>
+        <p>Choose the date window and targets, then generate a fresh analytics snapshot.</p>
+      </div>
       <div class="control-grid">
-        <label>Profile ID
+        <label>Workspace Profile
           <input id="profileId" type="text" value="marketing_default" />
         </label>
         <label>Start Date
@@ -33,41 +41,44 @@
         <label>End Date
           <input id="endDate" type="date" value="2026-02-07" />
         </label>
-        <label>Campaign Filter
+        <label>Campaign Filter (optional)
           <input id="campaignFilter" type="text" placeholder="Optional" />
         </label>
-        <label>Ad Group Filter
+        <label>Ad Group Filter (optional)
           <input id="adGroupFilter" type="text" placeholder="Optional" />
         </label>
-        <label>Seed
-          <input id="seed" type="number" placeholder="Optional deterministic seed" />
+        <label>Deterministic Seed (optional)
+          <input id="seed" type="number" placeholder="Use only when you want exact replay" />
         </label>
-        <label>Compare Window (runs)
+        <label>Baseline Window (runs)
           <input id="compareWindowRuns" type="number" min="1" value="1" />
         </label>
-        <label>Target ROAS
+        <label>Target ROAS (x)
           <input id="targetRoas" type="number" step="0.01" value="6.00" />
         </label>
-        <label>Monthly Revenue Target
+        <label>Monthly Revenue Goal ($)
           <input id="monthlyRevenueTarget" type="number" step="0.01" value="3000" />
         </label>
       </div>
       <div class="control-actions">
-        <button id="runButton" class="btn btn-primary">Generate New Analytics Run</button>
+        <button id="runButton" class="btn btn-primary">Generate analytics snapshot</button>
         <label class="toggle-wrap">
           <input id="includeNarratives" type="checkbox" checked />
-          Include Narratives
+          Include operator narratives
         </label>
       </div>
-      <div id="jobStatus" class="job-status">Ready.</div>
+      <div id="jobStatus" class="job-status is-info">Ready when you are.</div>
     </section>
 
     <section class="card">
       <div class="panel-head">
-        <h2>Text Workflow Studio</h2>
+        <div class="section-head">
+          <h2>Text Workflow Studio</h2>
+          <p>Create structured campaign outputs with review-aware quality gates.</p>
+        </div>
         <div class="studio-actions">
           <button id="loadTextTemplatesButton" class="btn btn-secondary">Load Templates</button>
-          <button id="runTextWorkflowButton" class="btn btn-primary">Run Text Workflow</button>
+          <button id="runTextWorkflowButton" class="btn btn-primary">Run workflow</button>
           <button id="textExportPacketButton" class="btn btn-secondary" disabled>Export Text Packet</button>
         </div>
       </div>
@@ -78,7 +89,7 @@
         <label>Workflow Template
           <select id="textTemplateSelect"></select>
         </label>
-        <label>Variant Count (ad variants)
+        <label>Ad Variant Count
           <input id="textVariantCount" type="number" min="1" max="30" value="12" />
         </label>
         <label>Route Policy
@@ -110,15 +121,15 @@
       <div class="control-actions">
         <label class="toggle-wrap">
           <input id="textIncludeEvidence" type="checkbox" checked />
-          Include Evidence Ref
+          Include evidence reference
         </label>
         <label class="toggle-wrap">
           <input id="textPaidCallsAllowed" type="checkbox" />
-          Allow Paid Calls (subject to hard cap)
+          Allow paid calls (still capped)
         </label>
       </div>
-      <div id="textWorkflowStatus" class="job-status">Text workflow ready.</div>
-      <div id="textBudgetSummary" class="narrative-item"></div>
+      <div id="textWorkflowStatus" class="job-status is-info">Workflow studio is ready.</div>
+      <div id="textBudgetSummary" class="narrative-item">Policy summary will appear here.</div>
       <div id="textTemplateSummary" class="narrative-item">Load templates to view graph and workflow metadata.</div>
     </section>
 
@@ -126,7 +137,7 @@
 
     <section class="content-grid">
       <article class="card panel-wide">
-        <h2>Text Workflow Gate</h2>
+        <h2>Text Workflow Review Gate</h2>
         <div id="textWorkflowGatePanel" class="publish-gate-panel"></div>
       </article>
 
