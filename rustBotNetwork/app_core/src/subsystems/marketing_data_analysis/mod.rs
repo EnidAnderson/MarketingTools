@@ -1,3 +1,4 @@
+pub mod analytics_config;
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis`
 /// purpose: Typed mock analytics subsystem for deterministic, auditable market analysis.
@@ -6,6 +7,7 @@
 ///   - Request validation and artifact validation are transport-neutral.
 ///   - Orchestration does not depend on Tauri/UI types.
 pub mod budget;
+pub mod connector_v2;
 pub mod contracts;
 pub mod executive_dashboard;
 pub mod ingest;
@@ -14,9 +16,20 @@ pub mod persistence;
 pub mod service;
 pub mod validators;
 
+pub use analytics_config::{
+    validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
+    Ga4ConfigV1, GoogleAdsConfigV1, WixConfigV1,
+};
 pub use budget::{
     build_budget_plan, enforce_daily_hard_cap, estimate_budget_upper_bound, BudgetCategory,
     BudgetEstimate, BudgetGuard, BudgetPlan, DailyHardCapStatus, HARD_DAILY_SPEND_CAP_MICROS,
+};
+pub use connector_v2::{
+    generate_simulated_ga4_events, generate_simulated_google_ads_rows,
+    generate_simulated_wix_orders, generate_simulated_wix_sessions,
+    AnalyticsConnectorCapabilitiesV1, AnalyticsConnectorContractV2, ConnectorHealthStatusV1,
+    ConnectorSourceCapabilityV1, ConnectorSourceHealthV1, SimulatedAnalyticsConnectorV2,
+    WixSessionRawV1,
 };
 pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,

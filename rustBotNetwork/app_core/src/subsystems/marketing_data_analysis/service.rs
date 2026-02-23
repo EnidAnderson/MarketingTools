@@ -1,4 +1,11 @@
+use super::analytics_config::{
+    validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
+};
 use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
+use super::connector_v2::{
+    generate_simulated_ga4_events, generate_simulated_google_ads_rows,
+    AnalyticsConnectorContractV2, SimulatedAnalyticsConnectorV2,
+};
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
     DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
@@ -6,33 +13,21 @@ use super::contracts::{
     QualityCheckV1, ReconciliationPolicyV1, SourceWindowGranularityV1,
     MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
-use super::ingest::{parse_ga4_event, window_completeness, CleaningNote, TimeGranularity};
+use super::ingest::{
+    parse_ga4_event, window_completeness, CleaningNote, Ga4EventRawV1, TimeGranularity,
+};
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
     AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport,
-    CampaignReportRow, CampaignResource, Ga4NormalizedEvent, GoogleAdsRow, KeywordData,
-    KeywordReportRow, MetricsData, ReportMetrics, SegmentsData, SourceClassLabel, SourceProvenance,
+    CampaignReportRow, CampaignResource, GoogleAdsRow, KeywordReportRow, MetricsData,
+    ReportMetrics, SourceClassLabel, SourceProvenance,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
-const CAMPAIGN_NAMES: &[&str] = &[
-    "Summer Pet Food Promo",
-    "New Puppy Essentials",
-    "Senior Dog Health",
-    "Organic Cat Treats",
-];
-const AD_GROUP_NAMES: &[&str] = &["Dry Food", "Wet Food", "Treats", "Supplements"];
-const KEYWORD_TEXTS: &[&str] = &[
-    "healthy dog food",
-    "grain-free cat food",
-    "best puppy treats",
-    "senior pet vitamins",
-];
 const MIN_IDENTITY_COVERAGE_RATIO: f64 = 0.98;
 const INGEST_CONTRACT_VERSION: &str = "ingest_contract.v1";
 
@@ -50,11 +45,38 @@ pub trait MarketAnalysisService: Send + Sync {
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::service`
 /// purpose: Default deterministic mock analytics implementation.
-pub struct DefaultMarketAnalysisService;
+pub struct DefaultMarketAnalysisService {
+    connector: Arc<dyn AnalyticsConnectorContractV2>,
+    connector_config: AnalyticsConnectorConfigV1,
+}
 
 impl DefaultMarketAnalysisService {
     pub fn new() -> Self {
-        Self
+        let connector = Arc::new(SimulatedAnalyticsConnectorV2::new());
+        let connector_config = AnalyticsConnectorConfigV1::simulated_defaults();
+        debug_assert!(validate_analytics_connector_config_v1(&connector_config).is_ok());
+        Self {
+            connector,
+            connector_config,
+        }
+    }
+
+    pub fn with_connector(connector: Arc<dyn AnalyticsConnectorContractV2>) -> Self {
+        Self {
+            connector,
+            connector_config: AnalyticsConnectorConfigV1::simulated_defaults(),
+        }
+    }
+
+    pub fn with_connector_and_config(
+        connector: Arc<dyn AnalyticsConnectorContractV2>,
+        connector_config: AnalyticsConnectorConfigV1,
+    ) -> Result<Self, AnalyticsError> {
+        validate_analytics_connector_config_v1(&connector_config)?;
+        Ok(Self {
+            connector,
+            connector_config,
+        })
     }
 }
 
@@ -78,13 +100,89 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         )?;
         let mut budget_guard = BudgetGuard::new(request.budget_envelope.clone());
         let seed = resolve_seed(&request);
+        let connector_health = self.connector.healthcheck(&self.connector_config).await?;
+        if self.connector_config.mode == AnalyticsConnectorModeV1::ObservedReadOnly
+            && !connector_health.ok
+        {
+            return Err(AnalyticsError::new(
+                "analytics_preflight_blocked",
+                "connector healthcheck failed in observed_read_only mode",
+                vec!["connector_config.mode".to_string()],
+                Some(serde_json::json!({
+                    "blocking_reasons": connector_health.blocking_reasons,
+                    "warning_reasons": connector_health.warning_reasons,
+                })),
+            ));
+        }
 
         budget_guard.spend(
             BudgetCategory::Retrieval,
             budget_plan.estimated.retrieval_units,
             "mock_analytics.fetch",
         )?;
-        let rows = generate_rows(&request, start, budget_plan.effective_end, seed);
+        let rows = match self
+            .connector
+            .fetch_google_ads_rows(
+                &self.connector_config,
+                &request,
+                start,
+                budget_plan.effective_end,
+                seed,
+            )
+            .await
+        {
+            Ok(rows) if !rows.is_empty() => rows,
+            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
+                generate_simulated_google_ads_rows(&request, start, budget_plan.effective_end, seed)
+            }
+            Ok(_) => {
+                return Err(AnalyticsError::internal(
+                    "analytics_connector_empty_rows",
+                    "connector returned no google ads rows in observed mode",
+                ));
+            }
+            Err(err) => return Err(err),
+        };
+        let ga4_events = match self
+            .connector
+            .fetch_ga4_events(
+                &self.connector_config,
+                start,
+                budget_plan.effective_end,
+                seed,
+            )
+            .await
+        {
+            Ok(events) if !events.is_empty() => events,
+            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
+                generate_simulated_ga4_events(start, budget_plan.effective_end, seed)
+            }
+            Ok(_) => {
+                return Err(AnalyticsError::internal(
+                    "analytics_connector_empty_ga4",
+                    "connector returned no GA4 events in observed mode",
+                ));
+            }
+            Err(err) => return Err(err),
+        };
+        let _ = self
+            .connector
+            .fetch_wix_orders(
+                &self.connector_config,
+                start,
+                budget_plan.effective_end,
+                seed,
+            )
+            .await;
+        let _ = self
+            .connector
+            .fetch_wix_sessions(
+                &self.connector_config,
+                start,
+                budget_plan.effective_end,
+                seed,
+            )
+            .await;
         budget_guard.spend(
             BudgetCategory::Analysis,
             budget_plan.estimated.analysis_units,
@@ -109,10 +207,12 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         )?;
 
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
-        let ingest_cleaning_notes = collect_ingest_cleaning_notes(seed)?;
+        let ingest_cleaning_notes = collect_ingest_cleaning_notes(&ga4_events)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
         let reconciliation_policy = ReconciliationPolicyV1::default();
-        let provenance = build_mock_provenance(seed, ingest_cleaning_notes.len() as u32);
+        let connector_id = self.connector.capabilities().connector_id;
+        let provenance =
+            build_mock_provenance(&connector_id, seed, ingest_cleaning_notes.len() as u32);
         let (observed_units_by_source, granularity_by_source, provided_observation_sources) =
             resolve_source_window_inputs(&request, start, budget_plan.effective_end)?;
         let cross_source_checks = build_cross_source_checks(&report, seed, &reconciliation_policy);
@@ -151,7 +251,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
 
         let metadata = AnalyticsRunMetadataV1 {
             run_id: deterministic_run_id(&request, seed),
-            connector_id: "mock_analytics_connector_v1".to_string(),
+            connector_id: connector_id.clone(),
             profile_id: request.profile_id.clone(),
             seed,
             schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
@@ -238,117 +338,6 @@ fn deterministic_run_id(request: &MockAnalyticsRequestV1, seed: u64) -> String {
     hasher.update(seed.to_le_bytes());
     let digest = hasher.finalize();
     format!("mockrun-{:x}", digest)[..24].to_string()
-}
-
-fn generate_rows(
-    request: &MockAnalyticsRequestV1,
-    start: NaiveDate,
-    end: NaiveDate,
-    seed: u64,
-) -> Vec<GoogleAdsRow> {
-    let mut rng = ChaCha8Rng::seed_from_u64(seed);
-    let mut rows = Vec::new();
-    let mut current = start;
-
-    while current <= end {
-        let date_str = current.format("%Y-%m-%d").to_string();
-        for (campaign_idx, campaign_name) in CAMPAIGN_NAMES.iter().enumerate() {
-            if let Some(filter) = &request.campaign_filter {
-                if !campaign_name.contains(filter) {
-                    continue;
-                }
-            }
-            let campaign_id = format!("{}", campaign_idx + 1);
-            let campaign_resource = format!("customers/123/campaigns/{}", campaign_id);
-            let campaign_status = if rng.gen_bool(0.9) {
-                "ENABLED"
-            } else {
-                "PAUSED"
-            };
-            let campaign = CampaignResource {
-                resourceName: campaign_resource.clone(),
-                id: campaign_id.clone(),
-                name: (*campaign_name).to_string(),
-                status: campaign_status.to_string(),
-            };
-
-            for (ad_group_idx, ad_group_name) in AD_GROUP_NAMES.iter().enumerate() {
-                if let Some(filter) = &request.ad_group_filter {
-                    if !ad_group_name.contains(filter) {
-                        continue;
-                    }
-                }
-                let ad_group_id = format!("{}.{}", campaign_id, ad_group_idx + 1);
-                let ad_group_resource = format!("customers/123/adGroups/{}", ad_group_id);
-                let ad_group_status = if rng.gen_bool(0.9) {
-                    "ENABLED"
-                } else {
-                    "PAUSED"
-                };
-                let ad_group = AdGroupResource {
-                    resourceName: ad_group_resource.clone(),
-                    id: ad_group_id.clone(),
-                    name: (*ad_group_name).to_string(),
-                    status: ad_group_status.to_string(),
-                    campaignResourceName: campaign_resource.clone(),
-                };
-
-                for (kw_idx, keyword_text) in KEYWORD_TEXTS.iter().enumerate() {
-                    let impressions: u64 = rng.gen_range(100..1200);
-                    let max_clicks = (impressions / 2).max(1);
-                    let clicks: u64 = rng.gen_range(1..=max_clicks);
-                    let cost_micros = clicks * rng.gen_range(200_000..1_300_000);
-                    let conversions = round4(rng.gen_range(0.0..(clicks as f64 / 5.0)));
-                    let conversions_value = round4(conversions * rng.gen_range(10.0..60.0));
-
-                    let metrics = MetricsData {
-                        clicks,
-                        impressions,
-                        costMicros: cost_micros,
-                        conversions,
-                        conversionsValue: conversions_value,
-                        ctr: round4((clicks as f64 / impressions as f64) * 100.0),
-                        averageCpc: round4(cost_micros as f64 / clicks as f64 / 1_000_000.0),
-                    };
-
-                    let criterion_id =
-                        format!("{}{}{}", campaign_idx + 1, ad_group_idx + 1, kw_idx + 1);
-                    let criterion = AdGroupCriterionResource {
-                        resourceName: format!(
-                            "customers/123/adGroupCriteria/{}.{}",
-                            ad_group_id, criterion_id
-                        ),
-                        criterionId: criterion_id,
-                        status: "ENABLED".to_string(),
-                        keyword: Some(KeywordData {
-                            text: (*keyword_text).to_string(),
-                            matchType: "EXACT".to_string(),
-                        }),
-                        qualityScore: Some(rng.gen_range(1..=10)),
-                        adGroupResourceName: ad_group_resource.clone(),
-                    };
-
-                    rows.push(GoogleAdsRow {
-                        campaign: Some(campaign.clone()),
-                        adGroup: Some(ad_group.clone()),
-                        keywordView: None,
-                        adGroupCriterion: Some(criterion),
-                        metrics: Some(metrics),
-                        segments: Some(SegmentsData {
-                            date: Some(date_str.clone()),
-                            device: Some("DESKTOP".to_string()),
-                        }),
-                    });
-                }
-            }
-        }
-        let Some(next) = current.checked_add_signed(Duration::days(1)) else {
-            break;
-        };
-        current = next;
-    }
-
-    rows
 }
 
 fn rows_to_report(
@@ -641,14 +630,18 @@ fn build_evidence_and_guidance(
     (evidence, guidance, uncertainty)
 }
 
-fn build_mock_provenance(seed: u64, cleaning_note_count: u32) -> Vec<SourceProvenance> {
+fn build_mock_provenance(
+    connector_id: &str,
+    seed: u64,
+    cleaning_note_count: u32,
+) -> Vec<SourceProvenance> {
     // Keep provenance byte-stable for replay while still simulating source-specific lag.
     let ga4_freshness = 30 + ((seed % 40) as u32);
     let ads_freshness = 60 + ((seed % 50) as u32);
     let wix_freshness = 90 + ((seed % 60) as u32);
     vec![
         SourceProvenance {
-            connector_id: "mock_analytics_connector_v1".to_string(),
+            connector_id: connector_id.to_string(),
             source_class: SourceClassLabel::Simulated,
             source_system: "google_ads".to_string(),
             collected_at_utc: "deterministic-simulated".to_string(),
@@ -658,7 +651,7 @@ fn build_mock_provenance(seed: u64, cleaning_note_count: u32) -> Vec<SourceProve
             cleaning_note_count: 0,
         },
         SourceProvenance {
-            connector_id: "mock_analytics_connector_v1".to_string(),
+            connector_id: connector_id.to_string(),
             source_class: SourceClassLabel::Simulated,
             source_system: "ga4".to_string(),
             collected_at_utc: "deterministic-simulated".to_string(),
@@ -668,7 +661,7 @@ fn build_mock_provenance(seed: u64, cleaning_note_count: u32) -> Vec<SourceProve
             cleaning_note_count,
         },
         SourceProvenance {
-            connector_id: "mock_analytics_connector_v1".to_string(),
+            connector_id: connector_id.to_string(),
             source_class: SourceClassLabel::Simulated,
             source_system: "wix_storefront".to_string(),
             collected_at_utc: "deterministic-simulated".to_string(),
@@ -1244,43 +1237,28 @@ fn build_operator_summary(
     }
 }
 
-#[allow(dead_code)]
-fn build_ga4_events(seed: u64) -> Vec<Ga4NormalizedEvent> {
-    vec![Ga4NormalizedEvent {
-        event_name: "purchase".to_string(),
-        event_timestamp_utc: "deterministic-simulated".to_string(),
-        session_id: format!("sess_{seed}"),
-        user_pseudo_id: format!("user_{seed}"),
-        traffic_source: Some("google".to_string()),
-        medium: Some("cpc".to_string()),
-        campaign: Some("spring_launch".to_string()),
-        revenue_micros: Some(1_000_000),
-        provenance: SourceProvenance {
-            connector_id: "mock_analytics_connector_v1".to_string(),
-            source_class: SourceClassLabel::Simulated,
-            source_system: "mock_analytics".to_string(),
-            collected_at_utc: "deterministic-simulated".to_string(),
-            freshness_minutes: 0,
-            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
-            rejected_rows_count: 0,
-            cleaning_note_count: 0,
-        },
-    }]
-}
-
-fn collect_ingest_cleaning_notes(seed: u64) -> Result<Vec<IngestCleaningNoteV1>, AnalyticsError> {
-    let ga4_json = format!(
-        r#"{{"event_name":" purchase ","event_timestamp_utc":"2026-02-16T00:00:00Z","user_pseudo_id":" user_{seed} ","session_id":"sess_{seed}","campaign":"spring_launch"}}"#
-    );
-    let parsed = parse_ga4_event(&ga4_json).map_err(|err| {
-        AnalyticsError::new(
-            "ingest_validation_failed",
-            format!("failed to parse/normalize ga4 event: {}", err.reason),
-            vec![err.field],
-            None,
-        )
-    })?;
-    Ok(map_ingest_notes("ga4", &parsed.notes))
+fn collect_ingest_cleaning_notes(
+    ga4_events: &[Ga4EventRawV1],
+) -> Result<Vec<IngestCleaningNoteV1>, AnalyticsError> {
+    let mut notes = Vec::new();
+    for event in ga4_events {
+        let raw_json = serde_json::to_string(event).map_err(|err| {
+            AnalyticsError::internal(
+                "ingest_serialization_failed",
+                format!("failed to serialize GA4 raw event: {err}"),
+            )
+        })?;
+        let parsed = parse_ga4_event(&raw_json).map_err(|err| {
+            AnalyticsError::new(
+                "ingest_validation_failed",
+                format!("failed to parse/normalize ga4 event: {}", err.reason),
+                vec![err.field],
+                None,
+            )
+        })?;
+        notes.extend(map_ingest_notes("ga4", &parsed.notes));
+    }
+    Ok(notes)
 }
 
 fn map_ingest_notes(source_system: &str, notes: &[CleaningNote]) -> Vec<IngestCleaningNoteV1> {
@@ -1301,6 +1279,8 @@ fn map_ingest_notes(source_system: &str, notes: &[CleaningNote]) -> Vec<IngestCl
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn same_request_and_seed_is_byte_stable() {
@@ -1443,6 +1423,110 @@ mod tests {
             .await
             .expect_err("artifact should fail closed when completeness SLAs are unmet");
         assert_eq!(err.code, "artifact_invariant_violation");
+    }
+
+    struct FailingConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2 for FailingConnector {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "failing_connector".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "failing_connector".to_string(),
+                ok: true,
+                mode: "simulated".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            Err(AnalyticsError::internal(
+                "connector_fetch_failed",
+                "ga4 unavailable",
+            ))
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Err(AnalyticsError::internal(
+                "connector_fetch_failed",
+                "google ads unavailable",
+            ))
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Err(AnalyticsError::internal(
+                "connector_fetch_failed",
+                "wix unavailable",
+            ))
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Err(AnalyticsError::internal(
+                "connector_fetch_failed",
+                "wix unavailable",
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn simulated_mode_falls_back_when_connector_fetch_fails() {
+        let svc = DefaultMarketAnalysisService::with_connector(Arc::new(FailingConnector));
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-02".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(7),
+            profile_id: "small".to_string(),
+            include_narratives: false,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let artifact = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("simulated mode should fallback to local deterministic generator");
+        assert!(!artifact.report.campaign_data.is_empty());
+        assert_eq!(artifact.metadata.connector_id, "failing_connector");
     }
 
     #[test]
