@@ -18,8 +18,9 @@ pub mod service;
 pub mod validators;
 
 pub use analytics_config::{
-    validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
-    Ga4ConfigV1, GoogleAdsConfigV1, WixConfigV1,
+    analytics_connector_config_from_env, validate_analytics_connector_config_v1,
+    AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1, Ga4ConfigV1, GoogleAdsConfigV1,
+    WixConfigV1,
 };
 pub use budget::{
     build_budget_plan, enforce_daily_hard_cap, estimate_budget_upper_bound, BudgetCategory,
@@ -46,9 +47,10 @@ pub use contracts::{
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use ingest::{
-    join_coverage_ratio, parse_ga4_event, window_completeness, Cleaned, CleaningNote,
-    CleaningSeverity, Ga4EventRawV1, Ga4EventV1, GoogleAdsRowRawV1, GoogleAdsRowV1, IngestError,
-    TimeGranularity, WindowCompletenessCheck, WixOrderRawV1, WixOrderV1,
+    join_coverage_ratio, parse_ga4_event, parse_google_ads_row, parse_wix_order,
+    window_completeness, Cleaned, CleaningNote, CleaningSeverity, Ga4EventRawV1, Ga4EventV1,
+    GoogleAdsRowRawV1, GoogleAdsRowV1, IngestError, TimeGranularity, WindowCompletenessCheck,
+    WixOrderRawV1, WixOrderV1,
 };
 pub use longitudinal::build_historical_analysis;
 pub use persistence::AnalyticsRunStore;

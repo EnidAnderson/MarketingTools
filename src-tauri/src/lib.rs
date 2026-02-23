@@ -4,9 +4,9 @@ use app_core::subsystems::campaign_orchestration::{
     prioritized_text_graph_templates_v1, runtime::TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    build_executive_dashboard_snapshot, evaluate_analytics_connectors_preflight,
-    AnalyticsConnectorConfigV1, AnalyticsRunStore, MockAnalyticsRequestV1,
-    SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
+    analytics_connector_config_from_env, build_executive_dashboard_snapshot,
+    evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1, AnalyticsRunStore,
+    MockAnalyticsRequestV1, SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -509,7 +509,11 @@ async fn validate_analytics_connectors_preflight(
     config: Option<AnalyticsConnectorConfigV1>,
 ) -> Result<Value, String> {
     let connector = SimulatedAnalyticsConnectorV2::new();
-    let effective_config = config.unwrap_or_else(AnalyticsConnectorConfigV1::simulated_defaults);
+    let effective_config = match config {
+        Some(cfg) => cfg,
+        None => analytics_connector_config_from_env()
+            .unwrap_or_else(|_| AnalyticsConnectorConfigV1::simulated_defaults()),
+    };
     let preflight = evaluate_analytics_connectors_preflight(&connector, &effective_config).await;
     serde_json::to_value(preflight)
         .map_err(|err| format!("failed to serialize analytics connector preflight: {err}"))

@@ -129,6 +129,119 @@ impl Default for AnalyticsConnectorConfigV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::analytics_config`
+/// purpose: Resolve analytics connector config from environment variables with typed defaults.
+/// invariants:
+///   - Falls back to deterministic simulated-safe defaults when optional env vars are absent.
+///   - Returned config is validated before returning to callers.
+pub fn analytics_connector_config_from_env() -> Result<AnalyticsConnectorConfigV1, AnalyticsError> {
+    let defaults = AnalyticsConnectorConfigV1::simulated_defaults();
+    let mode = match env_or_default("ANALYTICS_CONNECTOR_MODE", "simulated")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "simulated" => AnalyticsConnectorModeV1::Simulated,
+        "observed_read_only" => AnalyticsConnectorModeV1::ObservedReadOnly,
+        _ => {
+            return Err(AnalyticsError::validation(
+                "analytics_config_mode_invalid",
+                "ANALYTICS_CONNECTOR_MODE must be one of: simulated, observed_read_only",
+                "mode",
+            ));
+        }
+    };
+
+    let config = AnalyticsConnectorConfigV1 {
+        profile_id: env_or_default("ANALYTICS_PROFILE_ID", &defaults.profile_id),
+        mode,
+        default_timezone: env_or_default("ANALYTICS_DEFAULT_TIMEZONE", &defaults.default_timezone),
+        ga4: Ga4ConfigV1 {
+            enabled: env_bool_or_default("ANALYTICS_ENABLE_GA4", defaults.ga4.enabled)?,
+            property_id: env_or_default("GA4_PROPERTY_ID", &defaults.ga4.property_id),
+            api_secret_env_var: env_or_default(
+                "ANALYTICS_GA4_API_SECRET_ENV_VAR",
+                "GA4_API_SECRET",
+            ),
+            measurement_id_env_var: env_or_default(
+                "ANALYTICS_GA4_MEASUREMENT_ID_ENV_VAR",
+                "GA4_MEASUREMENT_ID",
+            ),
+            timezone: env_or_default("ANALYTICS_GA4_TIMEZONE", &defaults.ga4.timezone),
+        },
+        google_ads: GoogleAdsConfigV1 {
+            enabled: env_bool_or_default(
+                "ANALYTICS_ENABLE_GOOGLE_ADS",
+                defaults.google_ads.enabled,
+            )?,
+            customer_id: env_or_default("GOOGLE_ADS_CUSTOMER_ID", &defaults.google_ads.customer_id),
+            login_customer_id: env_opt("GOOGLE_ADS_LOGIN_CUSTOMER_ID"),
+            developer_token_env_var: env_or_default(
+                "ANALYTICS_GOOGLE_ADS_DEVELOPER_TOKEN_ENV_VAR",
+                "GOOGLE_ADS_DEVELOPER_TOKEN",
+            ),
+            oauth_client_id_env_var: env_or_default(
+                "ANALYTICS_GOOGLE_ADS_OAUTH_CLIENT_ID_ENV_VAR",
+                "GOOGLE_ADS_OAUTH_CLIENT_ID",
+            ),
+            oauth_client_secret_env_var: env_or_default(
+                "ANALYTICS_GOOGLE_ADS_OAUTH_CLIENT_SECRET_ENV_VAR",
+                "GOOGLE_ADS_OAUTH_CLIENT_SECRET",
+            ),
+            oauth_refresh_token_env_var: env_or_default(
+                "ANALYTICS_GOOGLE_ADS_OAUTH_REFRESH_TOKEN_ENV_VAR",
+                "GOOGLE_ADS_OAUTH_REFRESH_TOKEN",
+            ),
+            timezone: env_or_default(
+                "ANALYTICS_GOOGLE_ADS_TIMEZONE",
+                &defaults.google_ads.timezone,
+            ),
+        },
+        wix: WixConfigV1 {
+            enabled: env_bool_or_default("ANALYTICS_ENABLE_WIX", defaults.wix.enabled)?,
+            site_id: env_or_default("WIX_SITE_ID", &defaults.wix.site_id),
+            account_id: env_opt("WIX_ACCOUNT_ID"),
+            api_token_env_var: env_or_default("ANALYTICS_WIX_API_TOKEN_ENV_VAR", "WIX_API_TOKEN"),
+            timezone: env_or_default("ANALYTICS_WIX_TIMEZONE", &defaults.wix.timezone),
+        },
+    };
+
+    validate_analytics_connector_config_v1(&config)?;
+    Ok(config)
+}
+
+fn env_or_default(key: &str, default: &str) -> String {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn env_opt(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_bool_or_default(key: &str, default: bool) -> Result<bool, AnalyticsError> {
+    let Some(raw) = std::env::var(key).ok() else {
+        return Ok(default);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "1" | "true" | "yes" => Ok(true),
+        "0" | "false" | "no" => Ok(false),
+        _ => Err(AnalyticsError::validation(
+            "analytics_config_bool_invalid",
+            format!("{key} must be a boolean-like value (true/false/1/0/yes/no)"),
+            key.to_ascii_lowercase(),
+        )),
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::analytics_config`
 /// purpose: Validate analytics connector configuration before connector usage.
 /// invariants:
 ///   - enabled sources must provide non-empty identifiers.
@@ -276,6 +389,10 @@ fn parse_tz(value: &str, field_path: &str) -> Result<Tz, AnalyticsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: once_cell::sync::Lazy<Mutex<()>> =
+        once_cell::sync::Lazy::new(|| Mutex::new(()));
 
     #[test]
     fn simulated_defaults_validate() {
@@ -329,5 +446,62 @@ mod tests {
         cfg.wix.api_token_env_var.clear();
         let result = validate_analytics_connector_config_v1(&cfg);
         assert!(result.is_ok(), "disabled source fields should be ignored");
+    }
+
+    #[test]
+    fn from_env_parses_observed_mode_and_feature_flags() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("ANALYTICS_CONNECTOR_MODE", Some("observed_read_only")),
+                ("ANALYTICS_ENABLE_WIX", Some("false")),
+                ("ANALYTICS_PROFILE_ID", Some("ops_profile")),
+                ("ANALYTICS_DEFAULT_TIMEZONE", Some("UTC")),
+                ("GA4_PROPERTY_ID", Some("123456789")),
+                ("GOOGLE_ADS_CUSTOMER_ID", Some("1234567890")),
+                ("WIX_SITE_ID", Some("natures-diet-store")),
+            ],
+            || {
+                let cfg = analytics_connector_config_from_env().expect("env config should parse");
+                assert_eq!(cfg.mode, AnalyticsConnectorModeV1::ObservedReadOnly);
+                assert!(!cfg.wix.enabled);
+                assert_eq!(cfg.profile_id, "ops_profile");
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_rejects_invalid_bool() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(&[("ANALYTICS_ENABLE_GA4", Some("not-bool"))], || {
+            let err = analytics_connector_config_from_env().expect_err("must fail");
+            assert_eq!(err.code, "analytics_config_bool_invalid");
+        });
+    }
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f();
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
     }
 }

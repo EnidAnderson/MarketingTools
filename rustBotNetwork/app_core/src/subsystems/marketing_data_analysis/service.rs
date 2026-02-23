@@ -4,7 +4,7 @@ use super::analytics_config::{
 use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::connector_v2::{
     generate_simulated_ga4_events, generate_simulated_google_ads_rows,
-    AnalyticsConnectorContractV2, SimulatedAnalyticsConnectorV2,
+    generate_simulated_wix_orders, AnalyticsConnectorContractV2, SimulatedAnalyticsConnectorV2,
 };
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
@@ -14,7 +14,8 @@ use super::contracts::{
     MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::ingest::{
-    parse_ga4_event, window_completeness, CleaningNote, Ga4EventRawV1, TimeGranularity,
+    parse_ga4_event, parse_wix_order, window_completeness, CleaningNote, Ga4EventRawV1,
+    TimeGranularity, WixOrderRawV1,
 };
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
@@ -165,7 +166,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             }
             Err(err) => return Err(err),
         };
-        let _ = self
+        let wix_orders = match self
             .connector
             .fetch_wix_orders(
                 &self.connector_config,
@@ -173,8 +174,21 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
                 budget_plan.effective_end,
                 seed,
             )
-            .await;
-        let _ = self
+            .await
+        {
+            Ok(orders) if !orders.is_empty() => orders,
+            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
+                generate_simulated_wix_orders(start, budget_plan.effective_end, seed)
+            }
+            Ok(_) => {
+                return Err(AnalyticsError::internal(
+                    "analytics_connector_empty_wix_orders",
+                    "connector returned no Wix orders in observed mode",
+                ));
+            }
+            Err(err) => return Err(err),
+        };
+        match self
             .connector
             .fetch_wix_sessions(
                 &self.connector_config,
@@ -182,7 +196,18 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
                 budget_plan.effective_end,
                 seed,
             )
-            .await;
+            .await
+        {
+            Ok(sessions) if !sessions.is_empty() => sessions,
+            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => Vec::new(),
+            Ok(_) => {
+                return Err(AnalyticsError::internal(
+                    "analytics_connector_empty_wix_sessions",
+                    "connector returned no Wix sessions in observed mode",
+                ));
+            }
+            Err(err) => return Err(err),
+        };
         budget_guard.spend(
             BudgetCategory::Analysis,
             budget_plan.estimated.analysis_units,
@@ -207,12 +232,11 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         )?;
 
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
-        let ingest_cleaning_notes = collect_ingest_cleaning_notes(&ga4_events)?;
+        let ingest_audit = collect_ingest_cleaning_notes(&ga4_events, &wix_orders)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
         let reconciliation_policy = ReconciliationPolicyV1::default();
         let connector_id = self.connector.capabilities().connector_id;
-        let provenance =
-            build_mock_provenance(&connector_id, seed, ingest_cleaning_notes.len() as u32);
+        let provenance = build_mock_provenance(&connector_id, seed, &ingest_audit.note_counts);
         let (observed_units_by_source, granularity_by_source, provided_observation_sources) =
             resolve_source_window_inputs(&request, start, budget_plan.effective_end)?;
         let cross_source_checks = build_cross_source_checks(&report, seed, &reconciliation_policy);
@@ -268,7 +292,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             inferred_guidance,
             uncertainty_notes,
             provenance,
-            ingest_cleaning_notes,
+            ingest_cleaning_notes: ingest_audit.notes,
             validation: super::contracts::AnalyticsValidationReportV1 {
                 is_valid: false,
                 checks: Vec::new(),
@@ -633,7 +657,7 @@ fn build_evidence_and_guidance(
 fn build_mock_provenance(
     connector_id: &str,
     seed: u64,
-    cleaning_note_count: u32,
+    cleaning_note_count_by_source: &BTreeMap<String, u32>,
 ) -> Vec<SourceProvenance> {
     // Keep provenance byte-stable for replay while still simulating source-specific lag.
     let ga4_freshness = 30 + ((seed % 40) as u32);
@@ -648,7 +672,9 @@ fn build_mock_provenance(
             freshness_minutes: ads_freshness,
             validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
             rejected_rows_count: 0,
-            cleaning_note_count: 0,
+            cleaning_note_count: *cleaning_note_count_by_source
+                .get("google_ads")
+                .unwrap_or(&0),
         },
         SourceProvenance {
             connector_id: connector_id.to_string(),
@@ -658,7 +684,7 @@ fn build_mock_provenance(
             freshness_minutes: ga4_freshness,
             validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
             rejected_rows_count: 0,
-            cleaning_note_count,
+            cleaning_note_count: *cleaning_note_count_by_source.get("ga4").unwrap_or(&0),
         },
         SourceProvenance {
             connector_id: connector_id.to_string(),
@@ -668,7 +694,9 @@ fn build_mock_provenance(
             freshness_minutes: wix_freshness,
             validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
             rejected_rows_count: 0,
-            cleaning_note_count: 0,
+            cleaning_note_count: *cleaning_note_count_by_source
+                .get("wix_storefront")
+                .unwrap_or(&0),
         },
     ]
 }
@@ -1103,9 +1131,11 @@ fn build_quality_controls(
 fn build_data_quality_summary(
     quality_controls: &AnalyticsQualityControlsV1,
 ) -> DataQualitySummaryV1 {
-    let completeness_ratio = pass_ratio(&quality_controls.schema_drift_checks);
+    let completeness_ratio =
+        pass_ratio_filtered(&quality_controls.freshness_sla_checks, "completeness_sla_");
     let identity_join_coverage_ratio = pass_ratio(&quality_controls.identity_resolution_checks);
-    let freshness_pass_ratio = pass_ratio(&quality_controls.freshness_sla_checks);
+    let freshness_pass_ratio =
+        pass_ratio_filtered(&quality_controls.freshness_sla_checks, "freshness_sla_");
     let reconciliation_pass_ratio = quality_controls
         .identity_resolution_checks
         .iter()
@@ -1201,6 +1231,24 @@ fn pass_ratio(checks: &[QualityCheckV1]) -> f64 {
     round4((passed / checks.len() as f64).clamp(0.0, 1.0))
 }
 
+fn pass_ratio_filtered(checks: &[QualityCheckV1], code_prefix: &str) -> f64 {
+    let mut total = 0usize;
+    let mut passed = 0usize;
+    for check in checks
+        .iter()
+        .filter(|check| check.code.starts_with(code_prefix))
+    {
+        total += 1;
+        if check.passed {
+            passed += 1;
+        }
+    }
+    if total == 0 {
+        return 1.0;
+    }
+    round4((passed as f64 / total as f64).clamp(0.0, 1.0))
+}
+
 fn build_operator_summary(
     report: &AnalyticsReport,
     evidence: &[EvidenceItem],
@@ -1237,10 +1285,18 @@ fn build_operator_summary(
     }
 }
 
+struct IngestNormalizationAudit {
+    notes: Vec<IngestCleaningNoteV1>,
+    note_counts: BTreeMap<String, u32>,
+}
+
 fn collect_ingest_cleaning_notes(
     ga4_events: &[Ga4EventRawV1],
-) -> Result<Vec<IngestCleaningNoteV1>, AnalyticsError> {
+    wix_orders: &[WixOrderRawV1],
+) -> Result<IngestNormalizationAudit, AnalyticsError> {
     let mut notes = Vec::new();
+    let mut note_counts = BTreeMap::new();
+
     for event in ga4_events {
         let raw_json = serde_json::to_string(event).map_err(|err| {
             AnalyticsError::internal(
@@ -1256,9 +1312,34 @@ fn collect_ingest_cleaning_notes(
                 None,
             )
         })?;
+        increment_source_count(&mut note_counts, "ga4", parsed.notes.len() as u32);
         notes.extend(map_ingest_notes("ga4", &parsed.notes));
     }
-    Ok(notes)
+
+    for order in wix_orders {
+        let raw_json = serde_json::to_string(order).map_err(|err| {
+            AnalyticsError::internal(
+                "ingest_serialization_failed",
+                format!("failed to serialize Wix raw order: {err}"),
+            )
+        })?;
+        let parsed = parse_wix_order(&raw_json).map_err(|err| {
+            AnalyticsError::new(
+                "ingest_validation_failed",
+                format!("failed to parse/normalize wix order: {}", err.reason),
+                vec![err.field],
+                None,
+            )
+        })?;
+        increment_source_count(
+            &mut note_counts,
+            "wix_storefront",
+            parsed.notes.len() as u32,
+        );
+        notes.extend(map_ingest_notes("wix_storefront", &parsed.notes));
+    }
+
+    Ok(IngestNormalizationAudit { notes, note_counts })
 }
 
 fn map_ingest_notes(source_system: &str, notes: &[CleaningNote]) -> Vec<IngestCleaningNoteV1> {
@@ -1274,6 +1355,11 @@ fn map_ingest_notes(source_system: &str, notes: &[CleaningNote]) -> Vec<IngestCl
             message: note.message.clone(),
         })
         .collect()
+}
+
+fn increment_source_count(counts: &mut BTreeMap<String, u32>, source_system: &str, count: u32) {
+    let entry = counts.entry(source_system.to_string()).or_insert(0);
+    *entry = entry.saturating_add(count);
 }
 
 #[cfg(test)]
@@ -1423,6 +1509,96 @@ mod tests {
             .await
             .expect_err("artifact should fail closed when completeness SLAs are unmet");
         assert_eq!(err.code, "artifact_invariant_violation");
+    }
+
+    #[test]
+    fn data_quality_summary_uses_completeness_checks_not_schema_checks() {
+        let controls = AnalyticsQualityControlsV1 {
+            schema_drift_checks: vec![QualityCheckV1 {
+                code: "schema_ok".to_string(),
+                passed: true,
+                severity: "high".to_string(),
+                observed: "ok".to_string(),
+                expected: "ok".to_string(),
+            }],
+            identity_resolution_checks: vec![QualityCheckV1 {
+                code: "identity_campaign_rollup_reconciliation".to_string(),
+                passed: true,
+                severity: "high".to_string(),
+                observed: "ok".to_string(),
+                expected: "ok".to_string(),
+            }],
+            freshness_sla_checks: vec![
+                QualityCheckV1 {
+                    code: "freshness_sla_ga4".to_string(),
+                    passed: true,
+                    severity: "high".to_string(),
+                    observed: "ok".to_string(),
+                    expected: "ok".to_string(),
+                },
+                QualityCheckV1 {
+                    code: "completeness_sla_ga4".to_string(),
+                    passed: false,
+                    severity: "high".to_string(),
+                    observed: "missing".to_string(),
+                    expected: "ratio >= 0.98".to_string(),
+                },
+            ],
+            cross_source_checks: vec![QualityCheckV1 {
+                code: "cross_source_ok".to_string(),
+                passed: true,
+                severity: "high".to_string(),
+                observed: "ok".to_string(),
+                expected: "ok".to_string(),
+            }],
+            budget_checks: vec![QualityCheckV1 {
+                code: "budget_ok".to_string(),
+                passed: true,
+                severity: "high".to_string(),
+                observed: "ok".to_string(),
+                expected: "ok".to_string(),
+            }],
+            is_healthy: false,
+        };
+
+        let summary = build_data_quality_summary(&controls);
+        assert_eq!(summary.completeness_ratio, 0.0);
+        assert_eq!(summary.freshness_pass_ratio, 1.0);
+        assert_eq!(summary.reconciliation_pass_ratio, 1.0);
+        assert_eq!(summary.quality_score, 0.75);
+    }
+
+    #[test]
+    fn ingest_cleaning_audit_includes_wix_notes() {
+        let ga4 = vec![Ga4EventRawV1 {
+            event_name: " purchase ".to_string(),
+            event_timestamp_utc: "2026-02-01T12:00:00Z".to_string(),
+            user_pseudo_id: " user_1 ".to_string(),
+            session_id: Some("session-1".to_string()),
+            campaign: Some("spring_launch".to_string()),
+        }];
+        let wix = vec![WixOrderRawV1 {
+            order_id: " wix-1 ".to_string(),
+            placed_at_utc: "2026-02-01T18:00:00Z".to_string(),
+            gross_amount: "123.45".to_string(),
+            currency: " usd ".to_string(),
+        }];
+
+        let audit = collect_ingest_cleaning_notes(&ga4, &wix).expect("ingest audit");
+        assert!(!audit.notes.is_empty());
+        assert_eq!(audit.note_counts.get("ga4").copied().unwrap_or(0), 2);
+        assert_eq!(
+            audit
+                .note_counts
+                .get("wix_storefront")
+                .copied()
+                .unwrap_or(0),
+            2
+        );
+        assert!(audit
+            .notes
+            .iter()
+            .any(|note| note.source_system == "wix_storefront"));
     }
 
     struct FailingConnector;

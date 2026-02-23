@@ -35,11 +35,11 @@ fn _parse_css_from_html(
 
 // Internal asynchronous helper function
 async fn _get_all_css_impl(url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let base_url = Url::parse(url)?;
     println!("Analyzing CSS for {}...", url);
 
     let client = reqwest::Client::new();
     let response_text = client.get(url).send().await?.text().await?;
-    let base_url = Url::parse(url)?;
 
     let (mut combined_css, external_css_urls) = _parse_css_from_html(&response_text, &base_url)?;
 
@@ -96,7 +96,16 @@ impl BaseTool for CssAnalyzerTool {
             .as_str()
             .ok_or("URL is required for css_analyzer")?;
 
-        match _get_all_css_impl(url).await {
+        let result = if let Some(html_content) = input["html_content"].as_str() {
+            let base_url = Url::parse(url)?;
+            let (combined_css, _) = _parse_css_from_html(html_content, &base_url)?;
+            let css_content = combined_css.join("\n");
+            Ok(css_content)
+        } else {
+            _get_all_css_impl(url).await
+        };
+
+        match result {
             Ok(css_content) => Ok(serde_json::json!({
                 "status": "success",
                 "url": url,
@@ -115,17 +124,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_css_analyzer_tool_success() {
-        // Mock a simple HTTP server or use a known small, reliable page for a real integration test
-        // For a unit test, we might want to mock `reqwest::Client`
-        // For now, let's use a real URL for a quick test if connectivity is available
-        // Note: This makes the test an integration test rather than a pure unit test.
         let tool = CssAnalyzerTool::new();
-        let input = json!({"url": "https://example.com"});
+        let input = json!({
+            "url": "https://example.com",
+            "html_content": "<html><head><style>body { color: black; }</style></head><body></body></html>"
+        });
 
         let result = tool.run(input).await.unwrap();
 
         assert_eq!(result["status"], "success");
-        assert!(result["css_content"].as_str().unwrap().contains("body")); // Example.com has some basic CSS
+        assert!(result["css_content"].as_str().unwrap().contains("body"));
         assert!(result["length"].as_u64().unwrap() > 0);
     }
 

@@ -3,9 +3,10 @@ use app_core::subsystems::campaign_orchestration::runtime::{
     run_prioritized_text_workflow_v1, TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    build_historical_analysis, evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1,
-    AnalyticsRunStore, DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService,
-    MockAnalyticsRequestV1, PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
+    analytics_connector_config_from_env, build_historical_analysis,
+    evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1, AnalyticsRunStore,
+    DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1,
+    PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -374,7 +375,8 @@ impl JobManager {
             manager.emit_progress(&app_handle, &spawned_job_id);
 
             let connector = SimulatedAnalyticsConnectorV2::new();
-            let config = AnalyticsConnectorConfigV1::simulated_defaults();
+            let config = analytics_connector_config_from_env()
+                .unwrap_or_else(|_| AnalyticsConnectorConfigV1::simulated_defaults());
             let preflight = evaluate_analytics_connectors_preflight(&connector, &config).await;
             if !preflight.ok {
                 manager.update_failed(

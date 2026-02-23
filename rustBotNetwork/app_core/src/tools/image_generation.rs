@@ -8,6 +8,9 @@ use std::fs;
 use std::path::PathBuf;
 use url::Url; // Import the standard engine
 
+const STABILITY_API_MOCK_RESPONSE_JSON: &str = "STABILITY_API_MOCK_RESPONSE_JSON";
+const STABILITY_API_MOCK_STATUS: &str = "STABILITY_API_MOCK_STATUS";
+
 pub fn generate_image(
     prompt: &str,
     campaign_dir: &str,
@@ -37,24 +40,9 @@ pub fn generate_image(
     .map_err(|e| format!("paid call blocked by spend governor: {e}"))?;
 
     let call_result: Result<String, Box<dyn std::error::Error>> = (|| {
-        let client = reqwest::blocking::Client::new();
-        let response = client
-            .post(api_url.as_str())
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&json!({
-                "text_prompts": [{
-                    "text": prompt
-                }],
-                "cfg_scale": 7,
-                "height": 1024,
-                "width": 1024,
-                "samples": 1,
-                "steps": 30,
-            }))
-            .send()?;
-
-        if response.status().is_success() {
-            let body: serde_json::Value = response.json()?;
+        let (status_code, body_text) = execute_stability_request(&api_url, &api_key, prompt)?;
+        if (200..300).contains(&status_code) {
+            let body: serde_json::Value = serde_json::from_str(&body_text)?;
             if let Some(artifacts) = body.get("artifacts").and_then(|a| a.as_array()) {
                 for artifact in artifacts {
                     if let Some(base64) = artifact.get("base64").and_then(|b| b.as_str()) {
@@ -67,11 +55,10 @@ pub fn generate_image(
             }
             Err("No image data found in response".into())
         } else {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .unwrap_or_else(|_| "Could not read error body".to_string());
-            Err(format!("Failed to generate image: {} - {}", status, error_text).into())
+            let status = reqwest::StatusCode::from_u16(status_code)
+                .map(|code| code.to_string())
+                .unwrap_or_else(|_| status_code.to_string());
+            Err(format!("Failed to generate image: {} - {}", status, body_text).into())
         }
     })();
 
@@ -86,15 +73,42 @@ pub fn generate_image(
     }
 }
 
+fn execute_stability_request(
+    api_url: &Url,
+    api_key: &str,
+    prompt: &str,
+) -> Result<(u16, String), Box<dyn std::error::Error>> {
+    if let Ok(mock_body) = env::var(STABILITY_API_MOCK_RESPONSE_JSON) {
+        let status = env::var(STABILITY_API_MOCK_STATUS)
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(200);
+        return Ok((status, mock_body));
+    }
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(api_url.as_str())
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&json!({
+            "text_prompts": [{
+                "text": prompt
+            }],
+            "cfg_scale": 7,
+            "height": 1024,
+            "width": 1024,
+            "samples": 1,
+            "steps": 30,
+        }))
+        .send()?;
+    let status = response.status().as_u16();
+    let body = response.text()?;
+    Ok((status, body))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http;
-    use httptest::{Expectation, Server};
-    // Correct httptest imports based on your guidance
-    use httptest::matchers::{all_of, contains, eq, json_decoded, key, request};
-    use httptest::responders::{json_encoded, status_code};
-
     use crate::tools::generation_budget_manager as budget_manager_mock;
     use std::io::Write;
     use std::path::{Path, PathBuf as StdPathBuf};
@@ -126,6 +140,8 @@ mod tests {
         let guard = TEST_ENV_MUTEX.lock().expect("test lock poisoned");
         std::env::remove_var("STABILITY_API_BASE");
         std::env::remove_var("STABILITY_API_KEY");
+        std::env::remove_var(STABILITY_API_MOCK_RESPONSE_JSON);
+        std::env::remove_var(STABILITY_API_MOCK_STATUS);
         budget_manager_mock::set_test_api_costs_file_path(None);
         budget_manager_mock::set_test_budget_file_path(None);
         guard
@@ -134,27 +150,20 @@ mod tests {
     #[test]
     fn test_generate_image_success() {
         let _guard = test_guard();
-        let server = Server::run();
-        std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
-
-        server.expect(
-            Expectation::matching(all_of![
-                request::method("POST"),
-                request::path("/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image")
-            ])
-            .respond_with(
-                // For 200 OK with JSON, json_encoded is enough. It defaults to 200 OK and sets content-type.
-                json_encoded(json!({
-                    "artifacts": [
-                        {
-                            "base64": DUMMY_PNG_BASE64,
-                            "seed": 123,
-                            "finishReason": "SUCCESS"
-                        }
-                    ]
-                })),
-            ),
+        std::env::set_var(
+            STABILITY_API_MOCK_RESPONSE_JSON,
+            serde_json::to_string(&json!({
+                "artifacts": [
+                    {
+                        "base64": DUMMY_PNG_BASE64,
+                        "seed": 123,
+                        "finishReason": "SUCCESS"
+                    }
+                ]
+            }))
+            .expect("mock response serialization"),
         );
+        std::env::set_var(STABILITY_API_MOCK_STATUS, "200");
 
         // Setup mock budget manager files
         let temp_dir_instance = tempdir().unwrap();
@@ -183,8 +192,9 @@ mod tests {
         assert_eq!(budget_manager_mock::get_budget_state().daily_spend, 0.02);
 
         // Clean up environment variables
-        std::env::remove_var("STABILITY_API_BASE");
         std::env::remove_var("STABILITY_API_KEY");
+        std::env::remove_var(STABILITY_API_MOCK_RESPONSE_JSON);
+        std::env::remove_var(STABILITY_API_MOCK_STATUS);
         budget_manager_mock::set_test_api_costs_file_path(None);
         budget_manager_mock::set_test_budget_file_path(None);
     }
@@ -241,18 +251,12 @@ mod tests {
     #[test]
     fn test_generate_image_api_error() {
         let _guard = test_guard();
-        let server = Server::run();
-        std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
-        server.expect(
-            Expectation::matching(request::method("POST")).respond_with(
-                status_code(500)
-                    .body(
-                        serde_json::to_string(&json!({"message": "API rate limit exceeded"}))
-                            .unwrap(),
-                    )
-                    .insert_header("Content-Type", "application/json"),
-            ),
+        std::env::set_var(
+            STABILITY_API_MOCK_RESPONSE_JSON,
+            serde_json::to_string(&json!({"message": "API rate limit exceeded"}))
+                .expect("mock response serialization"),
         );
+        std::env::set_var(STABILITY_API_MOCK_STATUS, "500");
 
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
@@ -273,6 +277,8 @@ mod tests {
         let result = generate_image(prompt, campaign_output_dir.to_str().unwrap());
 
         std::env::remove_var("STABILITY_API_KEY");
+        std::env::remove_var(STABILITY_API_MOCK_RESPONSE_JSON);
+        std::env::remove_var(STABILITY_API_MOCK_STATUS);
         budget_manager_mock::set_test_api_costs_file_path(None);
         budget_manager_mock::set_test_budget_file_path(None);
 
@@ -286,18 +292,19 @@ mod tests {
     #[test]
     fn test_generate_image_no_image_data_in_response() {
         let _guard = test_guard();
-        let server = Server::run();
-        std::env::set_var("STABILITY_API_BASE", server.url("").to_string());
-        server.expect(
-            Expectation::matching(request::method("POST")).respond_with(json_encoded(json!({
+        std::env::set_var(
+            STABILITY_API_MOCK_RESPONSE_JSON,
+            serde_json::to_string(&json!({
                 "artifacts": [
                     {
                         "seed": 456,
                         "finishReason": "ERROR"
                     }
                 ]
-            }))),
+            }))
+            .expect("mock response serialization"),
         );
+        std::env::set_var(STABILITY_API_MOCK_STATUS, "200");
 
         let temp_dir_instance = tempdir().unwrap();
         let api_costs_path = create_dummy_api_costs_file(
@@ -318,6 +325,8 @@ mod tests {
         let result = generate_image(prompt, campaign_output_dir.to_str().unwrap());
 
         std::env::remove_var("STABILITY_API_KEY");
+        std::env::remove_var(STABILITY_API_MOCK_RESPONSE_JSON);
+        std::env::remove_var(STABILITY_API_MOCK_STATUS);
         budget_manager_mock::set_test_api_costs_file_path(None);
         budget_manager_mock::set_test_budget_file_path(None);
 

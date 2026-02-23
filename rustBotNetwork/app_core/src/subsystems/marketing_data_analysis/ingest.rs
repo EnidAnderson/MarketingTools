@@ -175,6 +175,26 @@ pub fn parse_ga4_event(raw_json: &str) -> Result<Cleaned<Ga4EventV1>, IngestErro
     Cleaned::<Ga4EventV1>::try_from(raw)
 }
 
+pub fn parse_google_ads_row(raw_json: &str) -> Result<Cleaned<GoogleAdsRowV1>, IngestError> {
+    let raw: GoogleAdsRowRawV1 = serde_json::from_str(raw_json).map_err(|err| IngestError {
+        code: "ads_parse_error".to_string(),
+        field: "payload".to_string(),
+        reason: err.to_string(),
+        sample: Some(raw_json.chars().take(96).collect()),
+    })?;
+    Cleaned::<GoogleAdsRowV1>::try_from(raw)
+}
+
+pub fn parse_wix_order(raw_json: &str) -> Result<Cleaned<WixOrderV1>, IngestError> {
+    let raw: WixOrderRawV1 = serde_json::from_str(raw_json).map_err(|err| IngestError {
+        code: "wix_parse_error".to_string(),
+        field: "payload".to_string(),
+        reason: err.to_string(),
+        sample: Some(raw_json.chars().take(96).collect()),
+    })?;
+    Cleaned::<WixOrderV1>::try_from(raw)
+}
+
 impl TryFrom<Ga4EventRawV1> for Cleaned<Ga4EventV1> {
     type Error = IngestError;
 
@@ -484,6 +504,18 @@ mod tests {
     }
 
     #[test]
+    fn wix_parser_rejects_bad_decimal() {
+        let raw = WixOrderRawV1 {
+            order_id: "ord-1".to_string(),
+            placed_at_utc: "2026-02-01T12:00:00Z".to_string(),
+            gross_amount: "not-a-decimal".to_string(),
+            currency: "usd".to_string(),
+        };
+        let parsed = Cleaned::<WixOrderV1>::try_from(raw);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
     fn join_coverage_stays_in_range_and_is_monotone_when_removing_unmatched() {
         let baseline = join_coverage_ratio(100, 75);
         let no_unmatched_removed = join_coverage_ratio(90, 75);
@@ -538,6 +570,32 @@ mod tests {
         #[test]
         fn hostile_ga4_json_never_panics(input in ".*") {
             let result = catch_unwind(AssertUnwindSafe(|| parse_ga4_event(&input)));
+            prop_assert!(result.is_ok());
+            if let Ok(Err(err)) = result {
+                prop_assert!(!err.code.trim().is_empty());
+                prop_assert!(!err.field.trim().is_empty());
+                if let Some(sample) = err.sample {
+                    prop_assert!(sample.len() <= 96);
+                }
+            }
+        }
+
+        #[test]
+        fn hostile_ads_json_never_panics(input in ".*") {
+            let result = catch_unwind(AssertUnwindSafe(|| parse_google_ads_row(&input)));
+            prop_assert!(result.is_ok());
+            if let Ok(Err(err)) = result {
+                prop_assert!(!err.code.trim().is_empty());
+                prop_assert!(!err.field.trim().is_empty());
+                if let Some(sample) = err.sample {
+                    prop_assert!(sample.len() <= 96);
+                }
+            }
+        }
+
+        #[test]
+        fn hostile_wix_json_never_panics(input in ".*") {
+            let result = catch_unwind(AssertUnwindSafe(|| parse_wix_order(&input)));
             prop_assert!(result.is_ok());
             if let Ok(Err(err)) = result {
                 prop_assert!(!err.code.trim().is_empty());
