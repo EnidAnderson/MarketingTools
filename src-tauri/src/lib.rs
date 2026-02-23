@@ -4,8 +4,9 @@ use app_core::subsystems::campaign_orchestration::{
     prioritized_text_graph_templates_v1, runtime::TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    build_executive_dashboard_snapshot, AnalyticsRunStore, MockAnalyticsRequestV1,
-    SnapshotBuildOptions,
+    build_executive_dashboard_snapshot, evaluate_analytics_connectors_preflight,
+    AnalyticsConnectorConfigV1, AnalyticsRunStore, MockAnalyticsRequestV1,
+    SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -501,6 +502,20 @@ fn start_mock_analytics_job(
 }
 
 /// # NDOC
+/// component: `tauri_commands::validate_analytics_connectors_preflight`
+/// purpose: Validate analytics connector config and credential readiness without starting a job.
+#[tauri::command]
+async fn validate_analytics_connectors_preflight(
+    config: Option<AnalyticsConnectorConfigV1>,
+) -> Result<Value, String> {
+    let connector = SimulatedAnalyticsConnectorV2::new();
+    let effective_config = config.unwrap_or_else(AnalyticsConnectorConfigV1::simulated_defaults);
+    let preflight = evaluate_analytics_connectors_preflight(&connector, &effective_config).await;
+    serde_json::to_value(preflight)
+        .map_err(|err| format!("failed to serialize analytics connector preflight: {err}"))
+}
+
+/// # NDOC
 /// component: `tauri_commands::start_mock_text_workflow_job`
 /// purpose: Start async deterministic text workflow run and return job id for polling.
 #[tauri::command]
@@ -558,6 +573,7 @@ fn get_analysis_workflows() -> Result<Value, String> {
             "title": "Mock Analytics Pipeline",
             "entrypoint": "start_mock_analytics_job",
             "history_entrypoint": "get_mock_analytics_run_history",
+            "preflight_entrypoint": "validate_analytics_connectors_preflight",
             "stages": [
                 "validating_input",
                 "generating_data",
@@ -687,6 +703,7 @@ pub fn run() {
             get_tool_job,
             cancel_tool_job,
             start_mock_analytics_job,
+            validate_analytics_connectors_preflight,
             start_mock_text_workflow_job,
             get_mock_analytics_run_history,
             get_analysis_workflows,
@@ -697,4 +714,45 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn analytics_preflight_command_returns_schema() {
+        let value = validate_analytics_connectors_preflight(None)
+            .await
+            .expect("preflight command should serialize");
+        assert_eq!(
+            value
+                .get("schema_version")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+            "analytics_connector_preflight.v1"
+        );
+    }
+
+    #[tokio::test]
+    async fn analytics_preflight_command_rejects_invalid_config() {
+        let mut config = AnalyticsConnectorConfigV1::simulated_defaults();
+        config.ga4.property_id = "bad".to_string();
+
+        let value = validate_analytics_connectors_preflight(Some(config))
+            .await
+            .expect("preflight command should serialize");
+        assert_eq!(
+            value
+                .get("config_valid")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+            false
+        );
+        assert!(value
+            .get("blocking_reasons")
+            .and_then(Value::as_array)
+            .map(|items| !items.is_empty())
+            .unwrap_or(false));
+    }
 }

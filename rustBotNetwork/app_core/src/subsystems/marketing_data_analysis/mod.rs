@@ -13,6 +13,7 @@ pub mod executive_dashboard;
 pub mod ingest;
 pub mod longitudinal;
 pub mod persistence;
+pub mod preflight;
 pub mod service;
 pub mod validators;
 
@@ -51,4 +52,8 @@ pub use ingest::{
 };
 pub use longitudinal::build_historical_analysis;
 pub use persistence::AnalyticsRunStore;
+pub use preflight::{
+    evaluate_analytics_connectors_preflight, AnalyticsConnectorPreflightResultV1,
+    AnalyticsPreflightSourceStatusV1, ANALYTICS_PREFLIGHT_SCHEMA_VERSION_V1,
+};
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};
