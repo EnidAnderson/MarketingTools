@@ -576,6 +576,7 @@ fn get_analysis_workflows() -> Result<Value, String> {
             "preflight_entrypoint": "validate_analytics_connectors_preflight",
             "stages": [
                 "validating_input",
+                "preflight_connectors",
                 "generating_data",
                 "assembling_report",
                 "validating_invariants",

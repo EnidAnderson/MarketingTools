@@ -3,8 +3,9 @@ use app_core::subsystems::campaign_orchestration::runtime::{
     run_prioritized_text_workflow_v1, TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    build_historical_analysis, AnalyticsRunStore, DefaultMarketAnalysisService, GuidanceItem,
-    MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    build_historical_analysis, evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1,
+    AnalyticsRunStore, DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService,
+    MockAnalyticsRequestV1, PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -316,7 +317,7 @@ impl JobManager {
     /// component: `tauri_runtime::jobs::start_mock_analytics_job`
     /// purpose: Start deterministic mock analytics run as a managed async job.
     /// invariants:
-    ///   - Uses stage names: validating_input -> generating_data -> assembling_report -> validating_invariants -> completed.
+    ///   - Uses stage names: validating_input -> preflight_connectors -> generating_data -> assembling_report -> validating_invariants -> completed.
     pub fn start_mock_analytics_job(
         &self,
         app_handle: &AppHandle,
@@ -360,6 +361,35 @@ impl JobManager {
 
             if manager.is_canceled(&spawned_job_id) {
                 manager.update_canceled(&spawned_job_id, "Job canceled before generation");
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+
+            manager.update_stage(
+                &spawned_job_id,
+                "preflight_connectors",
+                28,
+                "Validating analytics connector readiness",
+            );
+            manager.emit_progress(&app_handle, &spawned_job_id);
+
+            let connector = SimulatedAnalyticsConnectorV2::new();
+            let config = AnalyticsConnectorConfigV1::simulated_defaults();
+            let preflight = evaluate_analytics_connectors_preflight(&connector, &config).await;
+            if !preflight.ok {
+                manager.update_failed(
+                    &spawned_job_id,
+                    serde_json::json!({
+                        "code": "analytics_preflight_blocked",
+                        "category": "configuration",
+                        "source": "connector",
+                        "message": "analytics connector preflight failed",
+                        "retryable": false,
+                        "field_paths": [],
+                        "trace_id": "",
+                        "context": preflight
+                    }),
+                );
                 manager.emit_failed(&app_handle, &spawned_job_id);
                 return;
             }
