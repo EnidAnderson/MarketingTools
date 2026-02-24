@@ -14,8 +14,8 @@ use super::contracts::{
     MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::ingest::{
-    parse_ga4_event, parse_wix_order, window_completeness, CleaningNote, Ga4EventRawV1,
-    TimeGranularity, WixOrderRawV1,
+    parse_ga4_event, parse_google_ads_row, parse_wix_order, window_completeness, CleaningNote,
+    Ga4EventRawV1, GoogleAdsRowRawV1, TimeGranularity, WixOrderRawV1,
 };
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
@@ -231,8 +231,10 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             "mock_analytics.total_cost",
         )?;
 
+        let google_ads_raw_rows = google_ads_rows_to_raw_v1(&rows)?;
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
-        let ingest_audit = collect_ingest_cleaning_notes(&ga4_events, &wix_orders)?;
+        let ingest_audit =
+            collect_ingest_cleaning_notes(&ga4_events, &google_ads_raw_rows, &wix_orders)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
         let reconciliation_policy = ReconciliationPolicyV1::default();
         let connector_id = self.connector.capabilities().connector_id;
@@ -520,6 +522,60 @@ fn rows_to_report(
         ad_group_data,
         keyword_data,
     }
+}
+
+fn google_ads_rows_to_raw_v1(
+    rows: &[GoogleAdsRow],
+) -> Result<Vec<GoogleAdsRowRawV1>, AnalyticsError> {
+    rows.iter()
+        .filter_map(|row| {
+            row.metrics.as_ref().map(|metrics| {
+                let campaign_id = row
+                    .campaign
+                    .as_ref()
+                    .map(|item| item.id.clone())
+                    .unwrap_or_default();
+                let ad_group_id = row
+                    .adGroup
+                    .as_ref()
+                    .map(|item| item.id.clone())
+                    .unwrap_or_default();
+                let date = row
+                    .segments
+                    .as_ref()
+                    .and_then(|segments| segments.date.clone())
+                    .unwrap_or_default();
+                let conversion_value = metrics.conversionsValue;
+                let conversions_micros_float = conversion_value * 1_000_000.0;
+                if !conversions_micros_float.is_finite() || conversions_micros_float < 0.0 {
+                    return Err(AnalyticsError::new(
+                        "ads_conversion_value_non_finite",
+                        "google ads conversion value must be finite and non-negative",
+                        vec!["rows[].metrics.conversionsValue".to_string()],
+                        None,
+                    ));
+                }
+                if conversions_micros_float > u64::MAX as f64 {
+                    return Err(AnalyticsError::new(
+                        "ads_conversion_value_overflow",
+                        "google ads conversion value exceeds representable micros range",
+                        vec!["rows[].metrics.conversionsValue".to_string()],
+                        None,
+                    ));
+                }
+                Ok(GoogleAdsRowRawV1 {
+                    campaign_id,
+                    ad_group_id,
+                    date,
+                    impressions: metrics.impressions,
+                    clicks: metrics.clicks,
+                    cost_micros: metrics.costMicros,
+                    conversions_micros: conversions_micros_float.round() as u64,
+                    currency: "USD".to_string(),
+                })
+            })
+        })
+        .collect()
 }
 
 fn from_metrics_data(data: &MetricsData) -> ReportMetrics {
@@ -1292,6 +1348,7 @@ struct IngestNormalizationAudit {
 
 fn collect_ingest_cleaning_notes(
     ga4_events: &[Ga4EventRawV1],
+    google_ads_rows: &[GoogleAdsRowRawV1],
     wix_orders: &[WixOrderRawV1],
 ) -> Result<IngestNormalizationAudit, AnalyticsError> {
     let mut notes = Vec::new();
@@ -1314,6 +1371,25 @@ fn collect_ingest_cleaning_notes(
         })?;
         increment_source_count(&mut note_counts, "ga4", parsed.notes.len() as u32);
         notes.extend(map_ingest_notes("ga4", &parsed.notes));
+    }
+
+    for row in google_ads_rows {
+        let raw_json = serde_json::to_string(row).map_err(|err| {
+            AnalyticsError::internal(
+                "ingest_serialization_failed",
+                format!("failed to serialize Google Ads raw row: {err}"),
+            )
+        })?;
+        let parsed = parse_google_ads_row(&raw_json).map_err(|err| {
+            AnalyticsError::new(
+                "ingest_validation_failed",
+                format!("failed to parse/normalize google ads row: {}", err.reason),
+                vec![err.field],
+                None,
+            )
+        })?;
+        increment_source_count(&mut note_counts, "google_ads", parsed.notes.len() as u32);
+        notes.extend(map_ingest_notes("google_ads", &parsed.notes));
     }
 
     for order in wix_orders {
@@ -1569,13 +1645,23 @@ mod tests {
     }
 
     #[test]
-    fn ingest_cleaning_audit_includes_wix_notes() {
+    fn ingest_cleaning_audit_includes_ads_and_wix_notes() {
         let ga4 = vec![Ga4EventRawV1 {
             event_name: " purchase ".to_string(),
             event_timestamp_utc: "2026-02-01T12:00:00Z".to_string(),
             user_pseudo_id: " user_1 ".to_string(),
             session_id: Some("session-1".to_string()),
             campaign: Some("spring_launch".to_string()),
+        }];
+        let ads = vec![GoogleAdsRowRawV1 {
+            campaign_id: " camp-1 ".to_string(),
+            ad_group_id: " adg-1 ".to_string(),
+            date: "2026-02-01".to_string(),
+            impressions: 100,
+            clicks: 20,
+            cost_micros: 500_000,
+            conversions_micros: 900_000,
+            currency: " usd ".to_string(),
         }];
         let wix = vec![WixOrderRawV1 {
             order_id: " wix-1 ".to_string(),
@@ -1584,9 +1670,10 @@ mod tests {
             currency: " usd ".to_string(),
         }];
 
-        let audit = collect_ingest_cleaning_notes(&ga4, &wix).expect("ingest audit");
+        let audit = collect_ingest_cleaning_notes(&ga4, &ads, &wix).expect("ingest audit");
         assert!(!audit.notes.is_empty());
         assert_eq!(audit.note_counts.get("ga4").copied().unwrap_or(0), 2);
+        assert_eq!(audit.note_counts.get("google_ads").copied().unwrap_or(0), 3);
         assert_eq!(
             audit
                 .note_counts
@@ -1599,6 +1686,47 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.source_system == "wix_storefront"));
+        assert!(audit
+            .notes
+            .iter()
+            .any(|note| note.source_system == "google_ads"));
+    }
+
+    #[test]
+    fn google_ads_raw_conversion_rejects_non_finite_values() {
+        let rows = vec![GoogleAdsRow {
+            campaign: Some(CampaignResource {
+                resourceName: "customers/1/campaigns/1".to_string(),
+                id: "1".to_string(),
+                name: "c".to_string(),
+                status: "ENABLED".to_string(),
+            }),
+            adGroup: Some(AdGroupResource {
+                resourceName: "customers/1/adGroups/1".to_string(),
+                id: "1".to_string(),
+                name: "a".to_string(),
+                status: "ENABLED".to_string(),
+                campaignResourceName: "customers/1/campaigns/1".to_string(),
+            }),
+            keywordView: None,
+            adGroupCriterion: None,
+            metrics: Some(MetricsData {
+                impressions: 100,
+                clicks: 10,
+                costMicros: 100_000,
+                conversions: 1.0,
+                conversionsValue: f64::NAN,
+                ctr: 10.0,
+                averageCpc: 1.0,
+            }),
+            segments: Some(crate::data_models::analytics::SegmentsData {
+                date: Some("2026-02-01".to_string()),
+                device: Some("DESKTOP".to_string()),
+            }),
+        }];
+
+        let err = google_ads_rows_to_raw_v1(&rows).expect_err("non-finite values must fail");
+        assert_eq!(err.code, "ads_conversion_value_non_finite");
     }
 
     struct FailingConnector;
