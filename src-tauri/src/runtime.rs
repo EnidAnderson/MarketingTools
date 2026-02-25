@@ -3,10 +3,12 @@ use app_core::subsystems::campaign_orchestration::runtime::{
     run_prioritized_text_workflow_v1, TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    analytics_connector_config_from_env, build_historical_analysis,
-    evaluate_analytics_connectors_preflight, AnalyticsConnectorModeV1, AnalyticsRunStore,
-    DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1,
-    PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
+    analytics_connector_config_fingerprint_v1, analytics_connector_config_from_env,
+    build_historical_analysis, evaluate_analytics_connectors_preflight, AnalyticsConnectorModeV1,
+    AnalyticsRunStore, ConnectorConfigAttestationV1, DefaultMarketAnalysisService, GuidanceItem,
+    MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    SimulatedAnalyticsConnectorV2, CONNECTOR_CONFIG_FINGERPRINT_ALG_V1,
+    CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -394,6 +396,27 @@ impl JobManager {
                     return;
                 }
             };
+            let config_fingerprint = match analytics_connector_config_fingerprint_v1(&config) {
+                Ok(value) => value,
+                Err(err) => {
+                    manager.update_failed(
+                        &spawned_job_id,
+                        serde_json::json!({
+                            "code": "analytics_connector_fingerprint_failed",
+                            "category": "configuration",
+                            "source": "connector_config",
+                            "message": err.message,
+                            "retryable": false,
+                            "field_paths": err.field_paths,
+                            "trace_id": "",
+                            "context": err.context
+                        }),
+                    );
+                    manager.emit_failed(&app_handle, &spawned_job_id);
+                    return;
+                }
+            };
+            let mode_label = connector_mode_label(&config.mode).to_string();
             if let Err(message) =
                 enforce_production_profile_connector_mode(&request.profile_id, &config.mode)
             {
@@ -409,7 +432,8 @@ impl JobManager {
                         "trace_id": "",
                         "context": {
                             "profile_id": request.profile_id,
-                            "mode": connector_mode_label(&config.mode)
+                            "mode": mode_label.clone(),
+                            "config_fingerprint": config_fingerprint.clone()
                         }
                     }),
                 );
@@ -484,6 +508,18 @@ impl JobManager {
             };
             match service.run_mock_analysis(request).await {
                 Ok(mut artifact) => {
+                    artifact.metadata.connector_attestation = ConnectorConfigAttestationV1 {
+                        connector_mode_effective: mode_label.clone(),
+                        connector_config_fingerprint: config_fingerprint.clone(),
+                        fingerprint_alg: CONNECTOR_CONFIG_FINGERPRINT_ALG_V1.to_string(),
+                        fingerprint_input_schema: CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1
+                            .to_string(),
+                        fingerprint_created_at: None,
+                        fingerprint_salt_id: None,
+                        fingerprint_signature: None,
+                        fingerprint_key_id: None,
+                    };
+
                     manager.update_stage(
                         &spawned_job_id,
                         "validating_invariants",

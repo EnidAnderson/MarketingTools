@@ -145,6 +145,26 @@ pub struct AnalyticsRunMetadataV1 {
     pub schema_version: String,
     pub date_span_days: u32,
     pub requested_at_utc: Option<String>,
+    #[serde(default)]
+    pub connector_attestation: ConnectorConfigAttestationV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Cryptographic connector-config attestation for replay and runtime audits.
+/// invariants:
+///   - `connector_config_fingerprint` excludes secret values.
+///   - `fingerprint_alg` + `fingerprint_input_schema` together define a reproducible hash contract.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ConnectorConfigAttestationV1 {
+    pub connector_mode_effective: String,
+    pub connector_config_fingerprint: String,
+    pub fingerprint_alg: String,
+    pub fingerprint_input_schema: String,
+    pub fingerprint_created_at: Option<String>,
+    pub fingerprint_salt_id: Option<String>,
+    pub fingerprint_signature: Option<String>,
+    pub fingerprint_key_id: Option<String>,
 }
 
 /// # NDOC

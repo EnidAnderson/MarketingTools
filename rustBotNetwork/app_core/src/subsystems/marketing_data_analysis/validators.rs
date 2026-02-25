@@ -375,6 +375,7 @@ mod tests {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 date_span_days: 2,
                 requested_at_utc: None,
+                connector_attestation: Default::default(),
             },
             report: AnalyticsReport::default(),
             observed_evidence: vec![EvidenceItem {

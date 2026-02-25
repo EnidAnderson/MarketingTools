@@ -35,6 +35,19 @@ impl AnalyticsRunStore {
     ) -> Result<PersistedAnalyticsRunV1, AnalyticsError> {
         ensure_parent_dir(&self.path)?;
         run.stored_at_utc = Utc::now().to_rfc3339();
+        if run
+            .metadata
+            .connector_attestation
+            .fingerprint_created_at
+            .is_none()
+        {
+            run.metadata.connector_attestation.fingerprint_created_at =
+                Some(run.stored_at_utc.clone());
+            run.artifact
+                .metadata
+                .connector_attestation
+                .fingerprint_created_at = Some(run.stored_at_utc.clone());
+        }
 
         let line = serde_json::to_string(&run).map_err(|err| {
             AnalyticsError::internal(
@@ -171,6 +184,7 @@ mod tests {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 date_span_days: 2,
                 requested_at_utc: None,
+                connector_attestation: Default::default(),
             },
             report: Default::default(),
             observed_evidence: Vec::new(),
@@ -213,5 +227,27 @@ mod tests {
         let p1_runs = store.list_recent(Some("p1"), 10).expect("list");
         assert_eq!(p1_runs.len(), 2);
         assert_eq!(p1_runs[0].request.profile_id, "p1");
+    }
+
+    #[test]
+    fn append_run_backfills_fingerprint_created_at() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("runs.jsonl");
+        let store = AnalyticsRunStore::new(path);
+        let saved = store.append_run(sample_run("r1", "p1")).expect("append");
+
+        assert!(saved
+            .metadata
+            .connector_attestation
+            .fingerprint_created_at
+            .is_some());
+        assert_eq!(
+            saved.metadata.connector_attestation.fingerprint_created_at,
+            saved
+                .artifact
+                .metadata
+                .connector_attestation
+                .fingerprint_created_at
+        );
     }
 }

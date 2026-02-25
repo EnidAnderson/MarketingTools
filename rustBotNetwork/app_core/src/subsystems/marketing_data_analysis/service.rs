@@ -283,6 +283,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
             date_span_days: ((budget_plan.effective_end - start).num_days() + 1) as u32,
             requested_at_utc: None,
+            connector_attestation: Default::default(),
         };
 
         let mut artifact = MockAnalyticsArtifactV1 {
@@ -1856,6 +1857,7 @@ mod tests {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 date_span_days: 2,
                 requested_at_utc: None,
+                connector_attestation: Default::default(),
             },
             report: AnalyticsReport::default(),
             observed_evidence: Vec::new(),

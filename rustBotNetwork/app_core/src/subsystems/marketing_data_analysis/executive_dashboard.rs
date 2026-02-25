@@ -752,6 +752,7 @@ mod tests {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 date_span_days: 7,
                 requested_at_utc: None,
+                connector_attestation: Default::default(),
             },
             report: Default::default(),
             observed_evidence: Vec::new(),

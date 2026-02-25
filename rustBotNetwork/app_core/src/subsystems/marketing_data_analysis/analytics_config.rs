@@ -3,6 +3,7 @@ use chrono_tz::Tz;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 static ENV_VAR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Z][A-Z0-9_]*$").expect("env var regex must compile"));
@@ -12,6 +13,9 @@ static GOOGLE_ADS_CUSTOMER_ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[0-9]{10}$").expect("google ads customer regex must compile"));
 static WIX_SITE_ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Za-z0-9_-]{4,128}$").expect("wix site regex must compile"));
+
+pub const CONNECTOR_CONFIG_FINGERPRINT_ALG_V1: &str = "sha256";
+pub const CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1: &str = "connector-config-v1";
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::analytics_config`
@@ -85,6 +89,46 @@ pub struct AnalyticsConnectorConfigV1 {
     pub ga4: Ga4ConfigV1,
     pub google_ads: GoogleAdsConfigV1,
     pub wix: WixConfigV1,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectorFingerprintInputV1<'a> {
+    profile_id: &'a str,
+    mode: &'a AnalyticsConnectorModeV1,
+    default_timezone: &'a str,
+    ga4: ConnectorFingerprintGa4V1<'a>,
+    google_ads: ConnectorFingerprintGoogleAdsV1<'a>,
+    wix: ConnectorFingerprintWixV1<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectorFingerprintGa4V1<'a> {
+    enabled: bool,
+    property_id: &'a str,
+    api_secret_env_var: &'a str,
+    measurement_id_env_var: &'a str,
+    timezone: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectorFingerprintGoogleAdsV1<'a> {
+    enabled: bool,
+    customer_id: &'a str,
+    login_customer_id: Option<&'a str>,
+    developer_token_env_var: &'a str,
+    oauth_client_id_env_var: &'a str,
+    oauth_client_secret_env_var: &'a str,
+    oauth_refresh_token_env_var: &'a str,
+    timezone: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectorFingerprintWixV1<'a> {
+    enabled: bool,
+    site_id: &'a str,
+    account_id: Option<&'a str>,
+    api_token_env_var: &'a str,
+    timezone: &'a str,
 }
 
 impl AnalyticsConnectorConfigV1 {
@@ -207,6 +251,81 @@ pub fn analytics_connector_config_from_env() -> Result<AnalyticsConnectorConfigV
 
     validate_analytics_connector_config_v1(&config)?;
     Ok(config)
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::analytics_config`
+/// purpose: Build deterministic connector config fingerprint for runtime attestation metadata.
+/// invariants:
+///   - Uses only non-secret, schema-versioned config fields.
+///   - Produces stable output for semantically identical config values.
+pub fn analytics_connector_config_fingerprint_v1(
+    config: &AnalyticsConnectorConfigV1,
+) -> Result<String, AnalyticsError> {
+    let canonical = ConnectorFingerprintInputV1 {
+        profile_id: config.profile_id.trim(),
+        mode: &config.mode,
+        default_timezone: config.default_timezone.trim(),
+        ga4: ConnectorFingerprintGa4V1 {
+            enabled: config.ga4.enabled,
+            property_id: config.ga4.property_id.trim(),
+            api_secret_env_var: config.ga4.api_secret_env_var.trim(),
+            measurement_id_env_var: config.ga4.measurement_id_env_var.trim(),
+            timezone: config.ga4.timezone.trim(),
+        },
+        google_ads: ConnectorFingerprintGoogleAdsV1 {
+            enabled: config.google_ads.enabled,
+            customer_id: config.google_ads.customer_id.trim(),
+            login_customer_id: config
+                .google_ads
+                .login_customer_id
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty()),
+            developer_token_env_var: config.google_ads.developer_token_env_var.trim(),
+            oauth_client_id_env_var: config.google_ads.oauth_client_id_env_var.trim(),
+            oauth_client_secret_env_var: config.google_ads.oauth_client_secret_env_var.trim(),
+            oauth_refresh_token_env_var: config.google_ads.oauth_refresh_token_env_var.trim(),
+            timezone: config.google_ads.timezone.trim(),
+        },
+        wix: ConnectorFingerprintWixV1 {
+            enabled: config.wix.enabled,
+            site_id: config.wix.site_id.trim(),
+            account_id: config
+                .wix
+                .account_id
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty()),
+            api_token_env_var: config.wix.api_token_env_var.trim(),
+            timezone: config.wix.timezone.trim(),
+        },
+    };
+
+    let canonical_bytes = serde_json::to_vec(&canonical).map_err(|err| {
+        AnalyticsError::internal(
+            "analytics_config_fingerprint_serialize_failed",
+            format!("failed to serialize fingerprint input: {err}"),
+        )
+    })?;
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_bytes);
+    let digest = hasher.finalize();
+    Ok(format!(
+        "{}:{}",
+        CONNECTOR_CONFIG_FINGERPRINT_ALG_V1,
+        hex_lower(&digest)
+    ))
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn env_or_default(key: &str, default: &str) -> String {
@@ -477,6 +596,43 @@ mod tests {
             let err = analytics_connector_config_from_env().expect_err("must fail");
             assert_eq!(err.code, "analytics_config_bool_invalid");
         });
+    }
+
+    #[test]
+    fn fingerprint_is_stable_for_trim_equivalent_values() {
+        let cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        let mut cfg_with_whitespace = cfg.clone();
+        cfg_with_whitespace.profile_id = format!(" {} ", cfg.profile_id);
+        cfg_with_whitespace.ga4.property_id = format!(" {} ", cfg.ga4.property_id);
+        cfg_with_whitespace.google_ads.customer_id = format!(" {} ", cfg.google_ads.customer_id);
+        cfg_with_whitespace.wix.site_id = format!(" {} ", cfg.wix.site_id);
+
+        let a = analytics_connector_config_fingerprint_v1(&cfg).expect("fingerprint");
+        let b =
+            analytics_connector_config_fingerprint_v1(&cfg_with_whitespace).expect("fingerprint");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fingerprint_changes_when_relevant_field_changes() {
+        let cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        let mut changed = cfg.clone();
+        changed.google_ads.customer_id = "9999999999".to_string();
+
+        let a = analytics_connector_config_fingerprint_v1(&cfg).expect("fingerprint");
+        let b = analytics_connector_config_fingerprint_v1(&changed).expect("fingerprint");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fingerprint_never_includes_secret_values() {
+        let cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        let fingerprint = analytics_connector_config_fingerprint_v1(&cfg).expect("fingerprint");
+        assert!(
+            !fingerprint.contains("token"),
+            "digest output must not expose secrets"
+        );
+        assert!(fingerprint.starts_with("sha256:"));
     }
 
     fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
