@@ -162,6 +162,7 @@ pub struct ConnectorConfigAttestationV1 {
     pub fingerprint_alg: String,
     pub fingerprint_input_schema: String,
     pub fingerprint_created_at: Option<String>,
+    pub runtime_build: Option<String>,
     pub fingerprint_salt_id: Option<String>,
     pub fingerprint_signature: Option<String>,
     pub fingerprint_key_id: Option<String>,

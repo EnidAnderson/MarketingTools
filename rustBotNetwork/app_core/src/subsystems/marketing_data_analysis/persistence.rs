@@ -1,4 +1,5 @@
 // provenance: decision_id=DEC-0014; change_request_id=CR-QA_FIXER-0031
+use super::attestation::maybe_sign_connector_attestation_v1;
 use super::contracts::{AnalyticsError, PersistedAnalyticsRunV1};
 use chrono::Utc;
 use std::fs::{self, OpenOptions};
@@ -48,6 +49,12 @@ impl AnalyticsRunStore {
                 .connector_attestation
                 .fingerprint_created_at = Some(run.stored_at_utc.clone());
         }
+        maybe_sign_connector_attestation_v1(
+            &run.metadata.run_id,
+            &run.schema_version,
+            &mut run.metadata.connector_attestation,
+        )?;
+        run.artifact.metadata.connector_attestation = run.metadata.connector_attestation.clone();
 
         let line = serde_json::to_string(&run).map_err(|err| {
             AnalyticsError::internal(
@@ -158,7 +165,15 @@ mod tests {
         AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
         MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
+    use crate::subsystems::marketing_data_analysis::verify_connector_attestation_signature_v1;
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    use ed25519_dalek::SigningKey;
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
     fn sample_run(run_id: &str, profile_id: &str) -> PersistedAnalyticsRunV1 {
         let request = MockAnalyticsRequestV1 {
@@ -249,5 +264,88 @@ mod tests {
                 .connector_attestation
                 .fingerprint_created_at
         );
+    }
+
+    #[test]
+    fn append_run_signs_attestation_when_key_is_configured() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        let seed = [9_u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let pubkey_b64 = STANDARD.encode(signing_key.verifying_key().as_bytes());
+        let private_seed_b64 = STANDARD.encode(seed);
+        with_temp_env(
+            &[
+                (
+                    "ATTESTATION_ED25519_PRIVATE_KEY",
+                    Some(private_seed_b64.as_str()),
+                ),
+                ("ATTESTATION_ED25519_KEY_ID", Some("test-key-1")),
+            ],
+            || {
+                let dir = tempdir().expect("temp dir");
+                let path = dir.path().join("runs.jsonl");
+                let store = AnalyticsRunStore::new(path);
+                let mut run = sample_run("r1", "p1");
+                run.metadata.connector_attestation.connector_mode_effective =
+                    "observed_read_only".to_string();
+                run.metadata
+                    .connector_attestation
+                    .connector_config_fingerprint = "sha256:abc123".to_string();
+                run.metadata.connector_attestation.fingerprint_alg = "sha256".to_string();
+                run.metadata.connector_attestation.fingerprint_input_schema =
+                    "connector-config-v1".to_string();
+                run.metadata.connector_attestation.runtime_build = Some("1229112".to_string());
+                run.artifact.metadata.connector_attestation =
+                    run.metadata.connector_attestation.clone();
+
+                let saved = store.append_run(run).expect("append");
+                assert!(saved
+                    .metadata
+                    .connector_attestation
+                    .fingerprint_signature
+                    .is_some());
+                assert_eq!(
+                    saved
+                        .metadata
+                        .connector_attestation
+                        .fingerprint_key_id
+                        .as_deref(),
+                    Some("test-key-1")
+                );
+                verify_connector_attestation_signature_v1(
+                    &saved.metadata.run_id,
+                    &saved.schema_version,
+                    &saved.metadata.connector_attestation,
+                    &pubkey_b64,
+                )
+                .expect("signature verifies");
+            },
+        );
+    }
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f();
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
     }
 }

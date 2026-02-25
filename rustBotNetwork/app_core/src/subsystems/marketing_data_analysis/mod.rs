@@ -1,4 +1,5 @@
 pub mod analytics_config;
+pub mod attestation;
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis`
 /// purpose: Typed mock analytics subsystem for deterministic, auditable market analysis.
@@ -22,6 +23,10 @@ pub use analytics_config::{
     validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
     Ga4ConfigV1, GoogleAdsConfigV1, WixConfigV1, CONNECTOR_CONFIG_FINGERPRINT_ALG_V1,
     CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
+};
+pub use attestation::{
+    canonical_attestation_payload_v1, maybe_sign_connector_attestation_v1,
+    verify_connector_attestation_signature_v1,
 };
 pub use budget::{
     build_budget_plan, enforce_daily_hard_cap, estimate_budget_upper_bound, BudgetCategory,

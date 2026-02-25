@@ -515,6 +515,7 @@ impl JobManager {
                         fingerprint_input_schema: CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1
                             .to_string(),
                         fingerprint_created_at: None,
+                        runtime_build: runtime_build_label(),
                         fingerprint_salt_id: None,
                         fingerprint_signature: None,
                         fingerprint_key_id: None,
@@ -1088,6 +1089,20 @@ fn connector_mode_label(mode: &AnalyticsConnectorModeV1) -> &'static str {
         AnalyticsConnectorModeV1::Simulated => "simulated",
         AnalyticsConnectorModeV1::ObservedReadOnly => "observed_read_only",
     }
+}
+
+fn runtime_build_label() -> Option<String> {
+    std::env::var("ANALYTICS_RUNTIME_BUILD")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("GIT_SHA")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .or_else(|| Some(env!("CARGO_PKG_VERSION").to_string()))
 }
 
 fn write_pipeline_manifest(path: &str, output: &Value) -> Result<(), String> {
