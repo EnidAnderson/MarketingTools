@@ -2,11 +2,76 @@ use super::contracts::{AnalyticsError, ConnectorConfigAttestationV1};
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use base64::Engine;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 
 const SIGNATURE_PREFIX: &str = "ed25519:";
 const PAYLOAD_SCHEMA_V1: &str = "attestation-v1";
 const ENV_PRIVATE_KEY_B64: &str = "ATTESTATION_ED25519_PRIVATE_KEY";
 const ENV_KEY_ID: &str = "ATTESTATION_ED25519_KEY_ID";
+const ENV_KEY_REGISTRY_JSON: &str = "ATTESTATION_KEY_REGISTRY_JSON";
+const ENV_KEY_REGISTRY_PATH: &str = "ATTESTATION_KEY_REGISTRY_PATH";
+
+#[derive(Debug, Clone, Default)]
+pub struct AttestationKeyRegistryV1 {
+    by_key_id: HashMap<String, String>,
+}
+
+impl AttestationKeyRegistryV1 {
+    pub fn from_json_str(raw: &str) -> Result<Self, AnalyticsError> {
+        let parsed: HashMap<String, String> = serde_json::from_str(raw).map_err(|_| {
+            AnalyticsError::validation(
+                "attestation_registry_invalid",
+                "ATTESTATION_KEY_REGISTRY_JSON must be a JSON object of {key_id: base64_pubkey}",
+                "connector_attestation.fingerprint_key_id",
+            )
+        })?;
+        if parsed.is_empty() {
+            return Err(AnalyticsError::validation(
+                "attestation_registry_empty",
+                "attestation key registry cannot be empty",
+                "connector_attestation.fingerprint_key_id",
+            ));
+        }
+        Ok(Self { by_key_id: parsed })
+    }
+
+    pub fn from_file(path: &Path) -> Result<Self, AnalyticsError> {
+        let raw = fs::read_to_string(path).map_err(|err| {
+            AnalyticsError::internal(
+                "attestation_registry_read_failed",
+                format!("failed to read attestation key registry file: {err}"),
+            )
+        })?;
+        Self::from_json_str(raw.trim())
+    }
+
+    pub fn lookup_public_key_b64(&self, key_id: &str) -> Option<&str> {
+        self.by_key_id.get(key_id).map(String::as_str)
+    }
+}
+
+pub fn load_attestation_key_registry_from_env_or_file(
+) -> Result<Option<AttestationKeyRegistryV1>, AnalyticsError> {
+    if let Some(raw_json) = std::env::var(ENV_KEY_REGISTRY_JSON)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return AttestationKeyRegistryV1::from_json_str(&raw_json).map(Some);
+    }
+
+    if let Some(path_str) = std::env::var(ENV_KEY_REGISTRY_PATH)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return AttestationKeyRegistryV1::from_file(Path::new(&path_str)).map(Some);
+    }
+
+    Ok(None)
+}
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::attestation`
@@ -163,6 +228,40 @@ pub fn verify_connector_attestation_signature_v1(
     })
 }
 
+pub fn verify_connector_attestation_with_registry_v1(
+    run_id: &str,
+    artifact_id: &str,
+    attestation: &ConnectorConfigAttestationV1,
+    registry: &AttestationKeyRegistryV1,
+) -> Result<(), AnalyticsError> {
+    let key_id = attestation
+        .fingerprint_key_id
+        .as_deref()
+        .ok_or_else(|| {
+            AnalyticsError::validation(
+                "attestation_signature_key_id_mismatch",
+                "fingerprint_key_id is required when fingerprint_signature is present",
+                "connector_attestation.fingerprint_key_id",
+            )
+        })?
+        .trim();
+    if key_id.is_empty() {
+        return Err(AnalyticsError::validation(
+            "attestation_signature_key_id_mismatch",
+            "fingerprint_key_id is required when fingerprint_signature is present",
+            "connector_attestation.fingerprint_key_id",
+        ));
+    }
+    let public_key_b64 = registry.lookup_public_key_b64(key_id).ok_or_else(|| {
+        AnalyticsError::validation(
+            "attestation_unknown_key_id",
+            "fingerprint_key_id is not present in attestation registry",
+            "connector_attestation.fingerprint_key_id",
+        )
+    })?;
+    verify_connector_attestation_signature_v1(run_id, artifact_id, attestation, public_key_b64)
+}
+
 fn maybe_load_signing_key_from_env() -> Result<Option<(SigningKey, String)>, AnalyticsError> {
     let Some(private_key_b64) = std::env::var(ENV_PRIVATE_KEY_B64)
         .ok()
@@ -292,6 +391,59 @@ mod tests {
         let verify =
             verify_connector_attestation_signature_v1("run-1", "artifact-1", &att, &pubkey_b64);
         assert!(verify.is_err());
+    }
+
+    #[test]
+    fn verify_with_registry_passes_for_known_key_id() {
+        let mut att = sample_attestation();
+        let seed = [11_u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let payload =
+            canonical_attestation_payload_v1("run-1", "artifact-1", &att).expect("payload");
+        let sig = signing_key.sign(&payload);
+        att.fingerprint_signature = Some(format!(
+            "{}{}",
+            SIGNATURE_PREFIX,
+            STANDARD_NO_PAD.encode(sig.to_bytes())
+        ));
+        att.fingerprint_key_id = Some("k1".to_string());
+        let registry = AttestationKeyRegistryV1::from_json_str(&format!(
+            r#"{{"k1":"{}"}}"#,
+            STANDARD.encode(signing_key.verifying_key().as_bytes())
+        ))
+        .expect("registry");
+
+        let verify =
+            verify_connector_attestation_with_registry_v1("run-1", "artifact-1", &att, &registry);
+        assert!(verify.is_ok());
+    }
+
+    #[test]
+    fn verify_with_registry_fails_for_unknown_key_id() {
+        let mut att = sample_attestation();
+        let seed = [12_u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let payload =
+            canonical_attestation_payload_v1("run-1", "artifact-1", &att).expect("payload");
+        let sig = signing_key.sign(&payload);
+        att.fingerprint_signature = Some(format!(
+            "{}{}",
+            SIGNATURE_PREFIX,
+            STANDARD_NO_PAD.encode(sig.to_bytes())
+        ));
+        att.fingerprint_key_id = Some("missing".to_string());
+        let registry = AttestationKeyRegistryV1::from_json_str(&format!(
+            r#"{{"k1":"{}"}}"#,
+            STANDARD.encode(signing_key.verifying_key().as_bytes())
+        ))
+        .expect("registry");
+
+        let verify =
+            verify_connector_attestation_with_registry_v1("run-1", "artifact-1", &att, &registry);
+        assert_eq!(
+            verify.expect_err("must fail").code,
+            "attestation_unknown_key_id"
+        );
     }
 
     #[test]

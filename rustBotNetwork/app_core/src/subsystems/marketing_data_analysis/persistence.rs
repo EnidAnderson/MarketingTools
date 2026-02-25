@@ -51,7 +51,7 @@ impl AnalyticsRunStore {
         }
         maybe_sign_connector_attestation_v1(
             &run.metadata.run_id,
-            &run.schema_version,
+            &run.artifact.metadata.run_id,
             &mut run.metadata.connector_attestation,
         )?;
         run.artifact.metadata.connector_attestation = run.metadata.connector_attestation.clone();
@@ -314,7 +314,7 @@ mod tests {
                 );
                 verify_connector_attestation_signature_v1(
                     &saved.metadata.run_id,
-                    &saved.schema_version,
+                    &saved.artifact.metadata.run_id,
                     &saved.metadata.connector_attestation,
                     &pubkey_b64,
                 )

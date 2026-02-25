@@ -2,6 +2,9 @@ use super::contracts::{
     AnalyticsError, AnalyticsValidationReportV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
     ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
+use super::{
+    load_attestation_key_registry_from_env_or_file, verify_connector_attestation_with_registry_v1,
+};
 use chrono::{DateTime, NaiveDate, Utc};
 use validator::Validate;
 
@@ -125,6 +128,7 @@ pub fn validate_mock_analytics_artifact_v1(
     artifact: &MockAnalyticsArtifactV1,
 ) -> AnalyticsValidationReportV1 {
     let mut checks = Vec::new();
+    let attestation = &artifact.metadata.connector_attestation;
 
     checks.push(check(
         "schema_version",
@@ -189,6 +193,41 @@ pub fn validate_mock_analytics_artifact_v1(
         "uncertainty_notes_present",
         !artifact.uncertainty_notes.is_empty(),
         "artifact must include uncertainty notes",
+    ));
+    checks.push(check(
+        "attestation_signature_key_pairing",
+        attestation_pairing_is_valid(attestation),
+        "fingerprint_signature and fingerprint_key_id must both be set or both be unset",
+    ));
+    let signature_present = attestation.fingerprint_signature.is_some();
+    let registry = match load_attestation_key_registry_from_env_or_file() {
+        Ok(value) => value,
+        Err(_) => None,
+    };
+    let signature_verified = if signature_present {
+        match registry.as_ref() {
+            Some(registry) => verify_connector_attestation_with_registry_v1(
+                &artifact.metadata.run_id,
+                &artifact.metadata.run_id,
+                attestation,
+                registry,
+            )
+            .is_ok(),
+            None => false,
+        }
+    } else {
+        true
+    };
+    checks.push(check(
+        "attestation_registry_verification",
+        signature_verified,
+        "signed attestations must resolve key_id in registry and verify signature",
+    ));
+    let production_profile_requires_signature = is_production_profile(&artifact.request.profile_id);
+    checks.push(check(
+        "attestation_signature_required_for_production",
+        !production_profile_requires_signature || signature_present,
+        "production profiles require signed connector attestation",
     ));
 
     let high_severity_failures = artifact
@@ -306,6 +345,28 @@ fn check(code: &str, passed: bool, message: &str) -> ValidationCheck {
         passed,
         message: message.to_string(),
     }
+}
+
+fn attestation_pairing_is_valid(
+    attestation: &super::contracts::ConnectorConfigAttestationV1,
+) -> bool {
+    let signature_present = attestation.fingerprint_signature.is_some();
+    let key_id_present = attestation
+        .fingerprint_key_id
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    signature_present == key_id_present
+}
+
+fn is_production_profile(profile_id: &str) -> bool {
+    let normalized = profile_id.trim().to_ascii_lowercase();
+    normalized == "production"
+        || normalized == "prod"
+        || normalized.starts_with("production-")
+        || normalized.starts_with("production_")
+        || normalized.starts_with("prod-")
+        || normalized.starts_with("prod_")
 }
 
 #[cfg(test)]
@@ -426,5 +487,168 @@ mod tests {
         artifact.report.total_metrics.impressions = 1;
         let report = validate_mock_analytics_artifact_v1(&artifact);
         assert!(!report.is_valid);
+    }
+
+    #[test]
+    fn artifact_validator_rejects_attestation_pairing_mismatch() {
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: MockAnalyticsRequestV1 {
+                start_date: "2026-01-01".to_string(),
+                end_date: "2026-01-02".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(1),
+                profile_id: "small".to_string(),
+                include_narratives: true,
+                source_window_observations: Vec::new(),
+                budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+            },
+            metadata: AnalyticsRunMetadataV1 {
+                run_id: "r".to_string(),
+                connector_id: "simulated".to_string(),
+                profile_id: "small".to_string(),
+                seed: 1,
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                date_span_days: 2,
+                requested_at_utc: None,
+                connector_attestation: super::super::contracts::ConnectorConfigAttestationV1 {
+                    fingerprint_signature: Some("ed25519:abc".to_string()),
+                    ..Default::default()
+                },
+            },
+            report: AnalyticsReport::default(),
+            observed_evidence: vec![EvidenceItem {
+                evidence_id: "e".to_string(),
+                label: "x".to_string(),
+                value: "y".to_string(),
+                source_class: "simulated".to_string(),
+                metric_key: None,
+                observed_window: None,
+                comparator_value: None,
+                notes: Vec::new(),
+            }],
+            inferred_guidance: vec![GuidanceItem {
+                guidance_id: "g".to_string(),
+                text: "ok".to_string(),
+                confidence_label: "low".to_string(),
+                evidence_refs: Vec::new(),
+                attribution_basis: None,
+                calibration_bps: None,
+                calibration_band: None,
+            }],
+            uncertainty_notes: vec!["simulated".to_string()],
+            provenance: vec![SourceProvenance {
+                connector_id: "simulated".to_string(),
+                source_class: SourceClassLabel::Simulated,
+                source_system: "mock".to_string(),
+                collected_at_utc: "synthetic".to_string(),
+                freshness_minutes: 0,
+                validated_contract_version: Some("ingest_contract.v1".to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: 0,
+            }],
+            ingest_cleaning_notes: Vec::new(),
+            validation: AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
+            quality_controls: Default::default(),
+            data_quality: Default::default(),
+            freshness_policy: Default::default(),
+            reconciliation_policy: Default::default(),
+            budget: Default::default(),
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
+        };
+        artifact.report.total_metrics.impressions = 1;
+
+        let report = validate_mock_analytics_artifact_v1(&artifact);
+        assert!(!report.is_valid);
+        assert!(report
+            .checks
+            .iter()
+            .any(|c| c.code == "attestation_signature_key_pairing" && !c.passed));
+    }
+
+    #[test]
+    fn artifact_validator_requires_signature_for_production_profile() {
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: MockAnalyticsRequestV1 {
+                start_date: "2026-01-01".to_string(),
+                end_date: "2026-01-02".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(1),
+                profile_id: "production-us".to_string(),
+                include_narratives: true,
+                source_window_observations: Vec::new(),
+                budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+            },
+            metadata: AnalyticsRunMetadataV1 {
+                run_id: "r".to_string(),
+                connector_id: "simulated".to_string(),
+                profile_id: "production-us".to_string(),
+                seed: 1,
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                date_span_days: 2,
+                requested_at_utc: None,
+                connector_attestation: Default::default(),
+            },
+            report: AnalyticsReport::default(),
+            observed_evidence: vec![EvidenceItem {
+                evidence_id: "e".to_string(),
+                label: "x".to_string(),
+                value: "y".to_string(),
+                source_class: "simulated".to_string(),
+                metric_key: None,
+                observed_window: None,
+                comparator_value: None,
+                notes: Vec::new(),
+            }],
+            inferred_guidance: vec![GuidanceItem {
+                guidance_id: "g".to_string(),
+                text: "ok".to_string(),
+                confidence_label: "low".to_string(),
+                evidence_refs: Vec::new(),
+                attribution_basis: None,
+                calibration_bps: None,
+                calibration_band: None,
+            }],
+            uncertainty_notes: vec!["simulated".to_string()],
+            provenance: vec![SourceProvenance {
+                connector_id: "simulated".to_string(),
+                source_class: SourceClassLabel::Simulated,
+                source_system: "mock".to_string(),
+                collected_at_utc: "synthetic".to_string(),
+                freshness_minutes: 0,
+                validated_contract_version: Some("ingest_contract.v1".to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: 0,
+            }],
+            ingest_cleaning_notes: Vec::new(),
+            validation: AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
+            quality_controls: Default::default(),
+            data_quality: Default::default(),
+            freshness_policy: Default::default(),
+            reconciliation_policy: Default::default(),
+            budget: Default::default(),
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
+        };
+        artifact.report.total_metrics.impressions = 1;
+
+        let report = validate_mock_analytics_artifact_v1(&artifact);
+        assert!(!report.is_valid);
+        assert!(report
+            .checks
+            .iter()
+            .any(|c| { c.code == "attestation_signature_required_for_production" && !c.passed }));
     }
 }
