@@ -4,9 +4,9 @@ use app_core::subsystems::campaign_orchestration::runtime::{
 };
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_historical_analysis,
-    evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1, AnalyticsRunStore,
-    DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1,
-    PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
+    evaluate_analytics_connectors_preflight, AnalyticsRunStore, DefaultMarketAnalysisService,
+    GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    SimulatedAnalyticsConnectorV2,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -374,9 +374,27 @@ impl JobManager {
             );
             manager.emit_progress(&app_handle, &spawned_job_id);
 
+            let config = match analytics_connector_config_from_env() {
+                Ok(config) => config,
+                Err(err) => {
+                    manager.update_failed(
+                        &spawned_job_id,
+                        serde_json::json!({
+                            "code": "analytics_connector_config_invalid",
+                            "category": "configuration",
+                            "source": "connector_config",
+                            "message": err.message,
+                            "retryable": false,
+                            "field_paths": err.field_paths,
+                            "trace_id": "",
+                            "context": err.context
+                        }),
+                    );
+                    manager.emit_failed(&app_handle, &spawned_job_id);
+                    return;
+                }
+            };
             let connector = SimulatedAnalyticsConnectorV2::new();
-            let config = analytics_connector_config_from_env()
-                .unwrap_or_else(|_| AnalyticsConnectorConfigV1::simulated_defaults());
             let preflight = evaluate_analytics_connectors_preflight(&connector, &config).await;
             if !preflight.ok {
                 manager.update_failed(
@@ -419,7 +437,29 @@ impl JobManager {
             );
             manager.emit_progress(&app_handle, &spawned_job_id);
 
-            let service = DefaultMarketAnalysisService::new();
+            let service = match DefaultMarketAnalysisService::with_connector_and_config(
+                Arc::new(SimulatedAnalyticsConnectorV2::new()),
+                config,
+            ) {
+                Ok(service) => service,
+                Err(err) => {
+                    manager.update_failed(
+                        &spawned_job_id,
+                        serde_json::json!({
+                            "code": "analytics_service_config_invalid",
+                            "category": "configuration",
+                            "source": "service",
+                            "message": err.message,
+                            "retryable": false,
+                            "field_paths": err.field_paths,
+                            "trace_id": "",
+                            "context": err.context
+                        }),
+                    );
+                    manager.emit_failed(&app_handle, &spawned_job_id);
+                    return;
+                }
+            };
             match service.run_mock_analysis(request).await {
                 Ok(mut artifact) => {
                     manager.update_stage(

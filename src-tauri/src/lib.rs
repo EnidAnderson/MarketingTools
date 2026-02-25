@@ -511,8 +511,12 @@ async fn validate_analytics_connectors_preflight(
     let connector = SimulatedAnalyticsConnectorV2::new();
     let effective_config = match config {
         Some(cfg) => cfg,
-        None => analytics_connector_config_from_env()
-            .unwrap_or_else(|_| AnalyticsConnectorConfigV1::simulated_defaults()),
+        None => analytics_connector_config_from_env().map_err(|err| {
+            format!(
+                "{}: {} (field_paths={:?})",
+                err.code, err.message, err.field_paths
+            )
+        })?,
     };
     let preflight = evaluate_analytics_connectors_preflight(&connector, &effective_config).await;
     serde_json::to_value(preflight)
@@ -727,9 +731,11 @@ mod tests {
 
     #[tokio::test]
     async fn analytics_preflight_command_returns_schema() {
-        let value = validate_analytics_connectors_preflight(None)
-            .await
-            .expect("preflight command should serialize");
+        let value = validate_analytics_connectors_preflight(Some(
+            AnalyticsConnectorConfigV1::simulated_defaults(),
+        ))
+        .await
+        .expect("preflight command should serialize");
         assert_eq!(
             value
                 .get("schema_version")
