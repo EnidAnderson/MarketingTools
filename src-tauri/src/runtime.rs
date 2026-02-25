@@ -4,9 +4,9 @@ use app_core::subsystems::campaign_orchestration::runtime::{
 };
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_historical_analysis,
-    evaluate_analytics_connectors_preflight, AnalyticsRunStore, DefaultMarketAnalysisService,
-    GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
-    SimulatedAnalyticsConnectorV2,
+    evaluate_analytics_connectors_preflight, AnalyticsConnectorModeV1, AnalyticsRunStore,
+    DefaultMarketAnalysisService, GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1,
+    PersistedAnalyticsRunV1, SimulatedAnalyticsConnectorV2,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -394,6 +394,28 @@ impl JobManager {
                     return;
                 }
             };
+            if let Err(message) =
+                enforce_production_profile_connector_mode(&request.profile_id, &config.mode)
+            {
+                manager.update_failed(
+                    &spawned_job_id,
+                    serde_json::json!({
+                        "code": "analytics_mode_guard_blocked",
+                        "category": "configuration",
+                        "source": "connector_mode_guard",
+                        "message": message,
+                        "retryable": false,
+                        "field_paths": ["request.profile_id", "connector_config.mode"],
+                        "trace_id": "",
+                        "context": {
+                            "profile_id": request.profile_id,
+                            "mode": connector_mode_label(&config.mode)
+                        }
+                    }),
+                );
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
             let connector = SimulatedAnalyticsConnectorV2::new();
             let preflight = evaluate_analytics_connectors_preflight(&connector, &config).await;
             if !preflight.ok {
@@ -1003,6 +1025,35 @@ fn apply_confidence_calibration(guidance: &mut [GuidanceItem], cap: &str) {
     }
 }
 
+fn enforce_production_profile_connector_mode(
+    profile_id: &str,
+    mode: &AnalyticsConnectorModeV1,
+) -> Result<(), String> {
+    if is_production_profile(profile_id) && *mode != AnalyticsConnectorModeV1::ObservedReadOnly {
+        return Err(
+            "production profiles require ANALYTICS_CONNECTOR_MODE=observed_read_only".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn is_production_profile(profile_id: &str) -> bool {
+    let normalized = profile_id.trim().to_ascii_lowercase();
+    normalized == "production"
+        || normalized == "prod"
+        || normalized.starts_with("production-")
+        || normalized.starts_with("production_")
+        || normalized.starts_with("prod-")
+        || normalized.starts_with("prod_")
+}
+
+fn connector_mode_label(mode: &AnalyticsConnectorModeV1) -> &'static str {
+    match mode {
+        AnalyticsConnectorModeV1::Simulated => "simulated",
+        AnalyticsConnectorModeV1::ObservedReadOnly => "observed_read_only",
+    }
+}
+
 fn write_pipeline_manifest(path: &str, output: &Value) -> Result<(), String> {
     let manifest = serde_json::to_string_pretty(output).map_err(|e| e.to_string())?;
     let manifest_path = std::path::Path::new(path);
@@ -1093,5 +1144,23 @@ mod tests {
         let snapshot = manager.get_job(&job_id).expect("snapshot should exist");
         assert_eq!(snapshot.status, JobStatus::Canceled);
         assert_eq!(snapshot.stage, "canceled");
+    }
+
+    #[test]
+    fn production_profile_blocks_simulated_mode() {
+        let result = enforce_production_profile_connector_mode(
+            "production",
+            &AnalyticsConnectorModeV1::Simulated,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn non_production_profile_allows_simulated_mode() {
+        let result = enforce_production_profile_connector_mode(
+            "marketing_default",
+            &AnalyticsConnectorModeV1::Simulated,
+        );
+        assert!(result.is_ok());
     }
 }
