@@ -5,8 +5,10 @@ use app_core::subsystems::campaign_orchestration::{
 };
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_executive_dashboard_snapshot,
-    evaluate_analytics_connectors_preflight, AnalyticsConnectorConfigV1, AnalyticsRunStore,
-    MockAnalyticsRequestV1, SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
+    evaluate_analytics_connectors_preflight, load_attestation_key_registry_from_env_or_file,
+    resolve_attestation_policy_v1, verify_connector_attestation_with_registry_v1,
+    AnalyticsConnectorConfigV1, AnalyticsRunStore, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -623,6 +625,7 @@ fn get_executive_dashboard_snapshot(
     compare_window_runs: Option<u8>,
     target_roas: Option<f64>,
     monthly_revenue_target: Option<f64>,
+    enforce_publish_export_gate: Option<bool>,
 ) -> Result<Value, String> {
     let profile_id = profile_id.trim();
     if profile_id.is_empty() {
@@ -644,8 +647,107 @@ fn get_executive_dashboard_snapshot(
                 profile_id
             )
         })?;
+    let latest_run = runs.first().ok_or_else(|| {
+        format!(
+            "No persisted analytics runs found for profile '{}'. Generate a run first.",
+            profile_id
+        )
+    })?;
+    if enforce_publish_export_gate.unwrap_or(true) {
+        enforce_dashboard_attestation_policy(profile_id, latest_run)?;
+        if !snapshot.publish_export_gate.export_ready {
+            return Err(serde_json::json!({
+                "code": "analytics_dashboard_gate_blocked",
+                "message": "Dashboard export/publish gate is blocked for this profile.",
+                "source": "executive_dashboard",
+                "details": {
+                    "profile_id": profile_id,
+                    "gate_status": snapshot.publish_export_gate.gate_status,
+                    "blocking_reasons": snapshot.publish_export_gate.blocking_reasons,
+                }
+            })
+            .to_string());
+        }
+    }
     serde_json::to_value(snapshot)
         .map_err(|err| format!("failed to serialize dashboard snapshot: {err}"))
+}
+
+fn enforce_dashboard_attestation_policy(
+    profile_id: &str,
+    latest_run: &PersistedAnalyticsRunV1,
+) -> Result<(), String> {
+    let policy = resolve_attestation_policy_v1(profile_id).map_err(|err| {
+        serde_json::json!({
+            "code": "analytics_attestation_policy_invalid",
+            "message": err.message,
+            "source": "attestation_policy",
+            "details": { "profile_id": profile_id, "field_paths": err.field_paths }
+        })
+        .to_string()
+    })?;
+    if !policy.require_signed_attestations {
+        return Ok(());
+    }
+
+    let attestation = &latest_run.metadata.connector_attestation;
+    let signature_present = attestation
+        .fingerprint_signature
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if !signature_present {
+        return Err(serde_json::json!({
+            "code": "analytics_dashboard_signature_required",
+            "message": "Signed attestation is required by policy for this profile.",
+            "source": "executive_dashboard",
+            "details": {
+                "profile_id": profile_id,
+                "run_id": latest_run.metadata.run_id,
+            }
+        })
+        .to_string());
+    }
+
+    let registry = load_attestation_key_registry_from_env_or_file()
+        .map_err(|err| {
+            serde_json::json!({
+                "code": "analytics_attestation_registry_invalid",
+                "message": err.message,
+                "source": "attestation_registry",
+                "details": { "profile_id": profile_id }
+            })
+            .to_string()
+        })?
+        .ok_or_else(|| {
+            serde_json::json!({
+                "code": "analytics_attestation_registry_missing",
+                "message": "Signed attestation policy requires ATTESTATION_KEY_REGISTRY_JSON or ATTESTATION_KEY_REGISTRY_PATH.",
+                "source": "attestation_registry",
+                "details": { "profile_id": profile_id }
+            })
+            .to_string()
+        })?;
+
+    verify_connector_attestation_with_registry_v1(
+        &latest_run.metadata.run_id,
+        &latest_run.metadata.run_id,
+        attestation,
+        &registry,
+    )
+    .map_err(|err| {
+        serde_json::json!({
+            "code": "analytics_attestation_signature_invalid",
+            "message": err.message,
+            "source": "attestation_signature",
+            "details": {
+                "profile_id": profile_id,
+                "run_id": latest_run.metadata.run_id,
+                "validation_code": err.code
+            }
+        })
+        .to_string()
+    })
 }
 
 /// # NDOC
@@ -728,6 +830,100 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use app_core::subsystems::marketing_data_analysis::contracts::{
+        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
+        MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    };
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn env_mutex() -> &'static Mutex<()> {
+        ENV_MUTEX.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f();
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
+    }
+
+    fn build_run(profile_id: &str) -> PersistedAnalyticsRunV1 {
+        let mut artifact = MockAnalyticsArtifactV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: MockAnalyticsRequestV1 {
+                start_date: "2026-02-01".to_string(),
+                end_date: "2026-02-07".to_string(),
+                campaign_filter: None,
+                ad_group_filter: None,
+                seed: Some(7),
+                profile_id: profile_id.to_string(),
+                include_narratives: true,
+                source_window_observations: Vec::new(),
+                budget_envelope:
+                    app_core::subsystems::marketing_data_analysis::contracts::BudgetEnvelopeV1::default(
+                    ),
+            },
+            metadata: AnalyticsRunMetadataV1 {
+                run_id: "run-1".to_string(),
+                connector_id: "mock".to_string(),
+                profile_id: profile_id.to_string(),
+                seed: 7,
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                date_span_days: 7,
+                requested_at_utc: None,
+                connector_attestation: Default::default(),
+            },
+            report: Default::default(),
+            observed_evidence: Vec::new(),
+            inferred_guidance: Vec::new(),
+            uncertainty_notes: vec!["sim".to_string()],
+            provenance: Vec::new(),
+            ingest_cleaning_notes: Vec::new(),
+            validation: AnalyticsValidationReportV1 {
+                is_valid: true,
+                checks: Vec::new(),
+            },
+            quality_controls: Default::default(),
+            data_quality: Default::default(),
+            freshness_policy: Default::default(),
+            reconciliation_policy: Default::default(),
+            budget: Default::default(),
+            historical_analysis: Default::default(),
+            operator_summary: Default::default(),
+            persistence: None,
+        };
+        artifact.report.total_metrics.impressions = 1000;
+        artifact.report.total_metrics.clicks = 100;
+        PersistedAnalyticsRunV1 {
+            schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+            request: artifact.request.clone(),
+            metadata: artifact.metadata.clone(),
+            validation: artifact.validation.clone(),
+            artifact,
+            stored_at_utc: "2026-02-17T00:00:00Z".to_string(),
+        }
+    }
 
     #[tokio::test]
     async fn analytics_preflight_command_returns_schema() {
@@ -765,5 +961,46 @@ mod tests {
             .and_then(Value::as_array)
             .map(|items| !items.is_empty())
             .unwrap_or(false));
+    }
+
+    #[test]
+    fn dashboard_policy_blocks_missing_signature_for_production() {
+        let _guard = env_mutex().lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", None),
+                ("ATTESTATION_KEY_REGISTRY_JSON", None),
+                ("ATTESTATION_KEY_REGISTRY_PATH", None),
+            ],
+            || {
+                let run = build_run("production");
+                let result = enforce_dashboard_attestation_policy("production", &run);
+                assert!(result.is_err());
+                let err = result.expect_err("must fail");
+                assert!(err.contains("analytics_dashboard_signature_required"));
+            },
+        );
+    }
+
+    #[test]
+    fn dashboard_policy_blocks_when_registry_missing_with_signed_attestation() {
+        let _guard = env_mutex().lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", Some("true")),
+                ("ATTESTATION_KEY_REGISTRY_JSON", None),
+                ("ATTESTATION_KEY_REGISTRY_PATH", None),
+            ],
+            || {
+                let mut run = build_run("production");
+                run.metadata.connector_attestation.fingerprint_signature =
+                    Some("ed25519:abc".to_string());
+                run.metadata.connector_attestation.fingerprint_key_id = Some("k1".to_string());
+                let result = enforce_dashboard_attestation_policy("production", &run);
+                assert!(result.is_err());
+                let err = result.expect_err("must fail");
+                assert!(err.contains("analytics_attestation_registry_missing"));
+            },
+        );
     }
 }

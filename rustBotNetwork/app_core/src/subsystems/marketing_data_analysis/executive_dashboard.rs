@@ -4,7 +4,10 @@ use super::contracts::{
     ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1,
     PortfolioRowV1, PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
 };
-use super::resolve_attestation_policy_v1;
+use super::{
+    load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
+    verify_connector_attestation_with_registry_v1,
+};
 use crate::data_models::analytics::ReportMetrics;
 use chrono::Utc;
 
@@ -372,14 +375,44 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }
     match resolve_attestation_policy_v1(&run.request.profile_id) {
         Ok(policy) => {
-            if policy.require_signed_attestations
-                && run
-                    .metadata
-                    .connector_attestation
+            if policy.require_signed_attestations {
+                let attestation = &run.metadata.connector_attestation;
+                let signature_present = attestation
                     .fingerprint_signature
-                    .is_none()
-            {
-                blocking_reasons.push("Signed attestation required by policy.".to_string());
+                    .as_ref()
+                    .map(|value| !value.trim().is_empty())
+                    .unwrap_or(false);
+                if !signature_present {
+                    blocking_reasons.push("Signed attestation required by policy.".to_string());
+                } else {
+                    match load_attestation_key_registry_from_env_or_file() {
+                        Ok(Some(registry)) => {
+                            if let Err(err) = verify_connector_attestation_with_registry_v1(
+                                &run.metadata.run_id,
+                                &run.metadata.run_id,
+                                attestation,
+                                &registry,
+                            ) {
+                                blocking_reasons.push(format!(
+                                    "Signed attestation verification failed: {}",
+                                    err.code
+                                ));
+                            }
+                        }
+                        Ok(None) => {
+                            blocking_reasons.push(
+                                "Signed attestation required by policy but key registry is not configured."
+                                    .to_string(),
+                            );
+                        }
+                        Err(err) => {
+                            blocking_reasons.push(format!(
+                                "Attestation key registry configuration invalid: {}",
+                                err.code
+                            ));
+                        }
+                    }
+                }
             }
         }
         Err(_) => {
@@ -762,7 +795,37 @@ mod tests {
         AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
         MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
+    use once_cell::sync::Lazy;
     use proptest::prelude::*;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f();
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
+    }
 
     fn build_run(run_id: &str, profile_id: &str, spend: f64, roas: f64) -> PersistedAnalyticsRunV1 {
         let mut artifact = MockAnalyticsArtifactV1 {
@@ -880,6 +943,51 @@ mod tests {
             .blocking_reasons
             .iter()
             .any(|reason| reason.contains("Budget spend exceeded")));
+    }
+
+    #[test]
+    fn publish_gate_blocks_in_production_when_signature_missing() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", None),
+                ("ATTESTATION_KEY_REGISTRY_JSON", None),
+                ("ATTESTATION_KEY_REGISTRY_PATH", None),
+            ],
+            || {
+                let run = build_run("run-prod", "production", 200.0, 6.5);
+                let gate = build_publish_export_gate(&run);
+                assert!(!gate.publish_ready);
+                assert!(gate
+                    .blocking_reasons
+                    .iter()
+                    .any(|reason| reason.contains("Signed attestation required by policy")));
+            },
+        );
+    }
+
+    #[test]
+    fn publish_gate_blocks_when_signature_present_but_registry_missing() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", Some("true")),
+                ("ATTESTATION_KEY_REGISTRY_JSON", None),
+                ("ATTESTATION_KEY_REGISTRY_PATH", None),
+            ],
+            || {
+                let mut run = build_run("run-prod", "production", 200.0, 6.5);
+                run.metadata.connector_attestation.fingerprint_signature =
+                    Some("ed25519:abc".to_string());
+                run.metadata.connector_attestation.fingerprint_key_id = Some("k1".to_string());
+                let gate = build_publish_export_gate(&run);
+                assert!(!gate.publish_ready);
+                assert!(gate
+                    .blocking_reasons
+                    .iter()
+                    .any(|reason| reason.contains("key registry is not configured")));
+            },
+        );
     }
 
     proptest! {
