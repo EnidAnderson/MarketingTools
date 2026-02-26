@@ -10,6 +10,7 @@ use validator::Validate;
 
 const MAX_DATE_SPAN_DAYS: i64 = 93;
 const METRIC_EPSILON: f64 = 0.0001;
+const ENV_REQUIRE_SIGNED_ATTESTATIONS: &str = "REQUIRE_SIGNED_ATTESTATIONS";
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::validators`
@@ -129,6 +130,8 @@ pub fn validate_mock_analytics_artifact_v1(
 ) -> AnalyticsValidationReportV1 {
     let mut checks = Vec::new();
     let attestation = &artifact.metadata.connector_attestation;
+    let (signed_required, signed_policy_config_valid) =
+        resolve_signed_attestation_requirement(&artifact.request.profile_id);
 
     checks.push(check(
         "schema_version",
@@ -223,11 +226,15 @@ pub fn validate_mock_analytics_artifact_v1(
         signature_verified,
         "signed attestations must resolve key_id in registry and verify signature",
     ));
-    let production_profile_requires_signature = is_production_profile(&artifact.request.profile_id);
     checks.push(check(
-        "attestation_signature_required_for_production",
-        !production_profile_requires_signature || signature_present,
-        "production profiles require signed connector attestation",
+        "attestation_policy_config_valid",
+        signed_policy_config_valid,
+        "REQUIRE_SIGNED_ATTESTATIONS must be one of true/false/1/0/yes/no when provided",
+    ));
+    checks.push(check(
+        "attestation_signature_required_by_policy",
+        !signed_required || signature_present,
+        "signed connector attestation is required by policy",
     ));
 
     let high_severity_failures = artifact
@@ -369,6 +376,27 @@ fn is_production_profile(profile_id: &str) -> bool {
         || normalized.starts_with("prod_")
 }
 
+fn resolve_signed_attestation_requirement(profile_id: &str) -> (bool, bool) {
+    match env_bool(ENV_REQUIRE_SIGNED_ATTESTATIONS) {
+        Ok(Some(value)) => (value, true),
+        Ok(None) => (is_production_profile(profile_id), true),
+        Err(_) => (true, false),
+    }
+}
+
+fn env_bool(key: &str) -> Result<Option<bool>, ()> {
+    let Some(raw) = std::env::var(key).ok() else {
+        return Ok(None);
+    };
+    let normalized = raw.trim().to_ascii_lowercase();
+    let value = match normalized.as_str() {
+        "1" | "true" | "yes" => true,
+        "0" | "false" | "no" => false,
+        _ => return Err(()),
+    };
+    Ok(Some(value))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +404,36 @@ mod tests {
     use crate::subsystems::marketing_data_analysis::contracts::{
         AnalyticsRunMetadataV1, EvidenceItem, GuidanceItem, MockAnalyticsArtifactV1,
     };
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f();
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
+    }
 
     #[test]
     fn request_validator_rejects_bad_dates() {
@@ -574,6 +632,7 @@ mod tests {
 
     #[test]
     fn artifact_validator_requires_signature_for_production_profile() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
         let mut artifact = MockAnalyticsArtifactV1 {
             schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
             request: MockAnalyticsRequestV1 {
@@ -649,6 +708,176 @@ mod tests {
         assert!(report
             .checks
             .iter()
-            .any(|c| { c.code == "attestation_signature_required_for_production" && !c.passed }));
+            .any(|c| { c.code == "attestation_signature_required_by_policy" && !c.passed }));
+    }
+
+    #[test]
+    fn artifact_validator_allows_unsigned_non_production_when_toggle_false() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(&[(ENV_REQUIRE_SIGNED_ATTESTATIONS, Some("false"))], || {
+            let mut artifact = MockAnalyticsArtifactV1 {
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                request: MockAnalyticsRequestV1 {
+                    start_date: "2026-01-01".to_string(),
+                    end_date: "2026-01-02".to_string(),
+                    campaign_filter: None,
+                    ad_group_filter: None,
+                    seed: Some(1),
+                    profile_id: "small".to_string(),
+                    include_narratives: true,
+                    source_window_observations: Vec::new(),
+                    budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+                },
+                metadata: AnalyticsRunMetadataV1 {
+                    run_id: "r".to_string(),
+                    connector_id: "simulated".to_string(),
+                    profile_id: "small".to_string(),
+                    seed: 1,
+                    schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                    date_span_days: 2,
+                    requested_at_utc: None,
+                    connector_attestation: Default::default(),
+                },
+                report: AnalyticsReport::default(),
+                observed_evidence: vec![EvidenceItem {
+                    evidence_id: "e".to_string(),
+                    label: "x".to_string(),
+                    value: "y".to_string(),
+                    source_class: "simulated".to_string(),
+                    metric_key: None,
+                    observed_window: None,
+                    comparator_value: None,
+                    notes: Vec::new(),
+                }],
+                inferred_guidance: vec![GuidanceItem {
+                    guidance_id: "g".to_string(),
+                    text: "ok".to_string(),
+                    confidence_label: "low".to_string(),
+                    evidence_refs: Vec::new(),
+                    attribution_basis: None,
+                    calibration_bps: None,
+                    calibration_band: None,
+                }],
+                uncertainty_notes: vec!["simulated".to_string()],
+                provenance: vec![SourceProvenance {
+                    connector_id: "simulated".to_string(),
+                    source_class: SourceClassLabel::Simulated,
+                    source_system: "mock".to_string(),
+                    collected_at_utc: "synthetic".to_string(),
+                    freshness_minutes: 0,
+                    validated_contract_version: Some("ingest_contract.v1".to_string()),
+                    rejected_rows_count: 0,
+                    cleaning_note_count: 0,
+                }],
+                ingest_cleaning_notes: Vec::new(),
+                validation: AnalyticsValidationReportV1 {
+                    is_valid: true,
+                    checks: Vec::new(),
+                },
+                quality_controls: Default::default(),
+                data_quality: Default::default(),
+                freshness_policy: Default::default(),
+                reconciliation_policy: Default::default(),
+                budget: Default::default(),
+                historical_analysis: Default::default(),
+                operator_summary: Default::default(),
+                persistence: None,
+            };
+            artifact.report.total_metrics.impressions = 1;
+            artifact.quality_controls.is_healthy = true;
+
+            let report = validate_mock_analytics_artifact_v1(&artifact);
+            assert!(report
+                .checks
+                .iter()
+                .any(|c| c.code == "attestation_signature_required_by_policy" && c.passed));
+        });
+    }
+
+    #[test]
+    fn artifact_validator_invalid_toggle_value_is_reported_and_fails_closed() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(&[(ENV_REQUIRE_SIGNED_ATTESTATIONS, Some("maybe"))], || {
+            let mut artifact = MockAnalyticsArtifactV1 {
+                schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                request: MockAnalyticsRequestV1 {
+                    start_date: "2026-01-01".to_string(),
+                    end_date: "2026-01-02".to_string(),
+                    campaign_filter: None,
+                    ad_group_filter: None,
+                    seed: Some(1),
+                    profile_id: "small".to_string(),
+                    include_narratives: true,
+                    source_window_observations: Vec::new(),
+                    budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+                },
+                metadata: AnalyticsRunMetadataV1 {
+                    run_id: "r".to_string(),
+                    connector_id: "simulated".to_string(),
+                    profile_id: "small".to_string(),
+                    seed: 1,
+                    schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
+                    date_span_days: 2,
+                    requested_at_utc: None,
+                    connector_attestation: Default::default(),
+                },
+                report: AnalyticsReport::default(),
+                observed_evidence: vec![EvidenceItem {
+                    evidence_id: "e".to_string(),
+                    label: "x".to_string(),
+                    value: "y".to_string(),
+                    source_class: "simulated".to_string(),
+                    metric_key: None,
+                    observed_window: None,
+                    comparator_value: None,
+                    notes: Vec::new(),
+                }],
+                inferred_guidance: vec![GuidanceItem {
+                    guidance_id: "g".to_string(),
+                    text: "ok".to_string(),
+                    confidence_label: "low".to_string(),
+                    evidence_refs: Vec::new(),
+                    attribution_basis: None,
+                    calibration_bps: None,
+                    calibration_band: None,
+                }],
+                uncertainty_notes: vec!["simulated".to_string()],
+                provenance: vec![SourceProvenance {
+                    connector_id: "simulated".to_string(),
+                    source_class: SourceClassLabel::Simulated,
+                    source_system: "mock".to_string(),
+                    collected_at_utc: "synthetic".to_string(),
+                    freshness_minutes: 0,
+                    validated_contract_version: Some("ingest_contract.v1".to_string()),
+                    rejected_rows_count: 0,
+                    cleaning_note_count: 0,
+                }],
+                ingest_cleaning_notes: Vec::new(),
+                validation: AnalyticsValidationReportV1 {
+                    is_valid: true,
+                    checks: Vec::new(),
+                },
+                quality_controls: Default::default(),
+                data_quality: Default::default(),
+                freshness_policy: Default::default(),
+                reconciliation_policy: Default::default(),
+                budget: Default::default(),
+                historical_analysis: Default::default(),
+                operator_summary: Default::default(),
+                persistence: None,
+            };
+            artifact.report.total_metrics.impressions = 1;
+
+            let report = validate_mock_analytics_artifact_v1(&artifact);
+            assert!(!report.is_valid);
+            assert!(report
+                .checks
+                .iter()
+                .any(|c| c.code == "attestation_policy_config_valid" && !c.passed));
+            assert!(report
+                .checks
+                .iter()
+                .any(|c| c.code == "attestation_signature_required_by_policy" && !c.passed));
+        });
     }
 }
