@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CampaignResource {
-    pub resourceName: String,
+    #[serde(rename = "resourceName")]
+    pub resource_name: String,
     pub id: String,
     pub name: String,
     pub status: String, // e.g., "ENABLED", "PAUSED"
@@ -15,45 +16,56 @@ pub struct CampaignResource {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdGroupResource {
-    pub resourceName: String,
+    #[serde(rename = "resourceName")]
+    pub resource_name: String,
     pub id: String,
     pub name: String,
-    pub status: String,               // e.g., "ENABLED", "PAUSED"
-    pub campaignResourceName: String, // Reference to campaign resource name
+    pub status: String, // e.g., "ENABLED", "PAUSED"
+    #[serde(rename = "campaignResourceName")]
+    pub campaign_resource_name: String, // Reference to campaign resource name
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeywordViewResource {
-    pub resourceName: String,
+    #[serde(rename = "resourceName")]
+    pub resource_name: String,
     // Keyword views often don't have an ID directly, but reference criterion
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdGroupCriterionResource {
-    pub resourceName: String,
-    pub criterionId: String, // ID of the criterion (keyword)
+    #[serde(rename = "resourceName")]
+    pub resource_name: String,
+    #[serde(rename = "criterionId")]
+    pub criterion_id: String, // ID of the criterion (keyword)
     pub status: String,
     #[serde(default)] // Keep default for optional keyword field
     pub keyword: Option<KeywordData>, // Actual keyword text and match type
-    pub qualityScore: Option<u32>,   // Quality Score is often here
-    pub adGroupResourceName: String, // Reference to ad group resource name
+    #[serde(rename = "qualityScore")]
+    pub quality_score: Option<u32>, // Quality Score is often here
+    #[serde(rename = "adGroupResourceName")]
+    pub ad_group_resource_name: String, // Reference to ad group resource name
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeywordData {
     pub text: String,
-    pub matchType: String, // e.g., "EXACT", "PHRASE", "BROAD"
+    #[serde(rename = "matchType")]
+    pub match_type: String, // e.g., "EXACT", "PHRASE", "BROAD"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsData {
     pub clicks: u64,
     pub impressions: u64,
-    pub costMicros: u64,
+    #[serde(rename = "costMicros")]
+    pub cost_micros: u64,
     pub conversions: f64,
-    pub conversionsValue: f64,
+    #[serde(rename = "conversionsValue")]
+    pub conversions_value: f64,
     pub ctr: f64, // Click-through rate
-    pub averageCpc: f64, // Average Cost-per-click
+    #[serde(rename = "averageCpc")]
+    pub average_cpc: f64, // Average Cost-per-click
                   // Add other relevant metrics as needed from Google Ads API documentation
                   // e.g., view_through_conversions, all_conversions, etc.
 }
@@ -70,9 +82,12 @@ pub struct SegmentsData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleAdsRow {
     pub campaign: Option<CampaignResource>,
-    pub adGroup: Option<AdGroupResource>,
-    pub keywordView: Option<KeywordViewResource>,
-    pub adGroupCriterion: Option<AdGroupCriterionResource>,
+    #[serde(rename = "adGroup")]
+    pub ad_group: Option<AdGroupResource>,
+    #[serde(rename = "keywordView")]
+    pub keyword_view: Option<KeywordViewResource>,
+    #[serde(rename = "adGroupCriterion")]
+    pub ad_group_criterion: Option<AdGroupCriterionResource>,
     pub metrics: Option<MetricsData>,
     pub segments: Option<SegmentsData>,
 }

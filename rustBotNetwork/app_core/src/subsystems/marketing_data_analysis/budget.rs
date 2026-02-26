@@ -19,6 +19,7 @@ const ANALYSIS_UNITS_PER_DAY: u64 = 64;
 const LLM_IN_WITH_NARRATIVES: u64 = 600;
 const LLM_OUT_WITH_NARRATIVES: u64 = 380;
 pub const HARD_DAILY_SPEND_CAP_MICROS: u64 = 10_000_000;
+#[allow(dead_code)]
 const DAILY_LEDGER_DEFAULT_PATH: &str = "data/analytics_runs/daily_spend_ledger_v1.json";
 
 #[derive(Debug, Clone, Default)]

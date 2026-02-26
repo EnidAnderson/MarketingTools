@@ -1,7 +1,6 @@
 use super::tool_definition::ToolMaturity;
 use super::tool_registry::{ToolRegistry, ToolRegistryConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 
 /// # NDOC
 /// component: `tools::tool_audit`
@@ -154,6 +153,7 @@ fn baseline_scores(module_name: &str) -> (u8, u8, u8, ToolMaturity, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
     fn test_tool_audit_report_covers_all_tool_modules() {

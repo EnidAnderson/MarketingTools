@@ -131,6 +131,9 @@ pub fn maybe_sign_connector_attestation_v1(
     let Some((signing_key, key_id)) = maybe_load_signing_key_from_env()? else {
         return Ok(());
     };
+    if attestation_is_empty(attestation) {
+        return Ok(());
+    }
     if attestation.connector_mode_effective.trim().is_empty()
         || attestation.connector_config_fingerprint.trim().is_empty()
         || attestation.fingerprint_alg.trim().is_empty()
@@ -151,6 +154,16 @@ pub fn maybe_sign_connector_attestation_v1(
     ));
     attestation.fingerprint_key_id = Some(key_id);
     Ok(())
+}
+
+fn attestation_is_empty(attestation: &ConnectorConfigAttestationV1) -> bool {
+    attestation.connector_mode_effective.trim().is_empty()
+        && attestation.connector_config_fingerprint.trim().is_empty()
+        && attestation.fingerprint_alg.trim().is_empty()
+        && attestation.fingerprint_input_schema.trim().is_empty()
+        && attestation.fingerprint_salt_id.is_none()
+        && attestation.fingerprint_signature.is_none()
+        && attestation.fingerprint_key_id.is_none()
 }
 
 /// # NDOC

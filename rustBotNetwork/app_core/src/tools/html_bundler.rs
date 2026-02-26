@@ -74,7 +74,6 @@ impl BaseTool for HtmlBundlerTool {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::io::Write;
     use tempfile::tempdir;
 
     #[tokio::test]

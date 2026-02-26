@@ -106,7 +106,6 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
-    use std::path::PathBuf;
     use tempfile::tempdir; // Still needed for tempdir().path().join()
 
     // Mock implementation for PlaywrightRunner

@@ -1,6 +1,5 @@
 use serde_json::Value;
 use std::env;
-use std::path::PathBuf;
 use std::process::Command;
 
 /// Executes a Python tool via the `python_tool_dispatcher.py` script.

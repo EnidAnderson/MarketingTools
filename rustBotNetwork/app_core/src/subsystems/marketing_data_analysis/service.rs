@@ -385,25 +385,25 @@ fn rows_to_report(
     for row in rows {
         let Some(metrics) = row.metrics else { continue };
         let campaign = row.campaign.unwrap_or(CampaignResource {
-            resourceName: "".to_string(),
+            resource_name: "".to_string(),
             id: "".to_string(),
             name: "".to_string(),
             status: "UNKNOWN".to_string(),
         });
-        let ad_group = row.adGroup.unwrap_or(AdGroupResource {
-            resourceName: "".to_string(),
+        let ad_group = row.ad_group.unwrap_or(AdGroupResource {
+            resource_name: "".to_string(),
             id: "".to_string(),
             name: "".to_string(),
             status: "UNKNOWN".to_string(),
-            campaignResourceName: "".to_string(),
+            campaign_resource_name: "".to_string(),
         });
-        let criterion = row.adGroupCriterion.unwrap_or(AdGroupCriterionResource {
-            resourceName: "".to_string(),
-            criterionId: "".to_string(),
+        let criterion = row.ad_group_criterion.unwrap_or(AdGroupCriterionResource {
+            resource_name: "".to_string(),
+            criterion_id: "".to_string(),
             status: "UNKNOWN".to_string(),
             keyword: None,
-            qualityScore: None,
-            adGroupResourceName: "".to_string(),
+            quality_score: None,
+            ad_group_resource_name: "".to_string(),
         });
 
         let line = from_metrics_data(&metrics);
@@ -429,7 +429,7 @@ fn rows_to_report(
         ad_group_entry.2 = ad_group.status.clone();
         ad_group_entry.3 = sum_metrics(&ad_group_entry.3, &line);
 
-        let keyword_entry = keywords.entry(criterion.criterionId.clone()).or_insert((
+        let keyword_entry = keywords.entry(criterion.criterion_id.clone()).or_insert((
             campaign.id.clone(),
             ad_group.id.clone(),
             criterion
@@ -440,15 +440,15 @@ fn rows_to_report(
             criterion
                 .keyword
                 .as_ref()
-                .map(|k| k.matchType.clone())
+                .map(|k| k.match_type.clone())
                 .unwrap_or_else(|| "EXACT".to_string()),
             ReportMetrics::default(),
-            criterion.qualityScore,
+            criterion.quality_score,
         ));
         keyword_entry.0 = campaign.id.clone();
         keyword_entry.1 = ad_group.id.clone();
         keyword_entry.4 = sum_metrics(&keyword_entry.4, &line);
-        keyword_entry.5 = criterion.qualityScore;
+        keyword_entry.5 = criterion.quality_score;
     }
 
     let campaign_data = campaigns
@@ -537,7 +537,7 @@ fn google_ads_rows_to_raw_v1(
                     .map(|item| item.id.clone())
                     .unwrap_or_default();
                 let ad_group_id = row
-                    .adGroup
+                    .ad_group
                     .as_ref()
                     .map(|item| item.id.clone())
                     .unwrap_or_default();
@@ -546,13 +546,13 @@ fn google_ads_rows_to_raw_v1(
                     .as_ref()
                     .and_then(|segments| segments.date.clone())
                     .unwrap_or_default();
-                let conversion_value = metrics.conversionsValue;
+                let conversion_value = metrics.conversions_value;
                 let conversions_micros_float = conversion_value * 1_000_000.0;
                 if !conversions_micros_float.is_finite() || conversions_micros_float < 0.0 {
                     return Err(AnalyticsError::new(
                         "ads_conversion_value_non_finite",
                         "google ads conversion value must be finite and non-negative",
-                        vec!["rows[].metrics.conversionsValue".to_string()],
+                        vec!["rows[].metrics.conversions_value".to_string()],
                         None,
                     ));
                 }
@@ -560,7 +560,7 @@ fn google_ads_rows_to_raw_v1(
                     return Err(AnalyticsError::new(
                         "ads_conversion_value_overflow",
                         "google ads conversion value exceeds representable micros range",
-                        vec!["rows[].metrics.conversionsValue".to_string()],
+                        vec!["rows[].metrics.conversions_value".to_string()],
                         None,
                     ));
                 }
@@ -570,7 +570,7 @@ fn google_ads_rows_to_raw_v1(
                     date,
                     impressions: metrics.impressions,
                     clicks: metrics.clicks,
-                    cost_micros: metrics.costMicros,
+                    cost_micros: metrics.cost_micros,
                     conversions_micros: conversions_micros_float.round() as u64,
                     currency: "USD".to_string(),
                 })
@@ -580,13 +580,13 @@ fn google_ads_rows_to_raw_v1(
 }
 
 fn from_metrics_data(data: &MetricsData) -> ReportMetrics {
-    let cost = data.costMicros as f64 / 1_000_000.0;
+    let cost = data.cost_micros as f64 / 1_000_000.0;
     derived_metrics(
         data.impressions,
         data.clicks,
         cost,
         data.conversions,
-        data.conversionsValue,
+        data.conversions_value,
     )
 }
 
@@ -1697,28 +1697,28 @@ mod tests {
     fn google_ads_raw_conversion_rejects_non_finite_values() {
         let rows = vec![GoogleAdsRow {
             campaign: Some(CampaignResource {
-                resourceName: "customers/1/campaigns/1".to_string(),
+                resource_name: "customers/1/campaigns/1".to_string(),
                 id: "1".to_string(),
                 name: "c".to_string(),
                 status: "ENABLED".to_string(),
             }),
-            adGroup: Some(AdGroupResource {
-                resourceName: "customers/1/adGroups/1".to_string(),
+            ad_group: Some(AdGroupResource {
+                resource_name: "customers/1/adGroups/1".to_string(),
                 id: "1".to_string(),
                 name: "a".to_string(),
                 status: "ENABLED".to_string(),
-                campaignResourceName: "customers/1/campaigns/1".to_string(),
+                campaign_resource_name: "customers/1/campaigns/1".to_string(),
             }),
-            keywordView: None,
-            adGroupCriterion: None,
+            keyword_view: None,
+            ad_group_criterion: None,
             metrics: Some(MetricsData {
                 impressions: 100,
                 clicks: 10,
-                costMicros: 100_000,
+                cost_micros: 100_000,
                 conversions: 1.0,
-                conversionsValue: f64::NAN,
+                conversions_value: f64::NAN,
                 ctr: 10.0,
-                averageCpc: 1.0,
+                average_cpc: 1.0,
             }),
             segments: Some(crate::data_models::analytics::SegmentsData {
                 date: Some("2026-02-01".to_string()),

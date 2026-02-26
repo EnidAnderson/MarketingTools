@@ -424,7 +424,7 @@ pub fn generate_simulated_google_ads_rows(
                 "PAUSED"
             };
             let campaign = CampaignResource {
-                resourceName: campaign_resource.clone(),
+                resource_name: campaign_resource.clone(),
                 id: campaign_id.clone(),
                 name: (*campaign_name).to_string(),
                 status: campaign_status.to_string(),
@@ -444,11 +444,11 @@ pub fn generate_simulated_google_ads_rows(
                     "PAUSED"
                 };
                 let ad_group = AdGroupResource {
-                    resourceName: ad_group_resource.clone(),
+                    resource_name: ad_group_resource.clone(),
                     id: ad_group_id.clone(),
                     name: (*ad_group_name).to_string(),
                     status: ad_group_status.to_string(),
-                    campaignResourceName: campaign_resource.clone(),
+                    campaign_resource_name: campaign_resource.clone(),
                 };
 
                 for (kw_idx, keyword_text) in KEYWORD_TEXTS.iter().enumerate() {
@@ -462,35 +462,35 @@ pub fn generate_simulated_google_ads_rows(
                     let metrics = MetricsData {
                         clicks,
                         impressions,
-                        costMicros: cost_micros,
+                        cost_micros: cost_micros,
                         conversions,
-                        conversionsValue: conversions_value,
+                        conversions_value: conversions_value,
                         ctr: round4((clicks as f64 / impressions as f64) * 100.0),
-                        averageCpc: round4(cost_micros as f64 / clicks as f64 / 1_000_000.0),
+                        average_cpc: round4(cost_micros as f64 / clicks as f64 / 1_000_000.0),
                     };
 
                     let criterion_id =
                         format!("{}{}{}", campaign_idx + 1, ad_group_idx + 1, kw_idx + 1);
                     let criterion = AdGroupCriterionResource {
-                        resourceName: format!(
+                        resource_name: format!(
                             "customers/123/adGroupCriteria/{}.{}",
                             ad_group_id, criterion_id
                         ),
-                        criterionId: criterion_id,
+                        criterion_id: criterion_id,
                         status: "ENABLED".to_string(),
                         keyword: Some(KeywordData {
                             text: (*keyword_text).to_string(),
-                            matchType: "EXACT".to_string(),
+                            match_type: "EXACT".to_string(),
                         }),
-                        qualityScore: Some(rng.gen_range(1..=10)),
-                        adGroupResourceName: ad_group_resource.clone(),
+                        quality_score: Some(rng.gen_range(1..=10)),
+                        ad_group_resource_name: ad_group_resource.clone(),
                     };
 
                     rows.push(GoogleAdsRow {
                         campaign: Some(campaign.clone()),
-                        adGroup: Some(ad_group.clone()),
-                        keywordView: None,
-                        adGroupCriterion: Some(criterion),
+                        ad_group: Some(ad_group.clone()),
+                        keyword_view: None,
+                        ad_group_criterion: Some(criterion),
                         metrics: Some(metrics),
                         segments: Some(SegmentsData {
                             date: Some(date_str.clone()),

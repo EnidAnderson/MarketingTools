@@ -2,7 +2,7 @@
 
 use crate::data_models::persona::Persona;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Loads a persona from the 'teams' directory.
 ///
