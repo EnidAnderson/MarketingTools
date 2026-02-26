@@ -1,5 +1,6 @@
 pub mod analytics_config;
 pub mod attestation;
+pub mod attestation_policy;
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis`
 /// purpose: Typed mock analytics subsystem for deterministic, auditable market analysis.
@@ -28,6 +29,10 @@ pub use attestation::{
     canonical_attestation_payload_v1, load_attestation_key_registry_from_env_or_file,
     maybe_sign_connector_attestation_v1, verify_connector_attestation_signature_v1,
     verify_connector_attestation_with_registry_v1, AttestationKeyRegistryV1,
+};
+pub use attestation_policy::{
+    is_production_profile_like, resolve_attestation_policy_v1, AttestationPolicySourceV1,
+    AttestationPolicyV1,
 };
 pub use budget::{
     build_budget_plan, enforce_daily_hard_cap, estimate_budget_upper_bound, BudgetCategory,

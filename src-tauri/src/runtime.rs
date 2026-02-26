@@ -4,8 +4,9 @@ use app_core::subsystems::campaign_orchestration::runtime::{
 };
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_fingerprint_v1, analytics_connector_config_from_env,
-    build_historical_analysis, evaluate_analytics_connectors_preflight, AnalyticsConnectorModeV1,
-    AnalyticsRunStore, ConnectorConfigAttestationV1, DefaultMarketAnalysisService, GuidanceItem,
+    build_historical_analysis, evaluate_analytics_connectors_preflight, is_production_profile_like,
+    resolve_attestation_policy_v1, AnalyticsConnectorModeV1, AnalyticsRunStore,
+    ConnectorConfigAttestationV1, DefaultMarketAnalysisService, GuidanceItem,
     MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
     SimulatedAnalyticsConnectorV2, CONNECTOR_CONFIG_FINGERPRINT_ALG_V1,
     CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
@@ -435,6 +436,23 @@ impl JobManager {
                             "mode": mode_label.clone(),
                             "config_fingerprint": config_fingerprint.clone()
                         }
+                    }),
+                );
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+            if let Err(err) = resolve_attestation_policy_v1(&request.profile_id) {
+                manager.update_failed(
+                    &spawned_job_id,
+                    serde_json::json!({
+                        "code": "analytics_attestation_policy_invalid",
+                        "category": "configuration",
+                        "source": "attestation_policy",
+                        "message": err.message,
+                        "retryable": false,
+                        "field_paths": err.field_paths,
+                        "trace_id": "",
+                        "context": err.context
                     }),
                 );
                 manager.emit_failed(&app_handle, &spawned_job_id);
@@ -1075,13 +1093,7 @@ fn enforce_production_profile_connector_mode(
 }
 
 fn is_production_profile(profile_id: &str) -> bool {
-    let normalized = profile_id.trim().to_ascii_lowercase();
-    normalized == "production"
-        || normalized == "prod"
-        || normalized.starts_with("production-")
-        || normalized.starts_with("production_")
-        || normalized.starts_with("prod-")
-        || normalized.starts_with("prod_")
+    is_production_profile_like(profile_id)
 }
 
 fn connector_mode_label(mode: &AnalyticsConnectorModeV1) -> &'static str {

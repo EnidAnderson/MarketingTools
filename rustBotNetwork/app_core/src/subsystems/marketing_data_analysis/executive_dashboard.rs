@@ -4,6 +4,7 @@ use super::contracts::{
     ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1,
     PortfolioRowV1, PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
 };
+use super::resolve_attestation_policy_v1;
 use crate::data_models::analytics::ReportMetrics;
 use chrono::Utc;
 
@@ -57,14 +58,32 @@ pub fn build_executive_dashboard_snapshot(
         .unwrap_or_else(|| "simulated".to_string());
 
     let mut alerts = Vec::new();
+    let attestation_policy = resolve_attestation_policy_v1(&latest.request.profile_id).ok();
+    let signature_present = latest
+        .metadata
+        .connector_attestation
+        .fingerprint_signature
+        .is_some();
     if !latest.artifact.quality_controls.is_healthy {
         alerts.push("Quality controls degraded".to_string());
+    }
+    if attestation_policy
+        .as_ref()
+        .map(|policy| policy.require_signed_attestations && !signature_present)
+        .unwrap_or(true)
+    {
+        alerts.push("Attestation signature missing for required policy.".to_string());
     }
     for flag in &latest.artifact.historical_analysis.anomaly_flags {
         alerts.push(format!("Anomaly {}: {}", flag.metric_key, flag.reason));
     }
 
-    let trust_status = if latest.artifact.quality_controls.is_healthy {
+    let trust_status = if latest.artifact.quality_controls.is_healthy
+        && attestation_policy
+            .as_ref()
+            .map(|policy| !policy.require_signed_attestations || signature_present)
+            .unwrap_or(false)
+    {
         "healthy".to_string()
     } else {
         "degraded".to_string()
@@ -350,6 +369,23 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
         .any(|note| note.severity.eq_ignore_ascii_case("block"))
     {
         blocking_reasons.push("Blocking ingest cleaning notes present.".to_string());
+    }
+    match resolve_attestation_policy_v1(&run.request.profile_id) {
+        Ok(policy) => {
+            if policy.require_signed_attestations
+                && run
+                    .metadata
+                    .connector_attestation
+                    .fingerprint_signature
+                    .is_none()
+            {
+                blocking_reasons.push("Signed attestation required by policy.".to_string());
+            }
+        }
+        Err(_) => {
+            blocking_reasons
+                .push("Attestation policy configuration invalid (fail-closed).".to_string());
+        }
     }
 
     let publish_ready = blocking_reasons.is_empty();

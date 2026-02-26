@@ -3,14 +3,14 @@ use super::contracts::{
     ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::{
-    load_attestation_key_registry_from_env_or_file, verify_connector_attestation_with_registry_v1,
+    load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
+    verify_connector_attestation_with_registry_v1,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use validator::Validate;
 
 const MAX_DATE_SPAN_DAYS: i64 = 93;
 const METRIC_EPSILON: f64 = 0.0001;
-const ENV_REQUIRE_SIGNED_ATTESTATIONS: &str = "REQUIRE_SIGNED_ATTESTATIONS";
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::validators`
@@ -130,8 +130,11 @@ pub fn validate_mock_analytics_artifact_v1(
 ) -> AnalyticsValidationReportV1 {
     let mut checks = Vec::new();
     let attestation = &artifact.metadata.connector_attestation;
-    let (signed_required, signed_policy_config_valid) =
-        resolve_signed_attestation_requirement(&artifact.request.profile_id);
+    let resolved_policy = resolve_attestation_policy_v1(&artifact.request.profile_id);
+    let (signed_required, signed_policy_config_valid) = match resolved_policy {
+        Ok(policy) => (policy.require_signed_attestations, true),
+        Err(_) => (true, false),
+    };
 
     checks.push(check(
         "schema_version",
@@ -364,37 +367,6 @@ fn attestation_pairing_is_valid(
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
     signature_present == key_id_present
-}
-
-fn is_production_profile(profile_id: &str) -> bool {
-    let normalized = profile_id.trim().to_ascii_lowercase();
-    normalized == "production"
-        || normalized == "prod"
-        || normalized.starts_with("production-")
-        || normalized.starts_with("production_")
-        || normalized.starts_with("prod-")
-        || normalized.starts_with("prod_")
-}
-
-fn resolve_signed_attestation_requirement(profile_id: &str) -> (bool, bool) {
-    match env_bool(ENV_REQUIRE_SIGNED_ATTESTATIONS) {
-        Ok(Some(value)) => (value, true),
-        Ok(None) => (is_production_profile(profile_id), true),
-        Err(_) => (true, false),
-    }
-}
-
-fn env_bool(key: &str) -> Result<Option<bool>, ()> {
-    let Some(raw) = std::env::var(key).ok() else {
-        return Ok(None);
-    };
-    let normalized = raw.trim().to_ascii_lowercase();
-    let value = match normalized.as_str() {
-        "1" | "true" | "yes" => true,
-        "0" | "false" | "no" => false,
-        _ => return Err(()),
-    };
-    Ok(Some(value))
 }
 
 #[cfg(test)]
@@ -714,7 +686,7 @@ mod tests {
     #[test]
     fn artifact_validator_allows_unsigned_non_production_when_toggle_false() {
         let _guard = ENV_MUTEX.lock().expect("env mutex");
-        with_temp_env(&[(ENV_REQUIRE_SIGNED_ATTESTATIONS, Some("false"))], || {
+        with_temp_env(&[("REQUIRE_SIGNED_ATTESTATIONS", Some("false"))], || {
             let mut artifact = MockAnalyticsArtifactV1 {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 request: MockAnalyticsRequestV1 {
@@ -797,7 +769,7 @@ mod tests {
     #[test]
     fn artifact_validator_invalid_toggle_value_is_reported_and_fails_closed() {
         let _guard = ENV_MUTEX.lock().expect("env mutex");
-        with_temp_env(&[(ENV_REQUIRE_SIGNED_ATTESTATIONS, Some("maybe"))], || {
+        with_temp_env(&[("REQUIRE_SIGNED_ATTESTATIONS", Some("maybe"))], || {
             let mut artifact = MockAnalyticsArtifactV1 {
                 schema_version: MOCK_ANALYTICS_SCHEMA_VERSION_V1.to_string(),
                 request: MockAnalyticsRequestV1 {
