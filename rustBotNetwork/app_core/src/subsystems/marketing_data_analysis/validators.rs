@@ -3,6 +3,7 @@ use super::contracts::{
     ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::{
+    attestation_registry_diagnostics_v1, attestation_registry_validation_message_v1,
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
     verify_connector_attestation_with_registry_v1,
 };
@@ -210,6 +211,7 @@ pub fn validate_mock_analytics_artifact_v1(
         Ok(value) => value,
         Err(_) => None,
     };
+    let registry_diagnostics = attestation_registry_diagnostics_v1(attestation, registry.as_ref());
     let signature_verified = if signature_present {
         match registry.as_ref() {
             Some(registry) => verify_connector_attestation_with_registry_v1(
@@ -227,7 +229,7 @@ pub fn validate_mock_analytics_artifact_v1(
     checks.push(check(
         "attestation_registry_verification",
         signature_verified,
-        "signed attestations must resolve key_id in registry and verify signature",
+        &attestation_registry_validation_message_v1(&registry_diagnostics),
     ));
     checks.push(check(
         "attestation_policy_config_valid",

@@ -18,6 +18,16 @@ pub struct AttestationKeyRegistryV1 {
     by_key_id: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttestationRegistryDiagnosticsV1 {
+    pub signature_present: bool,
+    pub key_id_present: bool,
+    pub key_id: Option<String>,
+    pub registry_configured: bool,
+    pub registry_key_count: usize,
+    pub key_id_found_in_registry: Option<bool>,
+}
+
 impl AttestationKeyRegistryV1 {
     pub fn from_json_str(raw: &str) -> Result<Self, AnalyticsError> {
         let parsed: HashMap<String, String> = serde_json::from_str(raw).map_err(|_| {
@@ -49,6 +59,14 @@ impl AttestationKeyRegistryV1 {
 
     pub fn lookup_public_key_b64(&self, key_id: &str) -> Option<&str> {
         self.by_key_id.get(key_id).map(String::as_str)
+    }
+
+    pub fn key_count(&self) -> usize {
+        self.by_key_id.len()
+    }
+
+    pub fn has_key_id(&self, key_id: &str) -> bool {
+        self.by_key_id.contains_key(key_id)
     }
 }
 
@@ -275,6 +293,57 @@ pub fn verify_connector_attestation_with_registry_v1(
     verify_connector_attestation_signature_v1(run_id, artifact_id, attestation, public_key_b64)
 }
 
+pub fn attestation_registry_diagnostics_v1(
+    attestation: &ConnectorConfigAttestationV1,
+    registry: Option<&AttestationKeyRegistryV1>,
+) -> AttestationRegistryDiagnosticsV1 {
+    let signature_present = attestation
+        .fingerprint_signature
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let key_id = attestation
+        .fingerprint_key_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let key_id_present = key_id.is_some();
+
+    let (registry_configured, registry_key_count, key_id_found_in_registry) = match registry {
+        Some(registry) => {
+            let found = key_id.as_deref().map(|value| registry.has_key_id(value));
+            (true, registry.key_count(), found)
+        }
+        None => (false, 0, None),
+    };
+
+    AttestationRegistryDiagnosticsV1 {
+        signature_present,
+        key_id_present,
+        key_id,
+        registry_configured,
+        registry_key_count,
+        key_id_found_in_registry,
+    }
+}
+
+pub fn attestation_registry_validation_message_v1(
+    diagnostics: &AttestationRegistryDiagnosticsV1,
+) -> String {
+    format!(
+        "signed attestations must resolve key_id in registry and verify signature (signature_present={}, key_id_present={}, key_id={}, registry_configured={}, registry_key_count={}, key_id_found={})",
+        diagnostics.signature_present,
+        diagnostics.key_id_present,
+        diagnostics.key_id.as_deref().unwrap_or("-"),
+        diagnostics.registry_configured,
+        diagnostics.registry_key_count,
+        diagnostics
+            .key_id_found_in_registry
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string())
+    )
+}
+
 fn maybe_load_signing_key_from_env() -> Result<Option<(SigningKey, String)>, AnalyticsError> {
     let Some(private_key_b64) = std::env::var(ENV_PRIVATE_KEY_B64)
         .ok()
@@ -457,6 +526,93 @@ mod tests {
             verify.expect_err("must fail").code,
             "attestation_unknown_key_id"
         );
+    }
+
+    #[test]
+    fn verify_with_registry_fails_when_key_material_rotates_without_key_id_change() {
+        let mut att = sample_attestation();
+        let old_signing_key = SigningKey::from_bytes(&[21_u8; 32]);
+        let new_signing_key = SigningKey::from_bytes(&[22_u8; 32]);
+        let payload =
+            canonical_attestation_payload_v1("run-1", "artifact-1", &att).expect("payload");
+        let sig = old_signing_key.sign(&payload);
+        att.fingerprint_signature = Some(format!(
+            "{}{}",
+            SIGNATURE_PREFIX,
+            STANDARD_NO_PAD.encode(sig.to_bytes())
+        ));
+        att.fingerprint_key_id = Some("prod-key".to_string());
+
+        let rotated_registry = AttestationKeyRegistryV1::from_json_str(&format!(
+            r#"{{"prod-key":"{}"}}"#,
+            STANDARD.encode(new_signing_key.verifying_key().as_bytes())
+        ))
+        .expect("registry");
+
+        let verify = verify_connector_attestation_with_registry_v1(
+            "run-1",
+            "artifact-1",
+            &att,
+            &rotated_registry,
+        );
+        assert_eq!(
+            verify.expect_err("must fail").code,
+            "attestation_signature_invalid"
+        );
+    }
+
+    #[test]
+    fn verify_with_registry_passes_during_rotation_window_when_old_key_still_registered() {
+        let mut att = sample_attestation();
+        let old_signing_key = SigningKey::from_bytes(&[31_u8; 32]);
+        let new_signing_key = SigningKey::from_bytes(&[32_u8; 32]);
+        let payload =
+            canonical_attestation_payload_v1("run-1", "artifact-1", &att).expect("payload");
+        let sig = old_signing_key.sign(&payload);
+        att.fingerprint_signature = Some(format!(
+            "{}{}",
+            SIGNATURE_PREFIX,
+            STANDARD_NO_PAD.encode(sig.to_bytes())
+        ));
+        att.fingerprint_key_id = Some("key-2026-02".to_string());
+
+        let dual_registry = AttestationKeyRegistryV1::from_json_str(&format!(
+            r#"{{"key-2026-02":"{}","key-2026-03":"{}"}}"#,
+            STANDARD.encode(old_signing_key.verifying_key().as_bytes()),
+            STANDARD.encode(new_signing_key.verifying_key().as_bytes())
+        ))
+        .expect("registry");
+
+        let verify = verify_connector_attestation_with_registry_v1(
+            "run-1",
+            "artifact-1",
+            &att,
+            &dual_registry,
+        );
+        assert!(verify.is_ok());
+    }
+
+    #[test]
+    fn registry_diagnostics_report_configuration_and_key_resolution() {
+        let mut att = sample_attestation();
+        att.fingerprint_signature = Some("ed25519:abc".to_string());
+        att.fingerprint_key_id = Some("missing".to_string());
+
+        let no_registry = attestation_registry_diagnostics_v1(&att, None);
+        assert!(no_registry.signature_present);
+        assert!(no_registry.key_id_present);
+        assert!(!no_registry.registry_configured);
+        assert_eq!(no_registry.registry_key_count, 0);
+        assert!(no_registry.key_id_found_in_registry.is_none());
+
+        let registry = AttestationKeyRegistryV1::from_json_str(
+            r#"{"k1":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="}"#,
+        )
+        .expect("registry");
+        let with_registry = attestation_registry_diagnostics_v1(&att, Some(&registry));
+        assert!(with_registry.registry_configured);
+        assert_eq!(with_registry.registry_key_count, 1);
+        assert_eq!(with_registry.key_id_found_in_registry, Some(false));
     }
 
     #[test]

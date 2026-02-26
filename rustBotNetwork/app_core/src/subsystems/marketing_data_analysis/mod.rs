@@ -26,9 +26,11 @@ pub use analytics_config::{
     CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
 };
 pub use attestation::{
+    attestation_registry_diagnostics_v1, attestation_registry_validation_message_v1,
     canonical_attestation_payload_v1, load_attestation_key_registry_from_env_or_file,
     maybe_sign_connector_attestation_v1, verify_connector_attestation_signature_v1,
     verify_connector_attestation_with_registry_v1, AttestationKeyRegistryV1,
+    AttestationRegistryDiagnosticsV1,
 };
 pub use attestation_policy::{
     is_production_profile_like, resolve_attestation_policy_v1, AttestationPolicySourceV1,
