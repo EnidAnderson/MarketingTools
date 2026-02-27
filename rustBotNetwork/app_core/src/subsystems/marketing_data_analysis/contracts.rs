@@ -590,6 +590,7 @@ pub struct DashboardExportAuditRecordV1 {
     pub attestation_key_id: Option<String>,
     pub export_payload_checksum_alg: String,
     pub export_payload_checksum: String,
+    pub export_payload_ref: String,
     pub checked_by: String,
     pub release_id: String,
 }

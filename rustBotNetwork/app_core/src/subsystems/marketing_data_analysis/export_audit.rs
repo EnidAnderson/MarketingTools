@@ -114,6 +114,45 @@ impl DashboardExportAuditStore {
         }
         Ok(rows)
     }
+
+    pub fn find_by_export_id(
+        &self,
+        export_id: &str,
+    ) -> Result<Option<DashboardExportAuditRecordV1>, AnalyticsError> {
+        if !self.path.exists() {
+            return Ok(None);
+        }
+        let file = fs::File::open(&self.path).map_err(|err| {
+            AnalyticsError::internal(
+                "export_audit_open_failed",
+                format!("failed to read dashboard export audit store: {err}"),
+            )
+        })?;
+        let reader = BufReader::new(file);
+        let mut found = None;
+        for line in reader.lines() {
+            let line = line.map_err(|err| {
+                AnalyticsError::internal(
+                    "export_audit_read_failed",
+                    format!("failed to read dashboard export audit line: {err}"),
+                )
+            })?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let parsed: DashboardExportAuditRecordV1 =
+                serde_json::from_str(&line).map_err(|err| {
+                    AnalyticsError::internal(
+                        "export_audit_parse_failed",
+                        format!("failed to parse dashboard export audit record: {err}"),
+                    )
+                })?;
+            if parsed.export_id == export_id {
+                found = Some(parsed);
+            }
+        }
+        Ok(found)
+    }
 }
 
 impl Default for DashboardExportAuditStore {
@@ -161,6 +200,7 @@ mod tests {
             attestation_key_id: Some("key-2026-03".to_string()),
             export_payload_checksum_alg: "sha256".to_string(),
             export_payload_checksum: "abc123".to_string(),
+            export_payload_ref: "data/analytics_runs/exports/exp-1.json".to_string(),
             checked_by: "qa_fixer".to_string(),
             release_id: "rel-1".to_string(),
         }
@@ -186,5 +226,23 @@ mod tests {
         assert_eq!(p1[0].profile_id, "p1");
         assert_eq!(p1[0].schema_version, "dashboard_export_audit.v1");
         assert!(!p1[0].exported_at_utc.is_empty());
+    }
+
+    #[test]
+    fn find_by_export_id_returns_latest_matching_row() {
+        let dir = tempdir().expect("temp dir");
+        let path = dir.path().join("exports.jsonl");
+        let store = DashboardExportAuditStore::new(path);
+        let mut first = sample_record("exp-1", "p1");
+        first.gate_status = "review_required".to_string();
+        let second = sample_record("exp-1", "p1");
+        store.append_record(first).expect("append first");
+        store.append_record(second.clone()).expect("append second");
+
+        let found = store
+            .find_by_export_id("exp-1")
+            .expect("find")
+            .expect("must exist");
+        assert_eq!(found.gate_status, second.gate_status);
     }
 }

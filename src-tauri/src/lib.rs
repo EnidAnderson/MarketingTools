@@ -23,6 +23,8 @@ use app_core::tools::tool_registry::ToolRegistry;
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::State;
 use tauri_plugin_dialog::init as init_dialog_plugin;
@@ -836,6 +838,7 @@ fn export_executive_dashboard_governed(
     let snapshot_bytes = serde_json::to_vec(&snapshot)
         .map_err(|err| format!("failed to serialize dashboard snapshot for checksum: {err}"))?;
     let snapshot_checksum = checksum_sha256_hex(&snapshot_bytes);
+    let payload_ref = persist_dashboard_export_payload(&export_id, &snapshot_bytes)?;
     let audit_record = DashboardExportAuditRecordV1 {
         schema_version: String::new(),
         export_id: export_id.clone(),
@@ -864,6 +867,7 @@ fn export_executive_dashboard_governed(
             .clone(),
         export_payload_checksum_alg: "sha256".to_string(),
         export_payload_checksum: snapshot_checksum,
+        export_payload_ref: payload_ref.clone(),
         checked_by: gates.checked_by,
         release_id: gates.release_id,
     };
@@ -875,6 +879,7 @@ fn export_executive_dashboard_governed(
     Ok(json!({
         "export_id": export_id,
         "snapshot": snapshot,
+        "export_payload_ref": payload_ref,
         "audit_record": persisted
     }))
 }
@@ -890,6 +895,87 @@ fn checksum_sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+fn export_payload_dir() -> PathBuf {
+    std::env::var("ANALYTICS_EXPORT_PAYLOAD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("data/analytics_runs/exports"))
+}
+
+fn persist_dashboard_export_payload(
+    export_id: &str,
+    payload_bytes: &[u8],
+) -> Result<String, String> {
+    let dir = export_payload_dir();
+    fs::create_dir_all(&dir)
+        .map_err(|err| format!("failed to create export payload directory: {err}"))?;
+    let path = dir.join(format!("{export_id}.json"));
+    fs::write(&path, payload_bytes)
+        .map_err(|err| format!("failed to persist export payload bytes: {err}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// # NDOC
+/// component: `tauri_commands::verify_dashboard_export_checksum`
+/// purpose: Recompute checksum from persisted governed-export payload and compare with audit record.
+#[tauri::command]
+fn verify_dashboard_export_checksum(export_id: String) -> Result<Value, String> {
+    let export_id = export_id.trim();
+    if export_id.is_empty() {
+        return Err("export_id cannot be empty".to_string());
+    }
+    let store = DashboardExportAuditStore::default();
+    let record = store
+        .find_by_export_id(export_id)
+        .map_err(|err| format!("{}: {}", err.code, err.message))?
+        .ok_or_else(|| {
+            serde_json::json!({
+                "code": "analytics_export_audit_not_found",
+                "message": "No governed export audit record found for export_id.",
+                "source": "export_audit",
+                "details": { "export_id": export_id }
+            })
+            .to_string()
+        })?;
+    if !record
+        .export_payload_checksum_alg
+        .eq_ignore_ascii_case("sha256")
+    {
+        return Err(serde_json::json!({
+            "code": "analytics_export_checksum_alg_unsupported",
+            "message": "Only sha256 checksum verification is supported.",
+            "source": "export_audit",
+            "details": {
+                "export_id": export_id,
+                "alg": record.export_payload_checksum_alg
+            }
+        })
+        .to_string());
+    }
+    let payload_path = Path::new(&record.export_payload_ref);
+    let payload_bytes = fs::read(payload_path).map_err(|err| {
+        serde_json::json!({
+            "code": "analytics_export_payload_read_failed",
+            "message": format!("Failed to read persisted export payload: {err}"),
+            "source": "export_audit",
+            "details": {
+                "export_id": export_id,
+                "payload_ref": record.export_payload_ref
+            }
+        })
+        .to_string()
+    })?;
+    let recomputed = checksum_sha256_hex(&payload_bytes);
+    let matches = recomputed.eq_ignore_ascii_case(&record.export_payload_checksum);
+    Ok(json!({
+        "export_id": record.export_id,
+        "payload_ref": record.export_payload_ref,
+        "algorithm": record.export_payload_checksum_alg,
+        "expected_checksum": record.export_payload_checksum,
+        "recomputed_checksum": recomputed,
+        "matches": matches
+    }))
 }
 
 /// # NDOC
@@ -984,6 +1070,7 @@ pub fn run() {
             get_executive_dashboard_snapshot,
             export_executive_dashboard_governed,
             get_dashboard_export_audit_history,
+            verify_dashboard_export_checksum,
             get_dashboard_chart_definitions,
             generate_image_command,
         ])
@@ -995,8 +1082,9 @@ pub fn run() {
 mod tests {
     use super::*;
     use app_core::subsystems::marketing_data_analysis::contracts::{
-        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, ExecutiveDashboardSnapshotV1,
-        MockAnalyticsArtifactV1, MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, DashboardExportAuditRecordV1,
+        ExecutiveDashboardSnapshotV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
+        MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1273,6 +1361,78 @@ mod tests {
                 assert_eq!(rows[0].export_payload_checksum_alg, "sha256");
                 assert_eq!(rows[0].export_payload_checksum.len(), 64);
                 assert_eq!(rows[0].export_payload_checksum, expected_checksum);
+                assert!(!rows[0].export_payload_ref.trim().is_empty());
+
+                let verify = verify_dashboard_export_checksum(rows[0].export_id.clone())
+                    .expect("verify endpoint");
+                assert_eq!(verify.get("matches").and_then(Value::as_bool), Some(true));
+            },
+        );
+    }
+
+    #[test]
+    fn verify_dashboard_export_checksum_detects_payload_tamper() {
+        let _guard = env_mutex().lock().expect("env mutex");
+        let run_path = unique_tmp_path("runs.jsonl");
+        let audit_path = unique_tmp_path("export_audit.jsonl");
+        let payload_dir = unique_tmp_path("payloads");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", Some("false")),
+                (
+                    "ANALYTICS_RUN_STORE_PATH",
+                    Some(run_path.to_string_lossy().as_ref()),
+                ),
+                (
+                    "ANALYTICS_EXPORT_AUDIT_STORE_PATH",
+                    Some(audit_path.to_string_lossy().as_ref()),
+                ),
+                (
+                    "ANALYTICS_EXPORT_PAYLOAD_DIR",
+                    Some(payload_dir.to_string_lossy().as_ref()),
+                ),
+            ],
+            || {
+                let store = AnalyticsRunStore::new(run_path.clone());
+                store
+                    .append_run(build_run("dev"))
+                    .expect("append test run for export");
+
+                let gates = ReleaseGateInput {
+                    release_id: "rel-3".to_string(),
+                    scope: "internal".to_string(),
+                    security_gate: "green".to_string(),
+                    budget_gate: "green".to_string(),
+                    evidence_gate: "green".to_string(),
+                    role_gate: "green".to_string(),
+                    change_gate: "green".to_string(),
+                    checked_by: "team_lead".to_string(),
+                    checked_at_utc: "2026-02-26T00:00:00Z".to_string(),
+                };
+                let result = export_executive_dashboard_governed(
+                    "dev".to_string(),
+                    gates,
+                    Some("json".to_string()),
+                    Some("operator_download".to_string()),
+                    Some(24),
+                    Some(1),
+                    None,
+                    None,
+                )
+                .expect("governed export");
+
+                let audit_record = result
+                    .get("audit_record")
+                    .cloned()
+                    .expect("audit record value");
+                let record: DashboardExportAuditRecordV1 =
+                    serde_json::from_value(audit_record).expect("typed record");
+                fs::write(&record.export_payload_ref, b"{\"tampered\":true}")
+                    .expect("tamper payload");
+
+                let verify =
+                    verify_dashboard_export_checksum(record.export_id).expect("verify endpoint");
+                assert_eq!(verify.get("matches").and_then(Value::as_bool), Some(false));
             },
         );
     }
