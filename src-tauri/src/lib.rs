@@ -22,6 +22,7 @@ use app_core::tools::tool_definition::{
 use app_core::tools::tool_registry::ToolRegistry;
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tauri::AppHandle;
 use tauri::State;
 use tauri_plugin_dialog::init as init_dialog_plugin;
@@ -832,6 +833,9 @@ fn export_executive_dashboard_governed(
         signature_present
     };
     let export_id = format!("exp-{}-{}", now_millis(), latest_run.metadata.run_id);
+    let snapshot_bytes = serde_json::to_vec(&snapshot)
+        .map_err(|err| format!("failed to serialize dashboard snapshot for checksum: {err}"))?;
+    let snapshot_checksum = checksum_sha256_hex(&snapshot_bytes);
     let audit_record = DashboardExportAuditRecordV1 {
         schema_version: String::new(),
         export_id: export_id.clone(),
@@ -858,6 +862,8 @@ fn export_executive_dashboard_governed(
             .connector_attestation
             .fingerprint_key_id
             .clone(),
+        export_payload_checksum_alg: "sha256".to_string(),
+        export_payload_checksum: snapshot_checksum,
         checked_by: gates.checked_by,
         release_id: gates.release_id,
     };
@@ -878,6 +884,12 @@ fn now_millis() -> i128 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i128)
         .unwrap_or(0)
+}
+
+fn checksum_sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 /// # NDOC
@@ -983,8 +995,8 @@ pub fn run() {
 mod tests {
     use super::*;
     use app_core::subsystems::marketing_data_analysis::contracts::{
-        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
-        MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+        AnalyticsRunMetadataV1, AnalyticsValidationReportV1, ExecutiveDashboardSnapshotV1,
+        MockAnalyticsArtifactV1, MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1245,6 +1257,12 @@ mod tests {
                 .expect("governed export");
 
                 assert!(result.get("audit_record").is_some());
+                let snapshot_value = result.get("snapshot").expect("snapshot in response");
+                let snapshot_typed: ExecutiveDashboardSnapshotV1 =
+                    serde_json::from_value(snapshot_value.clone()).expect("snapshot typed");
+                let snapshot_bytes =
+                    serde_json::to_vec(&snapshot_typed).expect("snapshot serializable");
+                let expected_checksum = checksum_sha256_hex(&snapshot_bytes);
                 let audit_store = DashboardExportAuditStore::new(audit_path.clone());
                 let rows = audit_store
                     .list_recent(Some("dev"), 10)
@@ -1252,6 +1270,9 @@ mod tests {
                 assert_eq!(rows.len(), 1);
                 assert_eq!(rows[0].release_id, "rel-2");
                 assert!(rows[0].export_ready);
+                assert_eq!(rows[0].export_payload_checksum_alg, "sha256");
+                assert_eq!(rows[0].export_payload_checksum.len(), 64);
+                assert_eq!(rows[0].export_payload_checksum, expected_checksum);
             },
         );
     }

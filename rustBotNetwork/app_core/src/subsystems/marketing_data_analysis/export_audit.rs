@@ -159,6 +159,8 @@ mod tests {
             attestation_policy_required: true,
             attestation_verified: true,
             attestation_key_id: Some("key-2026-03".to_string()),
+            export_payload_checksum_alg: "sha256".to_string(),
+            export_payload_checksum: "abc123".to_string(),
             checked_by: "qa_fixer".to_string(),
             release_id: "rel-1".to_string(),
         }
