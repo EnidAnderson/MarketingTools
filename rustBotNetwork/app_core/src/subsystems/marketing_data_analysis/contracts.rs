@@ -568,6 +568,32 @@ pub struct PersistedAnalyticsRunV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Append-only audit record for governed executive dashboard exports.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct DashboardExportAuditRecordV1 {
+    pub schema_version: String,
+    pub export_id: String,
+    pub profile_id: String,
+    pub run_id: String,
+    pub exported_at_utc: String,
+    pub export_format: String,
+    pub target_ref: String,
+    pub gate_status: String,
+    pub publish_ready: bool,
+    pub export_ready: bool,
+    #[serde(default)]
+    pub blocking_reasons: Vec<String>,
+    #[serde(default)]
+    pub warning_reasons: Vec<String>,
+    pub attestation_policy_required: bool,
+    pub attestation_verified: bool,
+    pub attestation_key_id: Option<String>,
+    pub checked_by: String,
+    pub release_id: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Executive KPI tile payload for top dashboard strip.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct KpiTileV1 {

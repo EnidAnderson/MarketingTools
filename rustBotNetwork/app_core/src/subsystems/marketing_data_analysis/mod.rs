@@ -12,6 +12,7 @@ pub mod budget;
 pub mod connector_v2;
 pub mod contracts;
 pub mod executive_dashboard;
+pub mod export_audit;
 pub mod ingest;
 pub mod longitudinal;
 pub mod persistence;
@@ -51,9 +52,9 @@ pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
     AnalyticsValidationReportV1, ArtifactPersistenceRefV1, BudgetActualsV1, BudgetEnvelopeV1,
     BudgetEventV1, BudgetPolicyModeV1, BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1,
-    ConnectorConfigAttestationV1, DataQualitySummaryV1, DriftFlagV1, EvidenceItem,
-    ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FreshnessSlaPolicyV1, FunnelStageV1,
-    FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1, IngestCleaningNoteV1,
+    ConnectorConfigAttestationV1, DashboardExportAuditRecordV1, DataQualitySummaryV1, DriftFlagV1,
+    EvidenceItem, ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FreshnessSlaPolicyV1,
+    FunnelStageV1, FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, MockAnalyticsArtifactV1,
     MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1,
     QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1, SourceFreshnessSlaV1,
@@ -61,6 +62,7 @@ pub use contracts::{
     StorefrontBehaviorSummaryV1, ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
+pub use export_audit::DashboardExportAuditStore;
 pub use ingest::{
     join_coverage_ratio, parse_ga4_event, parse_google_ads_row, parse_wix_order,
     window_completeness, Cleaned, CleaningNote, CleaningSeverity, Ga4EventRawV1, Ga4EventV1,

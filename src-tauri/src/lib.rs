@@ -7,7 +7,8 @@ use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_executive_dashboard_snapshot,
     evaluate_analytics_connectors_preflight, load_attestation_key_registry_from_env_or_file,
     resolve_attestation_policy_v1, verify_connector_attestation_with_registry_v1,
-    AnalyticsConnectorConfigV1, AnalyticsRunStore, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    AnalyticsConnectorConfigV1, AnalyticsRunStore, DashboardExportAuditRecordV1,
+    DashboardExportAuditStore, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
     SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
@@ -33,7 +34,7 @@ use governance::{
     ReleaseGateInput,
 };
 use runtime::{JobHandle, JobManager, JobSnapshot};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn validate_governed_pipeline_contract(definition: &PipelineDefinition) -> Result<(), String> {
     let Some(refs) = definition.governance_refs.as_ref() else {
@@ -631,15 +632,38 @@ fn get_executive_dashboard_snapshot(
     if profile_id.is_empty() {
         return Err("profile_id cannot be empty".to_string());
     }
-    let store = AnalyticsRunStore::default();
-    let runs = store
-        .list_recent(Some(profile_id), limit.unwrap_or(24).min(64))
-        .map_err(|err| format!("{}: {}", err.code, err.message))?;
     let options = SnapshotBuildOptions {
         compare_window_runs: compare_window_runs.unwrap_or(1).max(1) as usize,
         target_roas,
         monthly_revenue_target,
     };
+    let (snapshot, latest_run) = build_dashboard_snapshot_checked(
+        profile_id,
+        limit.unwrap_or(24).min(64),
+        options,
+        enforce_publish_export_gate.unwrap_or(true),
+    )?;
+    let _ = latest_run;
+    serde_json::to_value(snapshot)
+        .map_err(|err| format!("failed to serialize dashboard snapshot: {err}"))
+}
+
+fn build_dashboard_snapshot_checked(
+    profile_id: &str,
+    limit: usize,
+    options: SnapshotBuildOptions,
+    enforce_publish_export_gate: bool,
+) -> Result<
+    (
+        app_core::subsystems::marketing_data_analysis::ExecutiveDashboardSnapshotV1,
+        PersistedAnalyticsRunV1,
+    ),
+    String,
+> {
+    let store = AnalyticsRunStore::default();
+    let runs = store
+        .list_recent(Some(profile_id), limit)
+        .map_err(|err| format!("{}: {}", err.code, err.message))?;
     let snapshot =
         build_executive_dashboard_snapshot(profile_id, &runs, options).ok_or_else(|| {
             format!(
@@ -647,14 +671,14 @@ fn get_executive_dashboard_snapshot(
                 profile_id
             )
         })?;
-    let latest_run = runs.first().ok_or_else(|| {
+    let latest_run = runs.first().cloned().ok_or_else(|| {
         format!(
             "No persisted analytics runs found for profile '{}'. Generate a run first.",
             profile_id
         )
     })?;
-    if enforce_publish_export_gate.unwrap_or(true) {
-        enforce_dashboard_attestation_policy(profile_id, latest_run)?;
+    if enforce_publish_export_gate {
+        enforce_dashboard_attestation_policy(profile_id, &latest_run)?;
         if !snapshot.publish_export_gate.export_ready {
             return Err(serde_json::json!({
                 "code": "analytics_dashboard_gate_blocked",
@@ -669,8 +693,7 @@ fn get_executive_dashboard_snapshot(
             .to_string());
         }
     }
-    serde_json::to_value(snapshot)
-        .map_err(|err| format!("failed to serialize dashboard snapshot: {err}"))
+    Ok((snapshot, latest_run))
 }
 
 fn enforce_dashboard_attestation_policy(
@@ -751,6 +774,133 @@ fn enforce_dashboard_attestation_policy(
 }
 
 /// # NDOC
+/// component: `tauri_commands::export_executive_dashboard_governed`
+/// purpose: Export executive dashboard payload only when release gates and dashboard gates pass, and append audit record.
+#[tauri::command]
+fn export_executive_dashboard_governed(
+    profile_id: String,
+    gates: ReleaseGateInput,
+    export_format: Option<String>,
+    target_ref: Option<String>,
+    limit: Option<usize>,
+    compare_window_runs: Option<u8>,
+    target_roas: Option<f64>,
+    monthly_revenue_target: Option<f64>,
+) -> Result<Value, String> {
+    let gate_validation = validate_release_gates(&gates);
+    if !gate_validation.ok {
+        return Err(serde_json::json!({
+            "code": "analytics_dashboard_release_gates_blocked",
+            "message": "Release gate validation failed for governed export.",
+            "source": "governance",
+            "details": { "errors": gate_validation.errors }
+        })
+        .to_string());
+    }
+
+    let profile_id = profile_id.trim();
+    if profile_id.is_empty() {
+        return Err("profile_id cannot be empty".to_string());
+    }
+    let options = SnapshotBuildOptions {
+        compare_window_runs: compare_window_runs.unwrap_or(1).max(1) as usize,
+        target_roas,
+        monthly_revenue_target,
+    };
+    let (snapshot, latest_run) =
+        build_dashboard_snapshot_checked(profile_id, limit.unwrap_or(24).min(64), options, true)?;
+
+    let policy = resolve_attestation_policy_v1(profile_id).map_err(|err| {
+        serde_json::json!({
+            "code": "analytics_attestation_policy_invalid",
+            "message": err.message,
+            "source": "attestation_policy",
+            "details": { "profile_id": profile_id, "field_paths": err.field_paths }
+        })
+        .to_string()
+    })?;
+    let signature_present = latest_run
+        .metadata
+        .connector_attestation
+        .fingerprint_signature
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let attestation_verified = if policy.require_signed_attestations {
+        true
+    } else {
+        signature_present
+    };
+    let export_id = format!("exp-{}-{}", now_millis(), latest_run.metadata.run_id);
+    let audit_record = DashboardExportAuditRecordV1 {
+        schema_version: String::new(),
+        export_id: export_id.clone(),
+        profile_id: profile_id.to_string(),
+        run_id: latest_run.metadata.run_id.clone(),
+        exported_at_utc: String::new(),
+        export_format: export_format
+            .unwrap_or_else(|| "json".to_string())
+            .trim()
+            .to_string(),
+        target_ref: target_ref
+            .unwrap_or_else(|| "operator_download".to_string())
+            .trim()
+            .to_string(),
+        gate_status: snapshot.publish_export_gate.gate_status.clone(),
+        publish_ready: snapshot.publish_export_gate.publish_ready,
+        export_ready: snapshot.publish_export_gate.export_ready,
+        blocking_reasons: snapshot.publish_export_gate.blocking_reasons.clone(),
+        warning_reasons: snapshot.publish_export_gate.warning_reasons.clone(),
+        attestation_policy_required: policy.require_signed_attestations,
+        attestation_verified,
+        attestation_key_id: latest_run
+            .metadata
+            .connector_attestation
+            .fingerprint_key_id
+            .clone(),
+        checked_by: gates.checked_by,
+        release_id: gates.release_id,
+    };
+    let audit_store = DashboardExportAuditStore::default();
+    let persisted = audit_store
+        .append_record(audit_record)
+        .map_err(|err| format!("{}: {}", err.code, err.message))?;
+
+    Ok(json!({
+        "export_id": export_id,
+        "snapshot": snapshot,
+        "audit_record": persisted
+    }))
+}
+
+fn now_millis() -> i128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i128)
+        .unwrap_or(0)
+}
+
+/// # NDOC
+/// component: `tauri_commands::get_dashboard_export_audit_history`
+/// purpose: Return governed dashboard export audit history for operator review.
+#[tauri::command]
+fn get_dashboard_export_audit_history(
+    profile_id: Option<String>,
+    limit: Option<usize>,
+) -> Result<Value, String> {
+    let store = DashboardExportAuditStore::default();
+    let maybe_profile = profile_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let rows = store
+        .list_recent(maybe_profile, limit.unwrap_or(50).min(500))
+        .map_err(|err| format!("{}: {}", err.code, err.message))?;
+    serde_json::to_value(rows)
+        .map_err(|err| format!("failed to serialize export audit history: {err}"))
+}
+
+/// # NDOC
 /// component: `tauri_commands::get_dashboard_chart_definitions`
 /// purpose: Return stable chart catalog metadata for frontend rendering surfaces.
 #[tauri::command]
@@ -820,6 +970,8 @@ pub fn run() {
             get_analysis_workflows,
             get_text_workflow_templates,
             get_executive_dashboard_snapshot,
+            export_executive_dashboard_governed,
+            get_dashboard_export_audit_history,
             get_dashboard_chart_definitions,
             generate_image_command,
         ])
@@ -834,6 +986,8 @@ mod tests {
         AnalyticsRunMetadataV1, AnalyticsValidationReportV1, MockAnalyticsArtifactV1,
         MockAnalyticsRequestV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
     };
+    use std::fs;
+    use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
 
     static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -925,6 +1079,16 @@ mod tests {
         }
     }
 
+    fn unique_tmp_path(file_name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "nd_marketing_{}_{}",
+            std::process::id(),
+            now_millis()
+        ));
+        fs::create_dir_all(&dir).expect("temp dir create");
+        dir.join(file_name)
+    }
+
     #[tokio::test]
     async fn analytics_preflight_command_returns_schema() {
         let value = validate_analytics_connectors_preflight(Some(
@@ -1000,6 +1164,94 @@ mod tests {
                 assert!(result.is_err());
                 let err = result.expect_err("must fail");
                 assert!(err.contains("analytics_attestation_registry_missing"));
+            },
+        );
+    }
+
+    #[test]
+    fn governed_dashboard_export_rejects_red_release_gate() {
+        let gates = ReleaseGateInput {
+            release_id: "rel-1".to_string(),
+            scope: "internal".to_string(),
+            security_gate: "green".to_string(),
+            budget_gate: "red".to_string(),
+            evidence_gate: "green".to_string(),
+            role_gate: "green".to_string(),
+            change_gate: "green".to_string(),
+            checked_by: "team_lead".to_string(),
+            checked_at_utc: "2026-02-26T00:00:00Z".to_string(),
+        };
+        let result = export_executive_dashboard_governed(
+            "production".to_string(),
+            gates,
+            Some("json".to_string()),
+            Some("operator_download".to_string()),
+            Some(24),
+            Some(1),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        let err = result.expect_err("must fail");
+        assert!(err.contains("analytics_dashboard_release_gates_blocked"));
+    }
+
+    #[test]
+    fn governed_dashboard_export_persists_audit_record() {
+        let _guard = env_mutex().lock().expect("env mutex");
+        let run_path = unique_tmp_path("runs.jsonl");
+        let audit_path = unique_tmp_path("export_audit.jsonl");
+        with_temp_env(
+            &[
+                ("REQUIRE_SIGNED_ATTESTATIONS", Some("false")),
+                (
+                    "ANALYTICS_RUN_STORE_PATH",
+                    Some(run_path.to_string_lossy().as_ref()),
+                ),
+                (
+                    "ANALYTICS_EXPORT_AUDIT_STORE_PATH",
+                    Some(audit_path.to_string_lossy().as_ref()),
+                ),
+                ("ATTESTATION_KEY_REGISTRY_JSON", None),
+                ("ATTESTATION_KEY_REGISTRY_PATH", None),
+            ],
+            || {
+                let store = AnalyticsRunStore::new(run_path.clone());
+                store
+                    .append_run(build_run("dev"))
+                    .expect("append test run for export");
+
+                let gates = ReleaseGateInput {
+                    release_id: "rel-2".to_string(),
+                    scope: "internal".to_string(),
+                    security_gate: "green".to_string(),
+                    budget_gate: "green".to_string(),
+                    evidence_gate: "green".to_string(),
+                    role_gate: "green".to_string(),
+                    change_gate: "green".to_string(),
+                    checked_by: "team_lead".to_string(),
+                    checked_at_utc: "2026-02-26T00:00:00Z".to_string(),
+                };
+                let result = export_executive_dashboard_governed(
+                    "dev".to_string(),
+                    gates,
+                    Some("json".to_string()),
+                    Some("operator_download".to_string()),
+                    Some(24),
+                    Some(1),
+                    None,
+                    None,
+                )
+                .expect("governed export");
+
+                assert!(result.get("audit_record").is_some());
+                let audit_store = DashboardExportAuditStore::new(audit_path.clone());
+                let rows = audit_store
+                    .list_recent(Some("dev"), 10)
+                    .expect("audit list");
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].release_id, "rel-2");
+                assert!(rows[0].export_ready);
             },
         );
     }
