@@ -19,8 +19,10 @@ const ANALYSIS_UNITS_PER_DAY: u64 = 64;
 const LLM_IN_WITH_NARRATIVES: u64 = 600;
 const LLM_OUT_WITH_NARRATIVES: u64 = 380;
 pub const HARD_DAILY_SPEND_CAP_MICROS: u64 = 10_000_000;
-#[allow(dead_code)]
-const DAILY_LEDGER_DEFAULT_PATH: &str = "data/analytics_runs/daily_spend_ledger_v1.json";
+#[cfg(not(test))]
+const RUNTIME_DIR_ENV: &str = "ND_RUNTIME_DIR";
+#[cfg(not(test))]
+const DAILY_LEDGER_DEFAULT_FILENAME: &str = "analytics_daily_spend_ledger_v1.json";
 
 #[derive(Debug, Clone, Default)]
 pub struct BudgetLedger {
@@ -481,8 +483,27 @@ fn default_daily_ledger_path() -> PathBuf {
     }
     #[cfg(not(test))]
     {
-        PathBuf::from(DAILY_LEDGER_DEFAULT_PATH)
+        runtime_state_root()
+            .join("analytics")
+            .join(DAILY_LEDGER_DEFAULT_FILENAME)
     }
+}
+
+#[cfg(not(test))]
+fn runtime_state_root() -> PathBuf {
+    if let Ok(path) = std::env::var(RUNTIME_DIR_ENV) {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let trimmed = home.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join(".natures_diet_runtime");
+        }
+    }
+    PathBuf::from(".natures_diet_runtime")
 }
 
 fn enforce_daily_hard_cap_at_path(

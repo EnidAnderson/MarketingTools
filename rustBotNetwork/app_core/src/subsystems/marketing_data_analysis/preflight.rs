@@ -156,8 +156,7 @@ mod tests {
         let connector = SimulatedAnalyticsConnectorV2::new();
         let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
         cfg.mode = AnalyticsConnectorModeV1::ObservedReadOnly;
-        cfg.ga4.api_secret_env_var = "GA4_PREFLIGHT_MISSING_SECRET".to_string();
-        cfg.ga4.measurement_id_env_var = "GA4_PREFLIGHT_MISSING_MEASUREMENT".to_string();
+        cfg.ga4.read_credentials_env_var = "GA4_PREFLIGHT_MISSING_CREDENTIALS".to_string();
         cfg.google_ads.developer_token_env_var =
             "GOOGLE_ADS_PREFLIGHT_MISSING_DEVELOPER".to_string();
         cfg.google_ads.oauth_client_id_env_var =

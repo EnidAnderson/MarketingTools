@@ -46,8 +46,7 @@ impl Default for AnalyticsConnectorModeV1 {
 pub struct Ga4ConfigV1 {
     pub enabled: bool,
     pub property_id: String,
-    pub api_secret_env_var: String,
-    pub measurement_id_env_var: String,
+    pub read_credentials_env_var: String,
     pub timezone: String,
 }
 
@@ -105,8 +104,7 @@ struct ConnectorFingerprintInputV1<'a> {
 struct ConnectorFingerprintGa4V1<'a> {
     enabled: bool,
     property_id: &'a str,
-    api_secret_env_var: &'a str,
-    measurement_id_env_var: &'a str,
+    read_credentials_env_var: &'a str,
     timezone: &'a str,
 }
 
@@ -140,8 +138,7 @@ impl AnalyticsConnectorConfigV1 {
             ga4: Ga4ConfigV1 {
                 enabled: true,
                 property_id: "123456789".to_string(),
-                api_secret_env_var: "GA4_API_SECRET".to_string(),
-                measurement_id_env_var: "GA4_MEASUREMENT_ID".to_string(),
+                read_credentials_env_var: "GOOGLE_APPLICATION_CREDENTIALS".to_string(),
                 timezone: "UTC".to_string(),
             },
             google_ads: GoogleAdsConfigV1 {
@@ -202,13 +199,9 @@ pub fn analytics_connector_config_from_env() -> Result<AnalyticsConnectorConfigV
         ga4: Ga4ConfigV1 {
             enabled: env_bool_or_default("ANALYTICS_ENABLE_GA4", defaults.ga4.enabled)?,
             property_id: env_or_default("GA4_PROPERTY_ID", &defaults.ga4.property_id),
-            api_secret_env_var: env_or_default(
-                "ANALYTICS_GA4_API_SECRET_ENV_VAR",
-                "GA4_API_SECRET",
-            ),
-            measurement_id_env_var: env_or_default(
-                "ANALYTICS_GA4_MEASUREMENT_ID_ENV_VAR",
-                "GA4_MEASUREMENT_ID",
+            read_credentials_env_var: env_or_default(
+                "ANALYTICS_GA4_READ_CREDENTIALS_ENV_VAR",
+                &defaults.ga4.read_credentials_env_var,
             ),
             timezone: env_or_default("ANALYTICS_GA4_TIMEZONE", &defaults.ga4.timezone),
         },
@@ -269,8 +262,7 @@ pub fn analytics_connector_config_fingerprint_v1(
         ga4: ConnectorFingerprintGa4V1 {
             enabled: config.ga4.enabled,
             property_id: config.ga4.property_id.trim(),
-            api_secret_env_var: config.ga4.api_secret_env_var.trim(),
-            measurement_id_env_var: config.ga4.measurement_id_env_var.trim(),
+            read_credentials_env_var: config.ga4.read_credentials_env_var.trim(),
             timezone: config.ga4.timezone.trim(),
         },
         google_ads: ConnectorFingerprintGoogleAdsV1 {
@@ -409,8 +401,18 @@ fn validate_ga4(config: &Ga4ConfigV1) -> Result<(), AnalyticsError> {
         ));
     }
 
-    validate_env_name(&config.api_secret_env_var, "ga4.api_secret_env_var")?;
-    validate_env_name(&config.measurement_id_env_var, "ga4.measurement_id_env_var")?;
+    validate_env_name(
+        &config.read_credentials_env_var,
+        "ga4.read_credentials_env_var",
+    )?;
+    let credentials_env = config.read_credentials_env_var.trim();
+    if credentials_env.contains("API_SECRET") || credentials_env.contains("MEASUREMENT_ID") {
+        return Err(AnalyticsError::validation(
+            "analytics_config_ga4_credentials_unsafe",
+            "ga4.read_credentials_env_var must reference read-only GA credentials, not measurement protocol secrets",
+            "ga4.read_credentials_env_var",
+        ));
+    }
 
     Ok(())
 }
@@ -542,10 +544,25 @@ mod tests {
     #[test]
     fn rejects_invalid_env_var_name() {
         let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
-        cfg.ga4.api_secret_env_var = "ga4-secret".to_string();
+        cfg.ga4.read_credentials_env_var = "ga4-secret".to_string();
         let err = validate_analytics_connector_config_v1(&cfg).expect_err("must fail");
         assert_eq!(err.code, "analytics_config_env_var_invalid");
-        assert_eq!(err.field_paths, vec!["ga4.api_secret_env_var".to_string()]);
+        assert_eq!(
+            err.field_paths,
+            vec!["ga4.read_credentials_env_var".to_string()]
+        );
+    }
+
+    #[test]
+    fn rejects_measurement_protocol_secret_env_var_for_ga4_reads() {
+        let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.ga4.read_credentials_env_var = "GA4_API_SECRET".to_string();
+        let err = validate_analytics_connector_config_v1(&cfg).expect_err("must fail");
+        assert_eq!(err.code, "analytics_config_ga4_credentials_unsafe");
+        assert_eq!(
+            err.field_paths,
+            vec!["ga4.read_credentials_env_var".to_string()]
+        );
     }
 
     #[test]

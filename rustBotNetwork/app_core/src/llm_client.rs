@@ -95,8 +95,8 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
     .map_err(|err| std::io::Error::other(format!("paid call blocked: {err}")))?;
 
     let api_url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model_name, api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        model_name
     );
 
     let request_body = json!({
@@ -118,13 +118,23 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
         }
     });
 
-    let response_result = client.post(&api_url).json(&request_body).send().await;
+    let response_result = client
+        .post(&api_url)
+        .header("x-goog-api-key", api_key)
+        .json(&request_body)
+        .send()
+        .await;
 
     let response = match response_result {
-        Ok(resp) => match resp.json::<Value>().await {
-            Ok(v) => v,
-            Err(err) => return Err(Box::new(err)),
-        },
+        Ok(resp) => {
+            permit.commit().map_err(|err| {
+                std::io::Error::other(format!("failed to commit spend reservation: {err}"))
+            })?;
+            match resp.json::<Value>().await {
+                Ok(v) => v,
+                Err(err) => return Err(Box::new(err)),
+            }
+        }
         Err(err) => return Err(Box::new(err)),
     };
 
@@ -135,9 +145,6 @@ pub async fn send_text_prompt(prompt: &str) -> Result<String, Box<dyn Error + Se
             .and_then(|arr| arr.get(0))
         {
             if let Some(text) = part["text"].as_str() {
-                permit.commit().map_err(|err| {
-                    std::io::Error::other(format!("failed to commit spend reservation: {err}"))
-                })?;
                 return Ok(text.to_string());
             }
         }

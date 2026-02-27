@@ -42,6 +42,11 @@ dist/
 build/
 rustBotNetwork/target/
 src/chroma_db/
+src/data/generation_budget.json
+data/analytics_runs/
+data/runtime/
+.natures_diet_runtime/
+src-tauri/data/analytics_runs/
 CAMPAIGNS/
 src-tauri/CAMPAIGNS/
 temp_tauri_scaffold/

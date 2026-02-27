@@ -181,10 +181,7 @@ impl AnalyticsConnectorContractV2 for SimulatedAnalyticsConnectorV2 {
         status.push(source_health(
             "ga4",
             config.ga4.enabled,
-            &[
-                &config.ga4.api_secret_env_var,
-                &config.ga4.measurement_id_env_var,
-            ],
+            &[&config.ga4.read_credentials_env_var],
         ));
         status.push(source_health(
             "google_ads",
@@ -531,8 +528,7 @@ mod tests {
         let connector = SimulatedAnalyticsConnectorV2::new();
         let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
         cfg.mode = AnalyticsConnectorModeV1::ObservedReadOnly;
-        cfg.ga4.api_secret_env_var = "GA4_MISSING_SECRET".to_string();
-        cfg.ga4.measurement_id_env_var = "GA4_MISSING_MEASUREMENT".to_string();
+        cfg.ga4.read_credentials_env_var = "GA4_MISSING_CREDENTIALS".to_string();
         cfg.google_ads.developer_token_env_var = "GOOGLE_ADS_MISSING_DEVELOPER".to_string();
         cfg.google_ads.oauth_client_id_env_var = "GOOGLE_ADS_MISSING_CLIENT_ID".to_string();
         cfg.google_ads.oauth_client_secret_env_var = "GOOGLE_ADS_MISSING_CLIENT_SECRET".to_string();

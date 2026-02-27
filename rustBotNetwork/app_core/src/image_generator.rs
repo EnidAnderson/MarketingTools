@@ -29,12 +29,10 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
         error!("Failed to load .env file: {}", e);
     }
 
-    let api_key = env::var("GEMINI_API_KEY")
-        .or_else(|_| env::var("GOOGLE_API_KEY"))
-        .map_err(|_| {
-            error!("GEMINI_API_KEY or GOOGLE_API_KEY not set in environment.");
-            "GEMINI_API_KEY or GOOGLE_API_KEY not set in environment.".to_string()
-        })?;
+    let api_key = env::var("GEMINI_API_KEY").map_err(|_| {
+        error!("GEMINI_API_KEY not set in environment.");
+        "GEMINI_API_KEY not set in environment.".to_string()
+    })?;
     info!("GEMINI_API_KEY successfully retrieved.");
 
     let model_name = env::var("GOOGLE_MODEL_IMAGE_FALLBACK")
@@ -51,8 +49,8 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
 
     let client = reqwest::Client::new();
     let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-        model_name, api_key
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        model_name
     );
 
     let request_body = json!({
@@ -65,10 +63,20 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
         ]
     });
 
-    let response = match client.post(&url).json(&request_body).send().await {
+    let response = match client
+        .post(&url)
+        .header("x-goog-api-key", api_key)
+        .json(&request_body)
+        .send()
+        .await
+    {
         Ok(resp) => resp,
         Err(err) => return Err(format!("Failed to send request to Gemini API: {}", err)),
     };
+
+    permit
+        .commit()
+        .map_err(|e| format!("Failed to commit spend reservation: {}", e))?;
 
     let response_body: serde_json::Value = match response.json().await {
         Ok(body) => body,
@@ -112,10 +120,6 @@ pub async fn generate_image(prompt: &str, campaign_dir: &str) -> Result<PathBuf,
     file.write_all(&decoded_image_data)
         .map_err(|e| format!("Failed to write image data to file: {}", e))?;
     info!("Image file successfully written to: {:?}", output_path);
-
-    permit
-        .commit()
-        .map_err(|e| format!("Failed to commit spend reservation: {}", e))?;
 
     Ok(output_path)
 }

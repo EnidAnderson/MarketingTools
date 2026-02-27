@@ -16,7 +16,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_API_COSTS_FILE: &str = "src/data/api_costs.json";
-const DEFAULT_BUDGET_FILE: &str = "src/data/generation_budget.json";
+const BUDGET_FILE_PATH_ENV: &str = "GENERATION_BUDGET_FILE_PATH";
+const RUNTIME_DIR_ENV: &str = "ND_RUNTIME_DIR";
+const DEFAULT_BUDGET_FILENAME: &str = "generation_budget_v1.json";
 const DAILY_BUDGET_ENV: &str = "DAILY_BUDGET_USD";
 
 pub const HARD_DAILY_BUDGET_USD: f64 = 10.0;
@@ -272,7 +274,13 @@ fn get_budget_file_path() -> PathBuf {
             return path;
         }
     }
-    PathBuf::from(DEFAULT_BUDGET_FILE)
+    if let Ok(path) = std::env::var(BUDGET_FILE_PATH_ENV) {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    runtime_state_root().join(DEFAULT_BUDGET_FILENAME)
 }
 
 fn get_api_costs_file_path() -> PathBuf {
@@ -283,6 +291,22 @@ fn get_api_costs_file_path() -> PathBuf {
         }
     }
     PathBuf::from(DEFAULT_API_COSTS_FILE)
+}
+
+fn runtime_state_root() -> PathBuf {
+    if let Ok(path) = std::env::var(RUNTIME_DIR_ENV) {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let trimmed = home.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed).join(".natures_diet_runtime");
+        }
+    }
+    PathBuf::from(".natures_diet_runtime")
 }
 
 fn configured_daily_budget_usd() -> Result<f64, SpendGuardError> {
@@ -647,6 +671,14 @@ mod tests {
 
         std::env::remove_var("DAILY_BUDGET_USD");
         set_test_budget_file_path(None);
+    }
+
+    #[test]
+    fn budget_file_path_uses_env_override_when_set() {
+        std::env::set_var(BUDGET_FILE_PATH_ENV, "/tmp/nd-budget-test.json");
+        let path = get_budget_file_path();
+        assert_eq!(path, PathBuf::from("/tmp/nd-budget-test.json"));
+        std::env::remove_var(BUDGET_FILE_PATH_ENV);
     }
 
     #[test]
