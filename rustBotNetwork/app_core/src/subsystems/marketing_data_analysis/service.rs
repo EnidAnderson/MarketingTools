@@ -10,8 +10,8 @@ use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
     DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
     KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
-    QualityCheckV1, ReconciliationPolicyV1, SourceWindowGranularityV1,
-    MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1, SourceCoverageV1,
+    SourceWindowGranularityV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::ingest::{
     parse_ga4_event, parse_google_ads_row, parse_wix_order, window_completeness, CleaningNote,
@@ -24,7 +24,7 @@ use crate::data_models::analytics::{
     ReportMetrics, SourceClassLabel, SourceProvenance,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -121,92 +121,93 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget_plan.estimated.retrieval_units,
             "mock_analytics.fetch",
         )?;
-        let rows = match self
-            .connector
-            .fetch_google_ads_rows(
-                &self.connector_config,
-                &request,
-                start,
-                budget_plan.effective_end,
-                seed,
-            )
-            .await
-        {
-            Ok(rows) if !rows.is_empty() => rows,
-            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
-                generate_simulated_google_ads_rows(&request, start, budget_plan.effective_end, seed)
+        let ads_enabled = self.connector_config.google_ads.enabled;
+        let ga4_enabled = self.connector_config.ga4.enabled;
+        let wix_enabled = self.connector_config.wix.enabled;
+
+        let rows = if ads_enabled {
+            match self
+                .connector
+                .fetch_google_ads_rows(
+                    &self.connector_config,
+                    &request,
+                    start,
+                    budget_plan.effective_end,
+                    seed,
+                )
+                .await
+            {
+                Ok(rows) => rows,
+                Err(_) if self.connector_config.mode.is_simulated() => {
+                    generate_simulated_google_ads_rows(
+                        &request,
+                        start,
+                        budget_plan.effective_end,
+                        seed,
+                    )
+                }
+                Err(err) => return Err(err),
             }
-            Ok(_) => {
-                return Err(AnalyticsError::internal(
-                    "analytics_connector_empty_rows",
-                    "connector returned no google ads rows in observed mode",
-                ));
-            }
-            Err(err) => return Err(err),
+        } else {
+            Vec::new()
         };
-        let ga4_events = match self
-            .connector
-            .fetch_ga4_events(
-                &self.connector_config,
-                start,
-                budget_plan.effective_end,
-                seed,
-            )
-            .await
-        {
-            Ok(events) if !events.is_empty() => events,
-            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
-                generate_simulated_ga4_events(start, budget_plan.effective_end, seed)
+        let ga4_events = if ga4_enabled {
+            match self
+                .connector
+                .fetch_ga4_events(
+                    &self.connector_config,
+                    start,
+                    budget_plan.effective_end,
+                    seed,
+                )
+                .await
+            {
+                Ok(events) => events,
+                Err(_) if self.connector_config.mode.is_simulated() => {
+                    generate_simulated_ga4_events(start, budget_plan.effective_end, seed)
+                }
+                Err(err) => return Err(err),
             }
-            Ok(_) => {
-                return Err(AnalyticsError::internal(
-                    "analytics_connector_empty_ga4",
-                    "connector returned no GA4 events in observed mode",
-                ));
-            }
-            Err(err) => return Err(err),
+        } else {
+            Vec::new()
         };
-        let wix_orders = match self
-            .connector
-            .fetch_wix_orders(
-                &self.connector_config,
-                start,
-                budget_plan.effective_end,
-                seed,
-            )
-            .await
-        {
-            Ok(orders) if !orders.is_empty() => orders,
-            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => {
-                generate_simulated_wix_orders(start, budget_plan.effective_end, seed)
+        let wix_orders = if wix_enabled {
+            match self
+                .connector
+                .fetch_wix_orders(
+                    &self.connector_config,
+                    start,
+                    budget_plan.effective_end,
+                    seed,
+                )
+                .await
+            {
+                Ok(orders) => orders,
+                Err(_) if self.connector_config.mode.is_simulated() => {
+                    generate_simulated_wix_orders(start, budget_plan.effective_end, seed)
+                }
+                Err(err) => return Err(err),
             }
-            Ok(_) => {
-                return Err(AnalyticsError::internal(
-                    "analytics_connector_empty_wix_orders",
-                    "connector returned no Wix orders in observed mode",
-                ));
-            }
-            Err(err) => return Err(err),
+        } else {
+            Vec::new()
         };
-        match self
-            .connector
-            .fetch_wix_sessions(
-                &self.connector_config,
-                start,
-                budget_plan.effective_end,
-                seed,
-            )
-            .await
-        {
-            Ok(sessions) if !sessions.is_empty() => sessions,
-            Ok(_) | Err(_) if self.connector_config.mode.is_simulated() => Vec::new(),
-            Ok(_) => {
-                return Err(AnalyticsError::internal(
-                    "analytics_connector_empty_wix_sessions",
-                    "connector returned no Wix sessions in observed mode",
-                ));
+        let wix_sessions = if wix_enabled {
+            match self
+                .connector
+                .fetch_wix_sessions(
+                    &self.connector_config,
+                    start,
+                    budget_plan.effective_end,
+                    seed,
+                )
+                .await
+            {
+                Ok(sessions) => sessions,
+                Err(_) if self.connector_config.mode.is_simulated() => Vec::new(),
+                Err(err) => return Err(err),
             }
-            Err(err) => return Err(err),
+        } else {
+            Vec::new()
         };
         budget_guard.spend(
             BudgetCategory::Analysis,
@@ -231,6 +232,16 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             "mock_analytics.total_cost",
         )?;
 
+        let google_ads_row_count = rows.len() as u64;
+        let ga4_event_count = ga4_events.len() as u64;
+        let wix_row_count = wix_orders.len().max(wix_sessions.len()) as u64;
+        let source_coverage = build_source_coverage(
+            &self.connector_config,
+            google_ads_row_count,
+            ga4_event_count,
+            wix_row_count,
+        );
+
         let google_ads_raw_rows = google_ads_rows_to_raw_v1(&rows)?;
         let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
         let ingest_audit =
@@ -238,12 +249,46 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         let freshness_policy = FreshnessSlaPolicyV1::default();
         let reconciliation_policy = ReconciliationPolicyV1::default();
         let connector_id = self.connector.capabilities().connector_id;
-        let provenance = build_mock_provenance(&connector_id, seed, &ingest_audit.note_counts);
+        let provenance = build_provenance(
+            &connector_id,
+            &self.connector_config.mode,
+            &source_coverage,
+            &ingest_audit.note_counts,
+        );
         let (observed_units_by_source, granularity_by_source, provided_observation_sources) =
-            resolve_source_window_inputs(&request, start, budget_plan.effective_end)?;
-        let cross_source_checks = build_cross_source_checks(&report, seed, &reconciliation_policy);
+            resolve_source_window_inputs(
+                &request,
+                start,
+                budget_plan.effective_end,
+                &google_ads_raw_rows,
+                &ga4_events,
+                &wix_orders,
+            )?;
+        let cross_source_checks =
+            build_cross_source_checks(&report, seed, &reconciliation_policy, &source_coverage);
+        let source_class_label =
+            if self.connector_config.mode == AnalyticsConnectorModeV1::ObservedReadOnly {
+                "observed"
+            } else {
+                "simulated"
+            };
+        let no_data_window = source_coverage
+            .iter()
+            .filter(|item| item.enabled)
+            .all(|item| item.row_count == 0);
         let (observed_evidence, inferred_guidance, mut uncertainty_notes) =
-            build_evidence_and_guidance(&report, budget_plan.include_narratives);
+            build_evidence_and_guidance(
+                &report,
+                budget_plan.include_narratives,
+                source_class_label,
+                no_data_window,
+            );
+        if no_data_window {
+            uncertainty_notes.push(
+                "No observed rows were returned for the selected date window; artifact represents a valid zero-activity interval."
+                    .to_string(),
+            );
+        }
         if budget_plan.clipped || budget_plan.sampled || !budget_plan.include_narratives {
             uncertainty_notes.push(
                 "Budget policy modified run scope; see artifact.budget for clipping/sampling details."
@@ -270,6 +315,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget_plan.effective_end,
             &observed_units_by_source,
             &granularity_by_source,
+            &source_coverage,
             provided_observation_sources.as_ref(),
         );
         let data_quality = build_data_quality_summary(&quality_controls);
@@ -295,6 +341,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             inferred_guidance,
             uncertainty_notes,
             provenance,
+            source_coverage,
             ingest_cleaning_notes: ingest_audit.notes,
             validation: super::contracts::AnalyticsValidationReportV1 {
                 is_valid: false,
@@ -658,31 +705,33 @@ fn round4(value: f64) -> f64 {
 fn build_evidence_and_guidance(
     report: &AnalyticsReport,
     include_narratives: bool,
+    source_class: &str,
+    no_data_window: bool,
 ) -> (Vec<EvidenceItem>, Vec<GuidanceItem>, Vec<String>) {
     let mut evidence = Vec::new();
     evidence.push(EvidenceItem {
         evidence_id: "ev_total_impressions".to_string(),
         label: "Total Impressions".to_string(),
         value: report.total_metrics.impressions.to_string(),
-        source_class: "simulated".to_string(),
+        source_class: source_class.to_string(),
         metric_key: Some("impressions".to_string()),
         observed_window: Some(report.date_range.clone()),
         comparator_value: None,
-        notes: vec!["Deterministic mock aggregation across selected date window.".to_string()],
+        notes: vec!["Aggregated across enabled sources for selected date window.".to_string()],
     });
     evidence.push(EvidenceItem {
         evidence_id: "ev_total_clicks".to_string(),
         label: "Total Clicks".to_string(),
         value: report.total_metrics.clicks.to_string(),
-        source_class: "simulated".to_string(),
+        source_class: source_class.to_string(),
         metric_key: Some("clicks".to_string()),
         observed_window: Some(report.date_range.clone()),
         comparator_value: None,
-        notes: vec!["Includes all simulated campaigns/ad groups after filters.".to_string()],
+        notes: vec!["Includes all enabled source rows after request filters.".to_string()],
     });
 
     let mut guidance = Vec::new();
-    if include_narratives {
+    if include_narratives && !no_data_window {
         guidance.push(GuidanceItem {
             guidance_id: "gd_budget_focus".to_string(),
             text: "Prioritize campaigns with above-median ROAS in next optimization pass."
@@ -704,65 +753,138 @@ fn build_evidence_and_guidance(
         });
     }
 
-    let uncertainty = vec![
-        "Dataset is simulated and intended for tool integration validation only.".to_string(),
-        "Attribution assumptions are simplified for deterministic replay.".to_string(),
-    ];
+    let uncertainty = if source_class == "simulated" {
+        vec![
+            "Dataset is simulated and intended for tool integration validation only.".to_string(),
+            "Attribution assumptions are simplified for deterministic replay.".to_string(),
+        ]
+    } else if no_data_window {
+        vec![
+            "Observed mode returned zero rows in the selected window; no directional guidance generated."
+                .to_string(),
+            "Check date range, property activity, and source enablement before drawing conclusions."
+                .to_string(),
+        ]
+    } else {
+        vec![
+            "Observed mode is read-only and reflects connector-available source data.".to_string(),
+            "Attribution and joins remain bounded by enabled source coverage.".to_string(),
+        ]
+    };
     (evidence, guidance, uncertainty)
 }
 
-fn build_mock_provenance(
-    connector_id: &str,
-    seed: u64,
-    cleaning_note_count_by_source: &BTreeMap<String, u32>,
-) -> Vec<SourceProvenance> {
-    // Keep provenance byte-stable for replay while still simulating source-specific lag.
-    let ga4_freshness = 30 + ((seed % 40) as u32);
-    let ads_freshness = 60 + ((seed % 50) as u32);
-    let wix_freshness = 90 + ((seed % 60) as u32);
+fn build_source_coverage(
+    config: &AnalyticsConnectorConfigV1,
+    google_ads_rows: u64,
+    ga4_events: u64,
+    wix_rows: u64,
+) -> Vec<SourceCoverageV1> {
     vec![
-        SourceProvenance {
-            connector_id: connector_id.to_string(),
-            source_class: SourceClassLabel::Simulated,
+        SourceCoverageV1 {
             source_system: "google_ads".to_string(),
-            collected_at_utc: "deterministic-simulated".to_string(),
-            freshness_minutes: ads_freshness,
-            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
-            rejected_rows_count: 0,
-            cleaning_note_count: *cleaning_note_count_by_source
-                .get("google_ads")
-                .unwrap_or(&0),
+            enabled: config.google_ads.enabled,
+            observed: config.google_ads.enabled && google_ads_rows > 0,
+            row_count: google_ads_rows,
+            unavailable_reason: if !config.google_ads.enabled {
+                Some("source_disabled".to_string())
+            } else if google_ads_rows == 0 {
+                Some("no_rows_in_requested_window".to_string())
+            } else {
+                None
+            },
         },
-        SourceProvenance {
-            connector_id: connector_id.to_string(),
-            source_class: SourceClassLabel::Simulated,
+        SourceCoverageV1 {
             source_system: "ga4".to_string(),
-            collected_at_utc: "deterministic-simulated".to_string(),
-            freshness_minutes: ga4_freshness,
-            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
-            rejected_rows_count: 0,
-            cleaning_note_count: *cleaning_note_count_by_source.get("ga4").unwrap_or(&0),
+            enabled: config.ga4.enabled,
+            observed: config.ga4.enabled && ga4_events > 0,
+            row_count: ga4_events,
+            unavailable_reason: if !config.ga4.enabled {
+                Some("source_disabled".to_string())
+            } else if ga4_events == 0 {
+                Some("no_rows_in_requested_window".to_string())
+            } else {
+                None
+            },
         },
-        SourceProvenance {
-            connector_id: connector_id.to_string(),
-            source_class: SourceClassLabel::Simulated,
+        SourceCoverageV1 {
             source_system: "wix_storefront".to_string(),
-            collected_at_utc: "deterministic-simulated".to_string(),
-            freshness_minutes: wix_freshness,
-            validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
-            rejected_rows_count: 0,
-            cleaning_note_count: *cleaning_note_count_by_source
-                .get("wix_storefront")
-                .unwrap_or(&0),
+            enabled: config.wix.enabled,
+            observed: config.wix.enabled && wix_rows > 0,
+            row_count: wix_rows,
+            unavailable_reason: if !config.wix.enabled {
+                Some("source_disabled".to_string())
+            } else if wix_rows == 0 {
+                Some("no_rows_in_requested_window".to_string())
+            } else {
+                None
+            },
         },
     ]
+}
+
+fn build_provenance(
+    connector_id: &str,
+    mode: &AnalyticsConnectorModeV1,
+    source_coverage: &[SourceCoverageV1],
+    cleaning_note_count_by_source: &BTreeMap<String, u32>,
+) -> Vec<SourceProvenance> {
+    let (source_class, collected_at_utc) = if mode.is_simulated() {
+        (
+            SourceClassLabel::Simulated,
+            "deterministic-simulated".to_string(),
+        )
+    } else {
+        (SourceClassLabel::Observed, Utc::now().to_rfc3339())
+    };
+
+    source_coverage
+        .iter()
+        .filter(|item| item.enabled)
+        .map(|item| {
+            let freshness_minutes = if mode.is_simulated() {
+                match item.source_system.as_str() {
+                    "ga4" => 45,
+                    "google_ads" => 90,
+                    "wix_storefront" => 120,
+                    _ => 60,
+                }
+            } else {
+                0
+            };
+            SourceProvenance {
+                connector_id: connector_id.to_string(),
+                source_class: source_class.clone(),
+                source_system: item.source_system.clone(),
+                collected_at_utc: collected_at_utc.clone(),
+                freshness_minutes,
+                validated_contract_version: Some(INGEST_CONTRACT_VERSION.to_string()),
+                rejected_rows_count: 0,
+                cleaning_note_count: *cleaning_note_count_by_source
+                    .get(&item.source_system)
+                    .unwrap_or(&0),
+            }
+        })
+        .collect()
 }
 
 fn build_cross_source_checks(
     report: &AnalyticsReport,
     seed: u64,
     reconciliation_policy: &ReconciliationPolicyV1,
+    source_coverage: &[SourceCoverageV1],
 ) -> Vec<QualityCheckV1> {
+    let source_ready = |name: &str| -> bool {
+        source_coverage
+            .iter()
+            .find(|item| item.source_system == name)
+            .map(|item| item.enabled && item.observed)
+            .unwrap_or(false)
+    };
+    let ads_ready = source_ready("google_ads");
+    let ga4_ready = source_ready("ga4");
+    let wix_ready = source_ready("wix_storefront");
+
     let attributed_revenue = report.total_metrics.conversions_value;
     let wix_revenue_multiplier = 0.99 + ((seed % 3) as f64 * 0.005);
     let wix_gross_revenue = round4(attributed_revenue * wix_revenue_multiplier);
@@ -771,43 +893,64 @@ fn build_cross_source_checks(
     let clicks = report.total_metrics.clicks as f64;
 
     let revenue_check_code = "cross_source_attributed_revenue_within_wix_gross";
-    let (revenue_passed, revenue_severity, revenue_expected) =
-        if let Some(tolerance) = reconciliation_policy.tolerance_for(revenue_check_code) {
+    let revenue_applicable = ads_ready && wix_ready;
+    let (revenue_passed, revenue_severity, revenue_expected, revenue_applicability) =
+        if !revenue_applicable {
+            (
+                true,
+                "low".to_string(),
+                "requires observed google_ads and wix_storefront coverage".to_string(),
+                QualityCheckApplicabilityV1::NotApplicable,
+            )
+        } else if let Some(tolerance) = reconciliation_policy.tolerance_for(revenue_check_code) {
             let rel_tol = tolerance.max_relative_delta.unwrap_or(0.0).max(0.0);
             let max_allowed = wix_gross_revenue * (1.0 + rel_tol);
             (
                 attributed_revenue <= max_allowed,
                 tolerance.severity.clone(),
                 format!("attributed_revenue <= wix_gross * (1 + {:.2})", rel_tol),
+                QualityCheckApplicabilityV1::Applies,
             )
         } else {
             (
                 false,
                 "high".to_string(),
                 "reconciliation policy must define revenue tolerance".to_string(),
+                QualityCheckApplicabilityV1::Applies,
             )
         };
 
     let sessions_check_code = "cross_source_ga4_sessions_within_click_bound";
-    let (sessions_passed, sessions_severity, sessions_expected) =
-        if let Some(tolerance) = reconciliation_policy.tolerance_for(sessions_check_code) {
+    let sessions_applicable = ads_ready && ga4_ready;
+    let (sessions_passed, sessions_severity, sessions_expected, sessions_applicability) =
+        if !sessions_applicable {
+            (
+                true,
+                "low".to_string(),
+                "requires observed google_ads and ga4 coverage".to_string(),
+                QualityCheckApplicabilityV1::NotApplicable,
+            )
+        } else if let Some(tolerance) = reconciliation_policy.tolerance_for(sessions_check_code) {
             let rel_tol = tolerance.max_relative_delta.unwrap_or(0.0).max(0.0);
             let max_allowed = clicks * (1.0 + rel_tol);
             (
                 ga4_sessions <= max_allowed,
                 tolerance.severity.clone(),
                 format!("ga4_sessions <= ad_clicks * (1 + {:.2})", rel_tol),
+                QualityCheckApplicabilityV1::Applies,
             )
         } else {
             (
                 false,
                 "high".to_string(),
                 "reconciliation policy must define GA4 session tolerance".to_string(),
+                QualityCheckApplicabilityV1::Applies,
             )
         };
 
     vec![
         QualityCheckV1 {
+            applicability: revenue_applicability,
             code: revenue_check_code.to_string(),
             passed: revenue_passed,
             severity: revenue_severity,
@@ -818,6 +961,7 @@ fn build_cross_source_checks(
             expected: revenue_expected,
         },
         QualityCheckV1 {
+            applicability: sessions_applicability,
             code: sessions_check_code.to_string(),
             passed: sessions_passed,
             severity: sessions_severity,
@@ -827,30 +971,51 @@ fn build_cross_source_checks(
     ]
 }
 
-fn build_mock_observed_window_inputs(
-    start: NaiveDate,
-    end: NaiveDate,
+fn derive_observed_window_inputs_from_raw(
+    google_ads_rows: &[GoogleAdsRowRawV1],
+    ga4_events: &[Ga4EventRawV1],
+    wix_orders: &[WixOrderRawV1],
 ) -> (
     BTreeMap<String, Vec<DateTime<Utc>>>,
     BTreeMap<String, TimeGranularity>,
 ) {
     let mut by_source = BTreeMap::new();
     let mut granularity_by_source = BTreeMap::new();
-    for source in ["google_ads", "ga4", "wix_storefront"] {
-        let mut points = Vec::new();
-        let mut current = start;
-        while current <= end {
-            if let Some(midday) = current.and_hms_opt(12, 0, 0) {
-                points.push(midday.and_utc());
+    by_source.insert("google_ads".to_string(), Vec::new());
+    by_source.insert("ga4".to_string(), Vec::new());
+    by_source.insert("wix_storefront".to_string(), Vec::new());
+    granularity_by_source.insert("google_ads".to_string(), TimeGranularity::Day);
+    // GA4 runReport rows are aggregated; evaluate completeness at day-level.
+    granularity_by_source.insert("ga4".to_string(), TimeGranularity::Day);
+    granularity_by_source.insert("wix_storefront".to_string(), TimeGranularity::Day);
+
+    for row in google_ads_rows {
+        if let Ok(day) = NaiveDate::parse_from_str(row.date.trim(), "%Y-%m-%d") {
+            if let Some(ts) = day.and_hms_opt(12, 0, 0) {
+                by_source
+                    .entry("google_ads".to_string())
+                    .or_default()
+                    .push(ts.and_utc());
             }
-            let Some(next) = current.checked_add_signed(Duration::days(1)) else {
-                break;
-            };
-            current = next;
         }
-        by_source.insert(source.to_string(), points);
-        granularity_by_source.insert(source.to_string(), TimeGranularity::Day);
     }
+    for event in ga4_events {
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim()) {
+            by_source
+                .entry("ga4".to_string())
+                .or_default()
+                .push(parsed.with_timezone(&Utc));
+        }
+    }
+    for order in wix_orders {
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(order.placed_at_utc.trim()) {
+            by_source
+                .entry("wix_storefront".to_string())
+                .or_default()
+                .push(parsed.with_timezone(&Utc));
+        }
+    }
+
     (by_source, granularity_by_source)
 }
 
@@ -858,6 +1023,9 @@ fn resolve_source_window_inputs(
     request: &MockAnalyticsRequestV1,
     start: NaiveDate,
     end: NaiveDate,
+    google_ads_rows: &[GoogleAdsRowRawV1],
+    ga4_events: &[Ga4EventRawV1],
+    wix_orders: &[WixOrderRawV1],
 ) -> Result<
     (
         BTreeMap<String, Vec<DateTime<Utc>>>,
@@ -867,8 +1035,19 @@ fn resolve_source_window_inputs(
     AnalyticsError,
 > {
     let (mut observed_by_source, mut granularity_by_source) =
-        build_mock_observed_window_inputs(start, end);
+        derive_observed_window_inputs_from_raw(google_ads_rows, ga4_events, wix_orders);
     if request.source_window_observations.is_empty() {
+        let start_utc = start
+            .and_hms_opt(0, 0, 0)
+            .expect("start date should support midnight")
+            .and_utc();
+        let end_utc = end
+            .and_hms_opt(23, 59, 59)
+            .expect("end date should support second boundary")
+            .and_utc();
+        for points in observed_by_source.values_mut() {
+            points.retain(|point| *point >= start_utc && *point <= end_utc);
+        }
         return Ok((observed_by_source, granularity_by_source, None));
     }
 
@@ -935,6 +1114,7 @@ fn build_quality_controls(
     end: NaiveDate,
     observed_units_by_source: &BTreeMap<String, Vec<DateTime<Utc>>>,
     granularity_by_source: &BTreeMap<String, TimeGranularity>,
+    source_coverage: &[SourceCoverageV1],
     provided_observation_sources: Option<&BTreeSet<String>>,
 ) -> AnalyticsQualityControlsV1 {
     let keyword_coverage_ratio = if report.keyword_data.is_empty() {
@@ -967,27 +1147,48 @@ fn build_quality_controls(
         .iter()
         .map(|row| row.metrics.conversions_value)
         .sum::<f64>();
+    let source_by_name = |name: &str| -> Option<&SourceCoverageV1> {
+        source_coverage
+            .iter()
+            .find(|item| item.source_system == name)
+    };
+    let google_ads_enabled = source_by_name("google_ads")
+        .map(|item| item.enabled)
+        .unwrap_or(false);
+    let google_ads_observed = source_by_name("google_ads")
+        .map(|item| item.row_count > 0)
+        .unwrap_or(false);
+    let google_ads_applicability = if google_ads_enabled && google_ads_observed {
+        QualityCheckApplicabilityV1::Applies
+    } else {
+        QualityCheckApplicabilityV1::NotApplicable
+    };
 
     let schema_drift_checks = vec![
         QualityCheckV1 {
+            applicability: google_ads_applicability.clone(),
             code: "schema_campaign_required_fields".to_string(),
-            passed: report.campaign_data.iter().all(|row| {
-                !row.campaign_id.trim().is_empty() && !row.campaign_name.trim().is_empty()
-            }),
+            passed: google_ads_applicability == QualityCheckApplicabilityV1::NotApplicable
+                || report.campaign_data.iter().all(|row| {
+                    !row.campaign_id.trim().is_empty() && !row.campaign_name.trim().is_empty()
+                }),
             severity: "high".to_string(),
             observed: "campaign rows contain id/name".to_string(),
             expected: "all campaign rows include stable id and name".to_string(),
         },
         QualityCheckV1 {
+            applicability: google_ads_applicability.clone(),
             code: "schema_keyword_required_fields".to_string(),
-            passed: report.keyword_data.iter().all(|row| {
-                !row.keyword_id.trim().is_empty() && !row.keyword_text.trim().is_empty()
-            }),
+            passed: google_ads_applicability == QualityCheckApplicabilityV1::NotApplicable
+                || report.keyword_data.iter().all(|row| {
+                    !row.keyword_id.trim().is_empty() && !row.keyword_text.trim().is_empty()
+                }),
             severity: "high".to_string(),
             observed: "keyword rows contain id/text".to_string(),
             expected: "all keyword rows include criterion id and keyword text".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "schema_report_metrics_finite".to_string(),
             passed: report.total_metrics.cost.is_finite()
                 && report.total_metrics.conversions.is_finite()
@@ -1001,6 +1202,7 @@ fn build_quality_controls(
             expected: "no NaN or +/-inf values".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "schema_ingest_contract_version_present".to_string(),
             passed: provenance.iter().all(|item| {
                 item.validated_contract_version
@@ -1017,38 +1219,56 @@ fn build_quality_controls(
     let reconciliation_tol = reconciliation_policy.tolerance_for(reconciliation_code);
     let spend_delta = (sum_campaign_spend - report.total_metrics.cost).abs();
     let revenue_delta = (sum_campaign_revenue - report.total_metrics.conversions_value).abs();
-    let (reconciliation_passed, reconciliation_severity, reconciliation_expected) =
-        if let Some(tol) = reconciliation_tol {
-            let epsilon = tol.max_abs_delta.unwrap_or(0.0).max(0.0);
-            (
-                spend_delta <= epsilon && revenue_delta <= epsilon,
-                tol.severity.clone(),
-                format!("abs(delta) <= {:.4}", epsilon),
-            )
-        } else {
-            (
-                false,
-                "high".to_string(),
-                "reconciliation policy must define absolute tolerance".to_string(),
-            )
-        };
+    let (
+        reconciliation_passed,
+        reconciliation_severity,
+        reconciliation_expected,
+        reconciliation_applicability,
+    ) = if google_ads_applicability == QualityCheckApplicabilityV1::NotApplicable {
+        (
+            true,
+            "low".to_string(),
+            "requires observed google_ads coverage".to_string(),
+            QualityCheckApplicabilityV1::NotApplicable,
+        )
+    } else if let Some(tol) = reconciliation_tol {
+        let epsilon = tol.max_abs_delta.unwrap_or(0.0).max(0.0);
+        (
+            spend_delta <= epsilon && revenue_delta <= epsilon,
+            tol.severity.clone(),
+            format!("abs(delta) <= {:.4}", epsilon),
+            QualityCheckApplicabilityV1::Applies,
+        )
+    } else {
+        (
+            false,
+            "high".to_string(),
+            "reconciliation policy must define absolute tolerance".to_string(),
+            QualityCheckApplicabilityV1::Applies,
+        )
+    };
 
     let identity_resolution_checks = vec![
         QualityCheckV1 {
+            applicability: google_ads_applicability.clone(),
             code: "identity_ad_group_linked_to_campaign".to_string(),
-            passed: ad_group_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
+            passed: google_ads_applicability == QualityCheckApplicabilityV1::NotApplicable
+                || ad_group_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
             severity: "high".to_string(),
             observed: format!("coverage={:.3}", ad_group_coverage_ratio),
             expected: format!("coverage >= {:.2}", MIN_IDENTITY_COVERAGE_RATIO),
         },
         QualityCheckV1 {
+            applicability: google_ads_applicability.clone(),
             code: "identity_keyword_linked_to_ad_group".to_string(),
-            passed: keyword_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
+            passed: google_ads_applicability == QualityCheckApplicabilityV1::NotApplicable
+                || keyword_coverage_ratio >= MIN_IDENTITY_COVERAGE_RATIO,
             severity: "high".to_string(),
             observed: format!("coverage={:.3}", keyword_coverage_ratio),
             expected: format!("coverage >= {:.2}", MIN_IDENTITY_COVERAGE_RATIO),
         },
         QualityCheckV1 {
+            applicability: reconciliation_applicability,
             code: reconciliation_code.to_string(),
             passed: reconciliation_passed,
             severity: reconciliation_severity,
@@ -1072,9 +1292,23 @@ fn build_quality_controls(
         .and_utc();
     let mut freshness_sla_checks = Vec::new();
     for item in provenance {
+        let source_has_rows = source_by_name(&item.source_system)
+            .map(|source| source.row_count > 0)
+            .unwrap_or(true);
+        let source_applicability = if source_has_rows {
+            QualityCheckApplicabilityV1::Applies
+        } else {
+            QualityCheckApplicabilityV1::NotApplicable
+        };
         let maybe_threshold = freshness_policy.threshold_for(&item.source_system);
         let (freshness_passed, freshness_severity, freshness_expected) =
-            if let Some(threshold) = maybe_threshold {
+            if source_applicability == QualityCheckApplicabilityV1::NotApplicable {
+                (
+                    true,
+                    "low".to_string(),
+                    "not applicable for zero-row source window".to_string(),
+                )
+            } else if let Some(threshold) = maybe_threshold {
                 (
                     item.freshness_minutes <= threshold.max_freshness_minutes,
                     threshold.severity.clone(),
@@ -1088,6 +1322,7 @@ fn build_quality_controls(
                 )
             };
         freshness_sla_checks.push(QualityCheckV1 {
+            applicability: source_applicability.clone(),
             code: format!("freshness_sla_{}", item.source_system),
             passed: freshness_passed,
             severity: freshness_severity.clone(),
@@ -1100,7 +1335,14 @@ fn build_quality_controls(
             completeness_severity,
             completeness_observed,
             completeness_expected,
-        ) = if let Some(threshold) = maybe_threshold {
+        ) = if source_applicability == QualityCheckApplicabilityV1::NotApplicable {
+            (
+                true,
+                "low".to_string(),
+                "no rows in selected window".to_string(),
+                "not applicable for zero-row source window".to_string(),
+            )
+        } else if let Some(threshold) = maybe_threshold {
             let tz_result = threshold.timezone.parse::<chrono_tz::Tz>();
             if let Ok(timezone) = tz_result {
                 let observed = observed_units_by_source
@@ -1143,6 +1385,7 @@ fn build_quality_controls(
             )
         };
         freshness_sla_checks.push(QualityCheckV1 {
+            applicability: source_applicability.clone(),
             code: format!("completeness_sla_{}", item.source_system),
             passed: completeness_passed,
             severity: completeness_severity,
@@ -1151,8 +1394,10 @@ fn build_quality_controls(
         });
         if let Some(provided_sources) = provided_observation_sources {
             freshness_sla_checks.push(QualityCheckV1 {
+                applicability: source_applicability.clone(),
                 code: format!("source_window_observation_present_{}", item.source_system),
-                passed: provided_sources.contains(&item.source_system),
+                passed: source_applicability == QualityCheckApplicabilityV1::NotApplicable
+                    || provided_sources.contains(&item.source_system),
                 severity: "medium".to_string(),
                 observed: format!(
                     "provided_sources={}",
@@ -1173,7 +1418,7 @@ fn build_quality_controls(
         .chain(freshness_sla_checks.iter())
         .chain(cross_source_checks.iter())
         .chain(budget_checks.iter())
-        .all(|c| c.passed);
+        .all(|c| c.applicability == QualityCheckApplicabilityV1::NotApplicable || c.passed);
 
     AnalyticsQualityControlsV1 {
         schema_drift_checks,
@@ -1231,6 +1476,7 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
         .count();
     vec![
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "budget_no_blocked_spend".to_string(),
             passed: blocked_events == 0,
             severity: "high".to_string(),
@@ -1238,6 +1484,7 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
             expected: "blocked_events=0".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "budget_retrieval_within_cap".to_string(),
             passed: budget.actuals.retrieval_units <= budget.envelope.max_retrieval_units,
             severity: "high".to_string(),
@@ -1248,6 +1495,7 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
             expected: "actual <= cap".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "budget_analysis_within_cap".to_string(),
             passed: budget.actuals.analysis_units <= budget.envelope.max_analysis_units,
             severity: "high".to_string(),
@@ -1258,6 +1506,7 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
             expected: "actual <= cap".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "budget_total_cost_within_cap".to_string(),
             passed: budget.actuals.total_cost_micros <= budget.envelope.max_total_cost_micros,
             severity: "high".to_string(),
@@ -1268,6 +1517,7 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
             expected: "actual <= cap".to_string(),
         },
         QualityCheckV1 {
+            applicability: QualityCheckApplicabilityV1::Applies,
             code: "budget_daily_hard_cap_within_limit".to_string(),
             passed: budget.daily_spent_after_micros <= budget.hard_daily_cap_micros,
             severity: "high".to_string(),
@@ -1281,20 +1531,24 @@ fn build_budget_checks(budget: &BudgetSummaryV1) -> Vec<QualityCheckV1> {
 }
 
 fn pass_ratio(checks: &[QualityCheckV1]) -> f64 {
-    if checks.is_empty() {
+    let applicable = checks
+        .iter()
+        .filter(|check| check.applicability == QualityCheckApplicabilityV1::Applies)
+        .collect::<Vec<_>>();
+    if applicable.is_empty() {
         return 1.0;
     }
-    let passed = checks.iter().filter(|check| check.passed).count() as f64;
-    round4((passed / checks.len() as f64).clamp(0.0, 1.0))
+    let passed = applicable.iter().filter(|check| check.passed).count() as f64;
+    round4((passed / applicable.len() as f64).clamp(0.0, 1.0))
 }
 
 fn pass_ratio_filtered(checks: &[QualityCheckV1], code_prefix: &str) -> f64 {
     let mut total = 0usize;
     let mut passed = 0usize;
-    for check in checks
-        .iter()
-        .filter(|check| check.code.starts_with(code_prefix))
-    {
+    for check in checks.iter().filter(|check| {
+        check.code.starts_with(code_prefix)
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+    }) {
         total += 1;
         if check.passed {
             passed += 1;
@@ -1592,6 +1846,7 @@ mod tests {
     fn data_quality_summary_uses_completeness_checks_not_schema_checks() {
         let controls = AnalyticsQualityControlsV1 {
             schema_drift_checks: vec![QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::Applies,
                 code: "schema_ok".to_string(),
                 passed: true,
                 severity: "high".to_string(),
@@ -1599,6 +1854,7 @@ mod tests {
                 expected: "ok".to_string(),
             }],
             identity_resolution_checks: vec![QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::Applies,
                 code: "identity_campaign_rollup_reconciliation".to_string(),
                 passed: true,
                 severity: "high".to_string(),
@@ -1607,6 +1863,7 @@ mod tests {
             }],
             freshness_sla_checks: vec![
                 QualityCheckV1 {
+                    applicability: QualityCheckApplicabilityV1::Applies,
                     code: "freshness_sla_ga4".to_string(),
                     passed: true,
                     severity: "high".to_string(),
@@ -1614,6 +1871,7 @@ mod tests {
                     expected: "ok".to_string(),
                 },
                 QualityCheckV1 {
+                    applicability: QualityCheckApplicabilityV1::Applies,
                     code: "completeness_sla_ga4".to_string(),
                     passed: false,
                     severity: "high".to_string(),
@@ -1622,6 +1880,7 @@ mod tests {
                 },
             ],
             cross_source_checks: vec![QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::Applies,
                 code: "cross_source_ok".to_string(),
                 passed: true,
                 severity: "high".to_string(),
@@ -1629,6 +1888,7 @@ mod tests {
                 expected: "ok".to_string(),
             }],
             budget_checks: vec![QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::Applies,
                 code: "budget_ok".to_string(),
                 passed: true,
                 severity: "high".to_string(),
@@ -1834,6 +2094,118 @@ mod tests {
         assert_eq!(artifact.metadata.connector_id, "failing_connector");
     }
 
+    struct EmptyObservedConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2 for EmptyObservedConnector {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "empty_observed_connector".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "empty_observed_connector".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn observed_mode_allows_zero_row_window_with_valid_artifact() {
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(EmptyObservedConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-02".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(11),
+            profile_id: "staging-observed".to_string(),
+            include_narratives: false,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let artifact = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("observed mode should emit valid no-data artifact for empty window");
+        let ga4_coverage = artifact
+            .source_coverage
+            .iter()
+            .find(|item| item.source_system == "ga4")
+            .expect("ga4 coverage");
+        assert!(ga4_coverage.enabled);
+        assert_eq!(ga4_coverage.row_count, 0);
+        assert!(artifact
+            .uncertainty_notes
+            .iter()
+            .any(|note| note.contains("zero rows")));
+    }
+
     #[test]
     fn data_quality_summary_rejects_out_of_bound_ratio_via_artifact_validator() {
         let mut artifact = MockAnalyticsArtifactV1 {
@@ -1873,6 +2245,7 @@ mod tests {
                 rejected_rows_count: 0,
                 cleaning_note_count: 0,
             }],
+            source_coverage: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: super::super::contracts::AnalyticsValidationReportV1 {
                 is_valid: true,

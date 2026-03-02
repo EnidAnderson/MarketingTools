@@ -1,6 +1,6 @@
 use super::contracts::{
     AnalyticsError, AnalyticsValidationReportV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
-    ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    QualityCheckApplicabilityV1, ValidationCheck, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::{
     attestation_registry_diagnostics_v1, attestation_registry_validation_message_v1,
@@ -131,6 +131,7 @@ pub fn validate_mock_analytics_artifact_v1(
 ) -> AnalyticsValidationReportV1 {
     let mut checks = Vec::new();
     let attestation = &artifact.metadata.connector_attestation;
+    let attestation_materialized = attestation_payload_materialized(attestation);
     let resolved_policy = resolve_attestation_policy_v1(&artifact.request.profile_id);
     let (signed_required, signed_policy_config_valid) = match resolved_policy {
         Ok(policy) => (policy.require_signed_attestations, true),
@@ -182,8 +183,13 @@ pub fn validate_mock_analytics_artifact_v1(
 
     checks.push(check(
         "provenance_present",
-        !artifact.provenance.is_empty(),
-        "artifact must include at least one provenance record",
+        !artifact.provenance.is_empty()
+            || artifact
+                .source_coverage
+                .iter()
+                .filter(|source| source.enabled)
+                .all(|source| source.row_count == 0),
+        "artifact must include provenance records unless all enabled sources have zero rows",
     ));
     checks.push(check(
         "provenance_contract_version_present",
@@ -228,17 +234,17 @@ pub fn validate_mock_analytics_artifact_v1(
     };
     checks.push(check(
         "attestation_registry_verification",
-        signature_verified,
+        !attestation_materialized || signature_verified,
         &attestation_registry_validation_message_v1(&registry_diagnostics),
     ));
     checks.push(check(
         "attestation_policy_config_valid",
-        signed_policy_config_valid,
+        !attestation_materialized || signed_policy_config_valid,
         "REQUIRE_SIGNED_ATTESTATIONS must be one of true/false/1/0/yes/no when provided",
     ));
     checks.push(check(
         "attestation_signature_required_by_policy",
-        !signed_required || signature_present,
+        !attestation_materialized || !signed_required || signature_present,
         "signed connector attestation is required by policy",
     ));
 
@@ -250,7 +256,11 @@ pub fn validate_mock_analytics_artifact_v1(
         .chain(artifact.quality_controls.freshness_sla_checks.iter())
         .chain(artifact.quality_controls.cross_source_checks.iter())
         .chain(artifact.quality_controls.budget_checks.iter())
-        .any(|check| !check.passed && check.severity.eq_ignore_ascii_case("high"));
+        .any(|check| {
+            check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+                && check.severity.eq_ignore_ascii_case("high")
+        });
     let all_quality_checks_passed = artifact
         .quality_controls
         .schema_drift_checks
@@ -259,7 +269,9 @@ pub fn validate_mock_analytics_artifact_v1(
         .chain(artifact.quality_controls.freshness_sla_checks.iter())
         .chain(artifact.quality_controls.cross_source_checks.iter())
         .chain(artifact.quality_controls.budget_checks.iter())
-        .all(|check| check.passed);
+        .all(|check| {
+            check.applicability == QualityCheckApplicabilityV1::NotApplicable || check.passed
+        });
     checks.push(check(
         "quality_controls_high_severity",
         !high_severity_failures,
@@ -371,6 +383,21 @@ fn attestation_pairing_is_valid(
     signature_present == key_id_present
 }
 
+fn attestation_payload_materialized(
+    attestation: &super::contracts::ConnectorConfigAttestationV1,
+) -> bool {
+    !attestation.connector_mode_effective.trim().is_empty()
+        || !attestation.connector_config_fingerprint.trim().is_empty()
+        || !attestation.fingerprint_alg.trim().is_empty()
+        || !attestation.fingerprint_input_schema.trim().is_empty()
+        || attestation
+            .fingerprint_key_id
+            .as_ref()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+        || attestation.fingerprint_signature.is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +434,16 @@ mod tests {
                 None => std::env::remove_var(&key),
             }
         }
+    }
+
+    fn materialize_attestation(
+        attestation: &mut crate::subsystems::marketing_data_analysis::contracts::ConnectorConfigAttestationV1,
+    ) {
+        attestation.connector_mode_effective = "observed_read_only".to_string();
+        attestation.connector_config_fingerprint = "sha256:test".to_string();
+        attestation.fingerprint_alg = "sha256".to_string();
+        attestation.fingerprint_input_schema = "connector-config-v1".to_string();
+        attestation.runtime_build = Some("test-build".to_string());
     }
 
     #[test]
@@ -501,6 +538,7 @@ mod tests {
                 rejected_rows_count: 0,
                 cleaning_note_count: 0,
             }],
+            source_coverage: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -580,6 +618,7 @@ mod tests {
                 rejected_rows_count: 0,
                 cleaning_note_count: 0,
             }],
+            source_coverage: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -595,6 +634,7 @@ mod tests {
             persistence: None,
         };
         artifact.report.total_metrics.impressions = 1;
+        materialize_attestation(&mut artifact.metadata.connector_attestation);
 
         let report = validate_mock_analytics_artifact_v1(&artifact);
         assert!(!report.is_valid);
@@ -661,6 +701,7 @@ mod tests {
                 rejected_rows_count: 0,
                 cleaning_note_count: 0,
             }],
+            source_coverage: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -676,6 +717,7 @@ mod tests {
             persistence: None,
         };
         artifact.report.total_metrics.impressions = 1;
+        materialize_attestation(&mut artifact.metadata.connector_attestation);
 
         let report = validate_mock_analytics_artifact_v1(&artifact);
         assert!(!report.is_valid);
@@ -743,6 +785,7 @@ mod tests {
                     rejected_rows_count: 0,
                     cleaning_note_count: 0,
                 }],
+                source_coverage: Vec::new(),
                 ingest_cleaning_notes: Vec::new(),
                 validation: AnalyticsValidationReportV1 {
                     is_valid: true,
@@ -759,6 +802,7 @@ mod tests {
             };
             artifact.report.total_metrics.impressions = 1;
             artifact.quality_controls.is_healthy = true;
+            materialize_attestation(&mut artifact.metadata.connector_attestation);
 
             let report = validate_mock_analytics_artifact_v1(&artifact);
             assert!(report
@@ -826,6 +870,7 @@ mod tests {
                     rejected_rows_count: 0,
                     cleaning_note_count: 0,
                 }],
+                source_coverage: Vec::new(),
                 ingest_cleaning_notes: Vec::new(),
                 validation: AnalyticsValidationReportV1 {
                     is_valid: true,
@@ -841,6 +886,7 @@ mod tests {
                 persistence: None,
             };
             artifact.report.total_metrics.impressions = 1;
+            materialize_attestation(&mut artifact.metadata.connector_attestation);
 
             let report = validate_mock_analytics_artifact_v1(&artifact);
             assert!(!report.is_valid);

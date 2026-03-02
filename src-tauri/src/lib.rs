@@ -4,12 +4,12 @@ use app_core::subsystems::campaign_orchestration::{
     prioritized_text_graph_templates_v1, runtime::TextWorkflowRunRequestV1,
 };
 use app_core::subsystems::marketing_data_analysis::{
-    analytics_connector_config_from_env, build_executive_dashboard_snapshot,
-    evaluate_analytics_connectors_preflight, load_attestation_key_registry_from_env_or_file,
-    resolve_attestation_policy_v1, verify_connector_attestation_with_registry_v1,
-    AnalyticsConnectorConfigV1, AnalyticsRunStore, DashboardExportAuditRecordV1,
-    DashboardExportAuditStore, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
-    SimulatedAnalyticsConnectorV2, SnapshotBuildOptions,
+    analytics_connector_config_from_env, build_analytics_connector_v2,
+    build_executive_dashboard_snapshot, evaluate_analytics_connectors_preflight,
+    load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
+    verify_connector_attestation_with_registry_v1, AnalyticsConnectorConfigV1, AnalyticsRunStore,
+    DashboardExportAuditRecordV1, DashboardExportAuditStore, MockAnalyticsRequestV1,
+    PersistedAnalyticsRunV1, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -514,7 +514,6 @@ fn start_mock_analytics_job(
 async fn validate_analytics_connectors_preflight(
     config: Option<AnalyticsConnectorConfigV1>,
 ) -> Result<Value, String> {
-    let connector = SimulatedAnalyticsConnectorV2::new();
     let effective_config = match config {
         Some(cfg) => cfg,
         None => analytics_connector_config_from_env().map_err(|err| {
@@ -524,7 +523,9 @@ async fn validate_analytics_connectors_preflight(
             )
         })?,
     };
-    let preflight = evaluate_analytics_connectors_preflight(&connector, &effective_config).await;
+    let connector = build_analytics_connector_v2(&effective_config);
+    let preflight =
+        evaluate_analytics_connectors_preflight(connector.as_ref(), &effective_config).await;
     serde_json::to_value(preflight)
         .map_err(|err| format!("failed to serialize analytics connector preflight: {err}"))
 }

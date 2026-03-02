@@ -201,14 +201,24 @@ function currentPhaseOptions() {
 async function generateRunAndRefresh() {
   status('Submitting analytics snapshot request...');
   setButtonBusy(el.runButton, true);
+  const profileId = cleanText(el.profileId.value) || 'marketing_default';
+  const preflight = await runConnectorPreflight(profileId);
+  if (!preflight.ok) {
+    const reasons = (preflight.blocking_reasons || []).join(' | ') || 'connector preflight failed';
+    status(`Run blocked by connector preflight: ${reasons}`);
+    setButtonBusy(el.runButton, false);
+    return;
+  }
+
   const request = {
     start_date: el.startDate.value,
     end_date: el.endDate.value,
     campaign_filter: cleanText(el.campaignFilter.value),
     ad_group_filter: cleanText(el.adGroupFilter.value),
     seed: parseOptionalInt(el.seed.value),
-    profile_id: cleanText(el.profileId.value) || 'marketing_default',
-    include_narratives: el.includeNarratives.checked
+    profile_id: profileId,
+    include_narratives: el.includeNarratives.checked,
+    budget_envelope: defaultBudgetEnvelope()
   };
 
   try {
@@ -238,6 +248,30 @@ async function generateRunAndRefresh() {
   } finally {
     setButtonBusy(el.runButton, false);
   }
+}
+
+async function runConnectorPreflight(profileId) {
+  try {
+    const preflight = await invoke('validate_analytics_connectors_preflight', {});
+    if (!preflight?.ok) {
+      return { ok: false, blocking_reasons: preflight?.blocking_reasons || [] };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, blocking_reasons: [`preflight command failed for ${profileId}: ${String(err)}`] };
+  }
+}
+
+function defaultBudgetEnvelope() {
+  return {
+    max_retrieval_units: 20000,
+    max_analysis_units: 10000,
+    max_llm_tokens_in: 15000,
+    max_llm_tokens_out: 8000,
+    max_total_cost_micros: 50000000,
+    policy: 'fail_closed',
+    provenance_ref: 'ui.default_budget_envelope.v1'
+  };
 }
 
 async function loadTextWorkflowTemplates() {
@@ -442,6 +476,7 @@ function exportTextWorkflowPacket() {
 async function refreshDashboard() {
   const profileId = cleanText(el.profileId.value) || 'marketing_default';
   const opts = currentPhaseOptions();
+  const productionLike = isProductionLikeProfile(profileId);
 
   try {
     await refreshHistoryOnly();
@@ -459,9 +494,15 @@ async function refreshDashboard() {
   } catch (err) {
     const message = String(err || 'Unknown error');
     if (message.includes('No persisted analytics runs found')) {
-      renderExecutiveDashboard(fallbackSnapshot(profileId, opts));
-      status('No saved runs yet. Showing a guided demo snapshot.');
-      stampNow('Demo');
+      if (productionLike) {
+        renderExecutiveDashboard(emptySnapshot(profileId, opts, message));
+        status('No live analytics runs are available yet for this production profile.');
+        stampNow('No data');
+      } else {
+        renderExecutiveDashboard(fallbackSnapshot(profileId, opts));
+        status('No saved runs yet. Showing a guided demo snapshot.');
+        stampNow('Demo');
+      }
       return;
     }
     status(`We couldn't refresh the dashboard: ${message}`);
@@ -488,9 +529,9 @@ function renderExecutiveDashboard(snapshot) {
   renderQuality(snapshot.quality_controls || {});
   renderDataQuality(snapshot.data_quality || {});
   renderDrift(snapshot.historical_analysis || {});
-  renderCampaignTable(snapshot.portfolio_rows || []);
+  renderCampaignTable(snapshot.portfolio_rows || [], snapshot.source_coverage || []);
   renderFunnelTable(snapshot.funnel_summary?.stages || []);
-  renderStorefrontTable(snapshot.storefront_behavior_summary?.rows || []);
+  renderStorefrontTable(snapshot.storefront_behavior_summary || {});
   renderForecast(snapshot.forecast_summary || {});
   renderPublishGate(snapshot.publish_export_gate || {});
   renderDecisionFeed(snapshot.decision_feed || []);
@@ -498,7 +539,11 @@ function renderExecutiveDashboard(snapshot) {
 }
 
 function renderKpis(kpis) {
-  const cards = kpis.length ? kpis : fallbackSnapshot('demo', currentPhaseOptions()).kpis;
+  const cards = Array.isArray(kpis) ? kpis : [];
+  if (!cards.length) {
+    el.kpiGrid.innerHTML = '<div class="kpi"><div class="kpi-label">No KPI data</div><div class="kpi-value">n/a</div><div class="kpi-note">Run the pipeline to populate this panel.</div></div>';
+    return;
+  }
   el.kpiGrid.innerHTML = cards.map(kpi => {
     const delta = formatDelta(kpi.delta_percent);
     const targetDelta = formatDelta(kpi.target_delta_percent);
@@ -545,7 +590,14 @@ function renderChannelMixChart(points, roasTarget) {
   const ctx = document.getElementById('channelMixChart');
   if (!ctx || typeof Chart === 'undefined') return;
 
-  const rows = points.length ? points : fallbackSnapshot('demo', currentPhaseOptions()).channel_mix_series;
+  const rows = Array.isArray(points) ? points : [];
+  if (!rows.length) {
+    if (state.channelMixChart) {
+      state.channelMixChart.destroy();
+      state.channelMixChart = null;
+    }
+    return;
+  }
   const labels = rows.map(p => p.period_label);
 
   const datasets = [
@@ -616,6 +668,10 @@ function renderQuality(quality) {
     return;
   }
   el.qualityList.innerHTML = allChecks.slice(0, 8).map(check => {
+    const applicability = String(check.applicability || 'applies');
+    if (applicability === 'not_applicable') {
+      return `<li class="signal-item neutral"><strong>N/A</strong> ${escapeHtml(check.code)}<br/><span>${escapeHtml(check.expected || '')}</span></li>`;
+    }
     const cls = check.passed ? 'ok' : (check.severity === 'high' ? 'bad' : 'warn');
     const icon = check.passed ? 'PASS' : 'FAIL';
     return `<li class="signal-item ${cls}"><strong>${icon}</strong> ${escapeHtml(check.code)}<br/><span>${escapeHtml(check.observed || '')}</span></li>`;
@@ -655,9 +711,16 @@ function renderDataQuality(dq) {
   }).join('');
 }
 
-function renderCampaignTable(rows) {
+function renderCampaignTable(rows, sourceCoverage) {
   if (!rows.length) {
-    el.campaignTableBody.innerHTML = '<tr><td colspan="6">No campaign rows</td></tr>';
+    const adsCoverage = Array.isArray(sourceCoverage)
+      ? sourceCoverage.find(item => item.source_system === 'google_ads')
+      : null;
+    const unavailable = adsCoverage && (!adsCoverage.enabled || !adsCoverage.observed);
+    const message = unavailable
+      ? 'Not available for current source set (Google Ads connector disabled or no observed rows).'
+      : 'No campaign rows';
+    el.campaignTableBody.innerHTML = `<tr><td colspan="6">${escapeHtml(message)}</td></tr>`;
     return;
   }
   const sorted = [...rows].sort((a, b) => (b.roas || 0) - (a.roas || 0));
@@ -688,9 +751,15 @@ function renderFunnelTable(stages) {
   }).join('');
 }
 
-function renderStorefrontTable(rows) {
+function renderStorefrontTable(summary) {
+  const rows = Array.isArray(summary?.rows) ? summary.rows : [];
   if (!rows.length) {
-    el.storefrontTableBody.innerHTML = '<tr><td colspan="6">No storefront behavior data</td></tr>';
+    const source = String(summary?.source_system || '');
+    const unavailable = source.includes('not_enabled') || source.includes('no_rows') || source.includes('not_available');
+    const message = unavailable
+      ? 'Not available for current source set (Wix connector disabled or no observed rows).'
+      : 'No storefront behavior data';
+    el.storefrontTableBody.innerHTML = `<tr><td colspan="6">${escapeHtml(message)}</td></tr>`;
     return;
   }
   el.storefrontTableBody.innerHTML = rows.map(row => `<tr>
@@ -825,6 +894,83 @@ function renderHistory(runs) {
       stampNow('Loaded history');
     });
   });
+}
+
+function isProductionLikeProfile(profileId) {
+  return /prod|production/i.test(String(profileId || ''));
+}
+
+function emptySnapshot(profileId, opts, reason) {
+  return {
+    schema_version: 'executive_dashboard_snapshot.v1',
+    profile_id: profileId,
+    generated_at_utc: new Date().toISOString(),
+    run_id: 'no-data',
+    date_range: `${el.startDate?.value || 'n/a'} to ${el.endDate?.value || 'n/a'}`,
+    compare_window_runs: opts?.compareWindowRuns || 1,
+    roas_target_band: opts?.targetRoas ?? null,
+    kpis: [],
+    channel_mix_series: [],
+    funnel_summary: { stages: [], dropoff_hotspot_stage: 'n/a' },
+    storefront_behavior_summary: {
+      source_system: 'wix_storefront_not_available',
+      identity_confidence: 'not_available',
+      rows: []
+    },
+    portfolio_rows: [],
+    quality_controls: {
+      schema_drift_checks: [],
+      identity_resolution_checks: [],
+      freshness_sla_checks: [],
+      cross_source_checks: [],
+      budget_checks: []
+    },
+    historical_analysis: {
+      period_over_period_deltas: [],
+      drift_flags: [],
+      anomaly_flags: []
+    },
+    forecast_summary: {
+      expected_revenue_next_period: 0,
+      expected_roas_next_period: 0,
+      confidence_interval_low: 0,
+      confidence_interval_high: 0,
+      month_to_date_pacing_ratio: 0,
+      month_to_date_revenue: 0,
+      monthly_revenue_target: opts?.monthlyRevenueTarget ?? null,
+      target_roas: opts?.targetRoas ?? null,
+      pacing_status: 'no_data'
+    },
+    decision_feed: [{
+      card_id: 'no-data',
+      priority: 'medium',
+      status: 'review_required',
+      title: 'No data available',
+      summary: reason || 'No persisted analytics runs are available for this profile yet.',
+      recommended_action: 'Run preflight, execute a GA4 observed read-only job, then refresh this dashboard.'
+    }],
+    publish_export_gate: {
+      publish_ready: false,
+      export_ready: false,
+      blocking_reasons: [reason || 'No persisted analytics runs found.'],
+      warning_reasons: [],
+      gate_status: 'blocked'
+    },
+    data_quality: {
+      completeness_ratio: 0,
+      identity_join_coverage_ratio: 0,
+      freshness_pass_ratio: 0,
+      reconciliation_pass_ratio: 0,
+      cross_source_pass_ratio: 0,
+      budget_pass_ratio: 0,
+      quality_score: 0
+    },
+    operator_summary: {
+      attribution_narratives: []
+    },
+    alerts: [reason || 'No persisted analytics runs found.'],
+    source_coverage: []
+  };
 }
 
 function fallbackSnapshot(profileId, opts) {

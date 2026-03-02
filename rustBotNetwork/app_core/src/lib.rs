@@ -1,6 +1,8 @@
 // src/lib.rs
+#[cfg(feature = "legacy_analytics")]
 pub mod analytics_connector_contracts;
-pub mod analytics_reporter; // Added analytics_reporter module
+#[cfg(feature = "legacy_analytics")]
+pub mod analytics_reporter;
 pub mod contracts;
 pub mod data_models;
 pub mod image_generator;

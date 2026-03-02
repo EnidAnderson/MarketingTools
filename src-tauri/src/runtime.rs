@@ -4,12 +4,12 @@ use app_core::subsystems::campaign_orchestration::runtime::{
 };
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_fingerprint_v1, analytics_connector_config_from_env,
-    build_historical_analysis, evaluate_analytics_connectors_preflight, is_production_profile_like,
+    build_analytics_connector_v2, build_historical_analysis,
+    evaluate_analytics_connectors_preflight, is_production_profile_like,
     resolve_attestation_policy_v1, AnalyticsConnectorModeV1, AnalyticsRunStore,
     ConnectorConfigAttestationV1, DefaultMarketAnalysisService, GuidanceItem,
     MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
-    SimulatedAnalyticsConnectorV2, CONNECTOR_CONFIG_FINGERPRINT_ALG_V1,
-    CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
+    CONNECTOR_CONFIG_FINGERPRINT_ALG_V1, CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
 };
 use app_core::tools::tool_registry::ToolRegistry;
 use serde::{Deserialize, Serialize};
@@ -458,8 +458,9 @@ impl JobManager {
                 manager.emit_failed(&app_handle, &spawned_job_id);
                 return;
             }
-            let connector = SimulatedAnalyticsConnectorV2::new();
-            let preflight = evaluate_analytics_connectors_preflight(&connector, &config).await;
+            let connector = build_analytics_connector_v2(&config);
+            let preflight =
+                evaluate_analytics_connectors_preflight(connector.as_ref(), &config).await;
             if !preflight.ok {
                 manager.update_failed(
                     &spawned_job_id,
@@ -482,7 +483,7 @@ impl JobManager {
                 &spawned_job_id,
                 "generating_data",
                 40,
-                "Generating deterministic mock analytics data",
+                "Retrieving analytics data from enabled sources",
             );
             manager.emit_progress(&app_handle, &spawned_job_id);
             sleep(Duration::from_millis(150)).await;
@@ -502,7 +503,7 @@ impl JobManager {
             manager.emit_progress(&app_handle, &spawned_job_id);
 
             let service = match DefaultMarketAnalysisService::with_connector_and_config(
-                Arc::new(SimulatedAnalyticsConnectorV2::new()),
+                Arc::clone(&connector),
                 config,
             ) {
                 Ok(service) => service,

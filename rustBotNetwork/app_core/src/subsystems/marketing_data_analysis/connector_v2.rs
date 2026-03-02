@@ -8,12 +8,24 @@ use crate::data_models::analytics::{
     MetricsData, SegmentsData,
 };
 use async_trait::async_trait;
-use chrono::{Datelike, Duration, NaiveDate};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::Tz;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::fs;
+use std::io::Write;
+use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CONNECTOR_CONTRACT_VERSION_V2: &str = "analytics_connector_contract.v2";
+const OBSERVED_CONNECTOR_ID_V2: &str = "analytics_observed_read_only_connector_v2";
+const DEFAULT_GA4_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const DEFAULT_GA4_DATA_API_BASE_URL: &str = "https://analyticsdata.googleapis.com/v1beta";
+const GA4_SCOPE_READONLY: &str = "https://www.googleapis.com/auth/analytics.readonly";
 const CAMPAIGN_NAMES: &[&str] = &[
     "Summer Pet Food Promo",
     "New Puppy Essentials",
@@ -57,6 +69,12 @@ pub struct ConnectorSourceHealthV1 {
     pub source_system: String,
     pub enabled: bool,
     pub credentials_present: bool,
+    #[serde(default)]
+    pub live_probe_ok: bool,
+    #[serde(default)]
+    pub probe_status: String,
+    #[serde(default)]
+    pub probe_message: Option<String>,
     pub blocking_reasons: Vec<String>,
     pub warning_reasons: Vec<String>,
 }
@@ -130,6 +148,657 @@ pub trait AnalyticsConnectorContractV2: Send + Sync {
         end: NaiveDate,
         seed: u64,
     ) -> Result<Vec<WixSessionRawV1>, AnalyticsError>;
+}
+
+#[derive(Debug, Deserialize)]
+struct ServiceAccountCredentials {
+    client_email: String,
+    private_key: String,
+    #[serde(default)]
+    token_uri: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ServiceAccountClaims<'a> {
+    iss: &'a str,
+    sub: &'a str,
+    scope: &'a str,
+    aud: &'a str,
+    iat: i64,
+    exp: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct ServiceAccountJwtHeader {
+    alg: &'static str,
+    typ: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthTokenResponse {
+    access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Ga4RunReportResponse {
+    #[serde(default)]
+    rows: Vec<Ga4RunReportRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Ga4RunReportRow {
+    #[serde(rename = "dimensionValues", default)]
+    dimension_values: Vec<Ga4RunReportValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Ga4RunReportValue {
+    #[serde(default)]
+    value: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::connector_v2`
+/// purpose: Observed/read-only connector implementation for live GA4 reads.
+#[derive(Debug, Clone)]
+pub struct ObservedReadOnlyAnalyticsConnectorV2 {
+    http: Client,
+}
+
+impl Default for ObservedReadOnlyAnalyticsConnectorV2 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ObservedReadOnlyAnalyticsConnectorV2 {
+    pub fn new() -> Self {
+        Self {
+            http: Client::new(),
+        }
+    }
+
+    fn credentials_path(&self, config: &AnalyticsConnectorConfigV1) -> Option<String> {
+        std::env::var(config.ga4.read_credentials_env_var.trim())
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    }
+
+    fn load_service_account(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+    ) -> Result<ServiceAccountCredentials, AnalyticsError> {
+        let Some(path) = self.credentials_path(config) else {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_credentials_missing",
+                format!(
+                    "GA4 credentials env var '{}' is missing or empty",
+                    config.ga4.read_credentials_env_var
+                ),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            ));
+        };
+        let raw = fs::read_to_string(&path).map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_credentials_file_unreadable",
+                format!("failed to read GA4 credentials file at '{}': {}", path, err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                Some(json!({ "path": path })),
+            )
+        })?;
+        let credentials: ServiceAccountCredentials = serde_json::from_str(&raw).map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_credentials_parse_failed",
+                format!("failed to parse GA4 credentials JSON: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                Some(json!({ "path": path })),
+            )
+        })?;
+        if credentials.client_email.trim().is_empty() || credentials.private_key.trim().is_empty() {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_credentials_invalid",
+                "GA4 service-account credentials require non-empty client_email and private_key",
+                vec!["ga4.read_credentials_env_var".to_string()],
+                Some(json!({ "path": path })),
+            ));
+        }
+        Ok(credentials)
+    }
+
+    fn oauth_token_url(&self, credentials: &ServiceAccountCredentials) -> String {
+        std::env::var("ANALYTICS_GA4_OAUTH_TOKEN_URL")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                credentials
+                    .token_uri
+                    .as_ref()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            })
+            .unwrap_or_else(|| DEFAULT_GA4_OAUTH_TOKEN_URL.to_string())
+    }
+
+    fn ga4_data_api_base_url(&self) -> String {
+        std::env::var("ANALYTICS_GA4_DATA_API_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_GA4_DATA_API_BASE_URL.to_string())
+    }
+
+    fn signed_assertion(
+        &self,
+        credentials: &ServiceAccountCredentials,
+        token_url: &str,
+    ) -> Result<String, AnalyticsError> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_secs() as i64)
+            .unwrap_or(0);
+        let claims = ServiceAccountClaims {
+            iss: credentials.client_email.trim(),
+            sub: credentials.client_email.trim(),
+            scope: GA4_SCOPE_READONLY,
+            aud: token_url,
+            iat: now.saturating_sub(30),
+            exp: now.saturating_add(3600),
+        };
+        let header = ServiceAccountJwtHeader {
+            alg: "RS256",
+            typ: "JWT",
+        };
+        let header_json = serde_json::to_vec(&header).map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_assertion_sign_failed",
+                format!("failed to serialize OAuth assertion header: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            )
+        })?;
+        let claims_json = serde_json::to_vec(&claims).map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_assertion_sign_failed",
+                format!("failed to serialize OAuth assertion claims: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            )
+        })?;
+
+        let header_b64 = URL_SAFE_NO_PAD.encode(header_json);
+        let claims_b64 = URL_SAFE_NO_PAD.encode(claims_json);
+        let signing_input = format!("{}.{}", header_b64, claims_b64);
+
+        let signature = self.sign_rs256_with_openssl(
+            credentials.private_key.as_bytes(),
+            signing_input.as_bytes(),
+        )?;
+
+        Ok(format!(
+            "{}.{}",
+            signing_input,
+            URL_SAFE_NO_PAD.encode(signature)
+        ))
+    }
+
+    fn sign_rs256_with_openssl(
+        &self,
+        private_key_pem: &[u8],
+        payload: &[u8],
+    ) -> Result<Vec<u8>, AnalyticsError> {
+        let mut key_path = std::env::temp_dir();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or(0);
+        key_path.push(format!("ga4-sa-key-{}.pem", nonce));
+        fs::write(&key_path, private_key_pem).map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_private_key_invalid",
+                format!("failed to materialize temporary private key file: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            )
+        })?;
+
+        let mut child = Command::new("openssl")
+            .arg("dgst")
+            .arg("-sha256")
+            .arg("-sign")
+            .arg(&key_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|err| {
+                let _ = fs::remove_file(&key_path);
+                AnalyticsError::new(
+                    "analytics_ga4_assertion_sign_failed",
+                    format!("failed to launch openssl for OAuth signing: {}", err),
+                    vec!["ga4.read_credentials_env_var".to_string()],
+                    None,
+                )
+            })?;
+
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin.write_all(payload).map_err(|err| {
+                let _ = fs::remove_file(&key_path);
+                AnalyticsError::new(
+                    "analytics_ga4_assertion_sign_failed",
+                    format!("failed to write OAuth signing payload: {}", err),
+                    vec!["ga4.read_credentials_env_var".to_string()],
+                    None,
+                )
+            })?;
+        }
+
+        let output = child.wait_with_output().map_err(|err| {
+            let _ = fs::remove_file(&key_path);
+            AnalyticsError::new(
+                "analytics_ga4_assertion_sign_failed",
+                format!("failed while waiting for openssl signer: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            )
+        })?;
+        let _ = fs::remove_file(&key_path);
+
+        if !output.status.success() {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_assertion_sign_failed",
+                format!(
+                    "openssl signer failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            ));
+        }
+        if output.stdout.is_empty() {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_assertion_sign_failed",
+                "openssl signer returned empty signature output",
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            ));
+        }
+        Ok(output.stdout)
+    }
+
+    async fn fetch_access_token(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+    ) -> Result<String, AnalyticsError> {
+        let credentials = self.load_service_account(config)?;
+        let token_url = self.oauth_token_url(&credentials);
+        let assertion = self.signed_assertion(&credentials, &token_url)?;
+        let response = self
+            .http
+            .post(token_url.clone())
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                ("assertion", assertion.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|err| {
+                AnalyticsError::new(
+                    "analytics_ga4_token_exchange_failed",
+                    format!("GA4 OAuth token exchange request failed: {}", err),
+                    vec!["ga4.read_credentials_env_var".to_string()],
+                    Some(json!({ "token_url": token_url })),
+                )
+            })?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AnalyticsError::new(
+                "analytics_ga4_token_exchange_failed",
+                format!("GA4 OAuth token exchange failed with status {}", status),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                Some(json!({ "status": status, "body": body })),
+            ));
+        }
+        let payload: OAuthTokenResponse = response.json().await.map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_token_response_invalid",
+                format!("failed to parse GA4 OAuth token response: {}", err),
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            )
+        })?;
+        if payload.access_token.trim().is_empty() {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_token_response_invalid",
+                "GA4 OAuth token response did not include access_token",
+                vec!["ga4.read_credentials_env_var".to_string()],
+                None,
+            ));
+        }
+        Ok(payload.access_token)
+    }
+
+    async fn run_ga4_report(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        start: NaiveDate,
+        end: NaiveDate,
+        limit: u32,
+    ) -> Result<Ga4RunReportResponse, AnalyticsError> {
+        let access_credential = self.fetch_access_token(config).await?;
+        let base_url = self.ga4_data_api_base_url();
+        let url = format!(
+            "{}/properties/{}:runReport",
+            base_url,
+            config.ga4.property_id.trim()
+        );
+        let response = self
+            .http
+            .post(url.clone())
+            .bearer_auth(access_credential)
+            .json(&json!({
+                "dateRanges": [{
+                    "startDate": start.format("%Y-%m-%d").to_string(),
+                    "endDate": end.format("%Y-%m-%d").to_string()
+                }],
+                "dimensions": [
+                    { "name": "eventName" },
+                    { "name": "dateHour" },
+                    { "name": "userPseudoId" },
+                    { "name": "campaignName" }
+                ],
+                "metrics": [{ "name": "eventCount" }],
+                "limit": limit.to_string()
+            }))
+            .send()
+            .await
+            .map_err(|err| {
+                AnalyticsError::new(
+                    "analytics_ga4_run_report_failed",
+                    format!("GA4 runReport request failed: {}", err),
+                    vec!["ga4.property_id".to_string()],
+                    Some(json!({ "url": url })),
+                )
+            })?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AnalyticsError::new(
+                "analytics_ga4_run_report_failed",
+                format!("GA4 runReport failed with status {}", status),
+                vec!["ga4.property_id".to_string()],
+                Some(json!({ "status": status, "body": body })),
+            ));
+        }
+        response.json().await.map_err(|err| {
+            AnalyticsError::new(
+                "analytics_ga4_schema_parse_failed",
+                format!("failed to parse GA4 runReport response: {}", err),
+                vec!["ga4.property_id".to_string()],
+                None,
+            )
+        })
+    }
+
+    fn parse_date_hour_rfc3339(&self, value: &str, timezone: &str) -> Option<String> {
+        let trimmed = value.trim();
+        let naive = NaiveDateTime::parse_from_str(trimmed, "%Y%m%d%H").ok()?;
+        let tz: Tz = timezone.parse().ok()?;
+        let local = tz
+            .from_local_datetime(&naive)
+            .single()
+            .or_else(|| tz.from_local_datetime(&naive).earliest())?;
+        Some(local.with_timezone(&Utc).to_rfc3339())
+    }
+
+    fn map_ga4_rows(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        rows: &[Ga4RunReportRow],
+    ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+        let mut events = Vec::with_capacity(rows.len());
+        for (idx, row) in rows.iter().enumerate() {
+            if row.dimension_values.len() < 3 {
+                return Err(AnalyticsError::new(
+                    "analytics_ga4_schema_mismatch",
+                    "GA4 runReport row did not include expected dimensions",
+                    vec!["ga4.property_id".to_string()],
+                    Some(
+                        json!({ "row_index": idx, "dimension_count": row.dimension_values.len() }),
+                    ),
+                ));
+            }
+            let event_name = row.dimension_values[0].value.trim().to_string();
+            let date_hour = row.dimension_values[1].value.trim().to_string();
+            let user = row.dimension_values[2].value.trim().to_string();
+            if event_name.is_empty() || user.is_empty() {
+                continue;
+            }
+            let timestamp = self
+                .parse_date_hour_rfc3339(&date_hour, config.ga4.timezone.trim())
+                .ok_or_else(|| {
+                    AnalyticsError::new(
+                        "analytics_ga4_schema_mismatch",
+                        "GA4 runReport row had an invalid dateHour value for configured timezone",
+                        vec!["ga4.timezone".to_string(), "ga4.property_id".to_string()],
+                        Some(json!({
+                            "row_index": idx,
+                            "date_hour": date_hour,
+                            "timezone": config.ga4.timezone,
+                        })),
+                    )
+                })?;
+            let campaign = row
+                .dimension_values
+                .get(3)
+                .map(|item| item.value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            events.push(Ga4EventRawV1 {
+                event_name,
+                event_timestamp_utc: timestamp,
+                user_pseudo_id: user,
+                session_id: None,
+                campaign,
+            });
+        }
+        Ok(events)
+    }
+}
+
+#[async_trait]
+impl AnalyticsConnectorContractV2 for ObservedReadOnlyAnalyticsConnectorV2 {
+    fn capabilities(&self) -> AnalyticsConnectorCapabilitiesV1 {
+        AnalyticsConnectorCapabilitiesV1 {
+            connector_id: OBSERVED_CONNECTOR_ID_V2.to_string(),
+            contract_version: CONNECTOR_CONTRACT_VERSION_V2.to_string(),
+            supports_healthcheck: true,
+            sources: vec![
+                ConnectorSourceCapabilityV1 {
+                    source_system: "ga4".to_string(),
+                    granularity: vec!["hour".to_string(), "day".to_string()],
+                    read_mode: "observed_read_only".to_string(),
+                },
+                ConnectorSourceCapabilityV1 {
+                    source_system: "google_ads".to_string(),
+                    granularity: vec!["day".to_string()],
+                    read_mode: "not_implemented".to_string(),
+                },
+                ConnectorSourceCapabilityV1 {
+                    source_system: "wix_storefront".to_string(),
+                    granularity: vec!["hour".to_string(), "day".to_string()],
+                    read_mode: "not_implemented".to_string(),
+                },
+            ],
+        }
+    }
+
+    async fn healthcheck(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+    ) -> Result<ConnectorHealthStatusV1, AnalyticsError> {
+        validate_analytics_connector_config_v1(config)?;
+        let mut source_status = Vec::new();
+        let mut blocking_reasons = Vec::new();
+        let mut warning_reasons = Vec::new();
+
+        if !config.ga4.enabled {
+            source_status.push(source_health_disabled("ga4"));
+        } else {
+            let mut status = source_health("ga4", true, &[&config.ga4.read_credentials_env_var]);
+            if status.credentials_present {
+                match self
+                    .run_ga4_report(
+                        config,
+                        Utc::now().date_naive() - Duration::days(1),
+                        Utc::now().date_naive() - Duration::days(1),
+                        1,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        status.live_probe_ok = true;
+                        status.probe_status = "passed".to_string();
+                        status.probe_message = Some("ga4 runReport probe succeeded".to_string());
+                    }
+                    Err(err) => {
+                        status.live_probe_ok = false;
+                        status.probe_status = "failed".to_string();
+                        status.probe_message = Some(format!("{}: {}", err.code, err.message));
+                        status
+                            .blocking_reasons
+                            .push("ga4 live probe failed".to_string());
+                        status
+                            .warning_reasons
+                            .push(format!("ga4 probe details: {}: {}", err.code, err.message));
+                    }
+                }
+            } else {
+                status.live_probe_ok = false;
+                status.probe_status = "failed".to_string();
+                status.probe_message = Some("credentials missing".to_string());
+                status
+                    .blocking_reasons
+                    .push("ga4 credentials missing".to_string());
+            }
+            blocking_reasons.extend(status.blocking_reasons.iter().cloned());
+            warning_reasons.extend(status.warning_reasons.iter().cloned());
+            source_status.push(status);
+        }
+
+        if config.google_ads.enabled {
+            let mut status = source_health("google_ads", true, &[]);
+            status.probe_status = "failed".to_string();
+            status.live_probe_ok = false;
+            status.probe_message =
+                Some("google ads observed connector is not implemented".to_string());
+            status
+                .blocking_reasons
+                .push("google_ads observed connector not implemented".to_string());
+            blocking_reasons.extend(status.blocking_reasons.iter().cloned());
+            source_status.push(status);
+        } else {
+            source_status.push(source_health_disabled("google_ads"));
+        }
+
+        if config.wix.enabled {
+            let mut status = source_health("wix_storefront", true, &[]);
+            status.probe_status = "failed".to_string();
+            status.live_probe_ok = false;
+            status.probe_message = Some("wix observed connector is not implemented".to_string());
+            status
+                .blocking_reasons
+                .push("wix_storefront observed connector not implemented".to_string());
+            blocking_reasons.extend(status.blocking_reasons.iter().cloned());
+            source_status.push(status);
+        } else {
+            source_status.push(source_health_disabled("wix_storefront"));
+        }
+
+        Ok(ConnectorHealthStatusV1 {
+            connector_id: self.capabilities().connector_id,
+            ok: blocking_reasons.is_empty(),
+            mode: "observed_read_only".to_string(),
+            source_status,
+            blocking_reasons,
+            warning_reasons,
+        })
+    }
+
+    async fn fetch_ga4_events(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        start: NaiveDate,
+        end: NaiveDate,
+        _seed: u64,
+    ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+        if !config.ga4.enabled {
+            return Err(AnalyticsError::validation(
+                "analytics_source_not_enabled",
+                "ga4 source is disabled in connector config",
+                "ga4.enabled",
+            ));
+        }
+        let response = self.run_ga4_report(config, start, end, 1000).await?;
+        self.map_ga4_rows(config, &response.rows)
+    }
+
+    async fn fetch_google_ads_rows(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        _request: &MockAnalyticsRequestV1,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _seed: u64,
+    ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+        if !config.google_ads.enabled {
+            return Ok(Vec::new());
+        }
+        Err(AnalyticsError::new(
+            "analytics_google_ads_not_implemented",
+            "google ads observed connector is not implemented in this slice",
+            vec!["google_ads.enabled".to_string()],
+            None,
+        ))
+    }
+
+    async fn fetch_wix_orders(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _seed: u64,
+    ) -> Result<Vec<WixOrderRawV1>, AnalyticsError> {
+        if !config.wix.enabled {
+            return Ok(Vec::new());
+        }
+        Err(AnalyticsError::new(
+            "analytics_wix_not_implemented",
+            "wix observed connector is not implemented in this slice",
+            vec!["wix.enabled".to_string()],
+            None,
+        ))
+    }
+
+    async fn fetch_wix_sessions(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        _start: NaiveDate,
+        _end: NaiveDate,
+        _seed: u64,
+    ) -> Result<Vec<WixSessionRawV1>, AnalyticsError> {
+        if !config.wix.enabled {
+            return Ok(Vec::new());
+        }
+        Err(AnalyticsError::new(
+            "analytics_wix_not_implemented",
+            "wix observed connector is not implemented in this slice",
+            vec!["wix.enabled".to_string()],
+            None,
+        ))
+    }
 }
 
 /// # NDOC
@@ -280,13 +949,7 @@ fn source_health(
     required_env_vars: &[&str],
 ) -> ConnectorSourceHealthV1 {
     if !enabled {
-        return ConnectorSourceHealthV1 {
-            source_system: source_system.to_string(),
-            enabled,
-            credentials_present: false,
-            blocking_reasons: Vec::new(),
-            warning_reasons: vec!["source disabled in connector config".to_string()],
-        };
+        return source_health_disabled(source_system);
     }
 
     let missing = required_env_vars
@@ -300,6 +963,9 @@ fn source_health(
             source_system: source_system.to_string(),
             enabled,
             credentials_present: true,
+            live_probe_ok: false,
+            probe_status: "not_run".to_string(),
+            probe_message: None,
             blocking_reasons: Vec::new(),
             warning_reasons: Vec::new(),
         }
@@ -308,9 +974,25 @@ fn source_health(
             source_system: source_system.to_string(),
             enabled,
             credentials_present: false,
+            live_probe_ok: false,
+            probe_status: "failed".to_string(),
+            probe_message: Some("credentials missing".to_string()),
             blocking_reasons: Vec::new(),
             warning_reasons: vec![format!("missing env vars: {}", missing.join(", "))],
         }
+    }
+}
+
+fn source_health_disabled(source_system: &str) -> ConnectorSourceHealthV1 {
+    ConnectorSourceHealthV1 {
+        source_system: source_system.to_string(),
+        enabled: false,
+        credentials_present: false,
+        live_probe_ok: false,
+        probe_status: "not_applicable".to_string(),
+        probe_message: Some("source disabled in connector config".to_string()),
+        blocking_reasons: Vec::new(),
+        warning_reasons: vec!["source disabled in connector config".to_string()],
     }
 }
 
@@ -513,6 +1195,84 @@ fn round4(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httptest::matchers::*;
+    use httptest::responders::*;
+    use httptest::{Expectation, Server};
+    use once_cell::sync::Lazy;
+    use std::future::Future;
+    use std::process::Command;
+    use std::sync::Mutex;
+    use tempfile::tempdir;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+    const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\nMIICXQIBAAKBgQDagNZuyR4U9oAuEOrvMnVfGGoP2zU9cLt1BmsPmiGBW8nvCKSQ\np0Mua3uKe5gZPKfs24t6eyng7rXGtmuLvD6ayVh9VXUf3uz2xCY3EhkGaKml0Sh8\nYU9XW64e23ogSncA3du0oiqiieeLuEs2wEaKmoN8yltYZ4Iu7oh2k4JaXQIDAQAB\nAoGBALYoqpv5duarCfldiT6Yplj9FY7ahOwPy3eoPiDnsf8R8qsgXXFqwAs29+tf\nVlHTy3sfHIyjmSo4V7qt4cLA0L7Xuw2vTT3nsX3sgoA5NBS7Vdq8wduVPYe583oq\ndh+Ldi4SLmeaFjXpXo+ZEL1THfG11yXP2a57mQ14aFcliXmBAkEA7Y6o06pwnpbO\nDEwJsQ6g1KoMAN0dJ6ei21DfWlFcrAiE93FaZJSBBFzjliO+GNBpqJ0Acupb0iGw\nkJ2VRy/ilQJBAOt3fSg/FjxFtuy9pe4v1a2WlBXE4E6fV24TWNDxikdsDx5XCicb\nJP2tU0oEbk8h/bEavZtPLvmv/jz6m1yzLqkCQE877P2kdKnAvPsHBZiDu4sTKKvF\nFGtck4o5IDY8uv86XDc4HKE9kwbEgLhcNZSLNyKhMzwhBP1CdWTW2qqCwz0CQAjS\n+YXAl3y6wBgvI0DB2igfNH18W0uW/RfK8dEivCPhEM/6Qw8kHUbEcBKeB+Q/SdqR\nPfnMBd6lkcmHOrtGm8ECQQDgjyzmmuCo8GcpPUD/IrQ4RwlSoeMklPky6OSQaBpG\n+HpcTZVHFcNR78zbjYFuLbE4c2aTyQbyHle98zo27BdA\n-----END RSA PRIVATE KEY-----\n";
+
+    fn with_temp_env<F>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce(),
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        f();
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
+    }
+
+    async fn with_temp_env_async<F, Fut>(pairs: &[(&str, Option<&str>)], f: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        let previous = pairs
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+
+        for (key, value) in pairs {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        f().await;
+
+        for (key, value) in previous {
+            match value {
+                Some(value) => std::env::set_var(&key, value),
+                None => std::env::remove_var(&key),
+            }
+        }
+    }
+
+    fn test_config_observed_ga4_only() -> AnalyticsConnectorConfigV1 {
+        let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.read_credentials_env_var = "TEST_GA4_CREDENTIALS_PATH".to_string();
+        cfg
+    }
+
+    fn openssl_available() -> bool {
+        Command::new("openssl")
+            .arg("version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
 
     #[test]
     fn capabilities_publish_contract_metadata() {
@@ -563,5 +1323,178 @@ mod tests {
             serde_json::to_string(&a).expect("serialize"),
             serde_json::to_string(&b).expect("serialize")
         );
+    }
+
+    #[tokio::test]
+    async fn observed_healthcheck_reports_missing_ga4_credentials() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(&[("TEST_GA4_CREDENTIALS_PATH", None)], || {});
+        let connector = ObservedReadOnlyAnalyticsConnectorV2::new();
+        let config = test_config_observed_ga4_only();
+        let status = connector.healthcheck(&config).await.expect("healthcheck");
+        assert!(!status.ok);
+        assert!(status
+            .blocking_reasons
+            .iter()
+            .any(|item| item.contains("ga4 credentials missing")));
+    }
+
+    #[tokio::test]
+    async fn observed_healthcheck_blocks_ads_and_wix_when_enabled() {
+        if !openssl_available() {
+            return;
+        }
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        let dir = tempdir().expect("tempdir");
+        let creds_path = dir.path().join("sa.json");
+        std::fs::write(
+            &creds_path,
+            format!(
+                r#"{{"client_email":"test@example.iam.gserviceaccount.com","private_key":"{}","token_uri":"{}"}}"#,
+                TEST_RSA_PRIVATE_KEY_PEM.replace('\n', "\\n"),
+                "http://localhost:9/token"
+            ),
+        )
+        .expect("write creds");
+        let mut config = test_config_observed_ga4_only();
+        config.google_ads.enabled = true;
+        config.wix.enabled = true;
+        with_temp_env_async(
+            &[(
+                "TEST_GA4_CREDENTIALS_PATH",
+                Some(creds_path.to_string_lossy().as_ref()),
+            )],
+            || async {
+                let connector = ObservedReadOnlyAnalyticsConnectorV2::new();
+                let status = connector.healthcheck(&config).await.expect("healthcheck");
+                assert!(!status.ok);
+                assert!(status
+                    .blocking_reasons
+                    .iter()
+                    .any(|item| item.contains("google_ads observed connector not implemented")));
+                assert!(
+                    status
+                        .blocking_reasons
+                        .iter()
+                        .any(|item| item
+                            .contains("wix_storefront observed connector not implemented"))
+                );
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn observed_healthcheck_fails_on_token_exchange_error() {
+        if !openssl_available() {
+            return;
+        }
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("POST", "/token"))
+                .respond_with(status_code(401).body("unauthorized")),
+        );
+        let dir = tempdir().expect("tempdir");
+        let creds_path = dir.path().join("sa.json");
+        std::fs::write(
+            &creds_path,
+            format!(
+                r#"{{"client_email":"test@example.iam.gserviceaccount.com","private_key":"{}","token_uri":"{}"}}"#,
+                TEST_RSA_PRIVATE_KEY_PEM.replace('\n', "\\n"),
+                server.url_str("/token")
+            ),
+        )
+        .expect("write creds");
+
+        let config = test_config_observed_ga4_only();
+        with_temp_env_async(
+            &[(
+                "TEST_GA4_CREDENTIALS_PATH",
+                Some(creds_path.to_string_lossy().as_ref()),
+            )],
+            || async {
+                let connector = ObservedReadOnlyAnalyticsConnectorV2::new();
+                let status = connector.healthcheck(&config).await.expect("healthcheck");
+                assert!(!status.ok);
+                assert!(status
+                    .warning_reasons
+                    .iter()
+                    .any(|item| item.contains("analytics_ga4_token_exchange_failed")));
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn observed_healthcheck_succeeds_when_probe_succeeds() {
+        if !openssl_available() {
+            return;
+        }
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("POST", "/token")).respond_with(
+                json_encoded(serde_json::json!({
+                    "access_token": "test-access-token",
+                    "token_type": "Bearer",
+                    "expires_in": 3600
+                })),
+            ),
+        );
+        server.expect(
+            Expectation::matching(request::method_path(
+                "POST",
+                "/v1beta/properties/123456789:runReport",
+            ))
+            .respond_with(json_encoded(serde_json::json!({
+                "rows": [{
+                    "dimensionValues": [
+                        {"value": "purchase"},
+                        {"value": "2026020112"},
+                        {"value": "user_001"},
+                        {"value": "spring_launch"}
+                    ],
+                    "metricValues": [{"value": "1"}]
+                }]
+            }))),
+        );
+        let dir = tempdir().expect("tempdir");
+        let creds_path = dir.path().join("sa.json");
+        std::fs::write(
+            &creds_path,
+            format!(
+                r#"{{"client_email":"test@example.iam.gserviceaccount.com","private_key":"{}","token_uri":"{}"}}"#,
+                TEST_RSA_PRIVATE_KEY_PEM.replace('\n', "\\n"),
+                server.url_str("/token")
+            ),
+        )
+        .expect("write creds");
+        let config = test_config_observed_ga4_only();
+        with_temp_env_async(
+            &[
+                (
+                    "TEST_GA4_CREDENTIALS_PATH",
+                    Some(creds_path.to_string_lossy().as_ref()),
+                ),
+                (
+                    "ANALYTICS_GA4_DATA_API_BASE_URL",
+                    Some(server.url_str("/v1beta").as_str()),
+                ),
+            ],
+            || async {
+                let connector = ObservedReadOnlyAnalyticsConnectorV2::new();
+                let status = connector.healthcheck(&config).await.expect("healthcheck");
+                assert!(status.ok);
+                let ga4 = status
+                    .source_status
+                    .iter()
+                    .find(|item| item.source_system == "ga4")
+                    .expect("ga4 status");
+                assert!(ga4.live_probe_ok);
+                assert_eq!(ga4.probe_status, "passed");
+            },
+        )
+        .await;
     }
 }

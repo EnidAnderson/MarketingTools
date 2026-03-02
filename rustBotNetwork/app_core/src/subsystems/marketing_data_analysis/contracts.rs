@@ -191,12 +191,25 @@ pub struct AnalyticsValidationReportV1 {
 /// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Quality control check emitted for schema drift, identity resolution, and freshness SLA.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum QualityCheckApplicabilityV1 {
+    #[default]
+    Applies,
+    NotApplicable,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Quality control check emitted for schema drift, identity resolution, and freshness SLA.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct QualityCheckV1 {
     pub code: String,
     pub passed: bool,
     pub severity: String,
     pub observed: String,
     pub expected: String,
+    #[serde(default)]
+    pub applicability: QualityCheckApplicabilityV1,
 }
 
 /// # NDOC
@@ -454,7 +467,7 @@ pub struct AnomalyFlagV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
-/// purpose: Confidence calibration summary across historical simulated runs.
+/// purpose: Confidence calibration summary across historical runs.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ConfidenceCalibrationV1 {
     pub sample_count: u32,
@@ -518,6 +531,20 @@ pub struct IngestCleaningNoteV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Source availability and observation coverage summary for dashboard consumers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SourceCoverageV1 {
+    pub source_system: String,
+    pub enabled: bool,
+    pub observed: bool,
+    #[serde(default)]
+    pub row_count: u64,
+    #[serde(default)]
+    pub unavailable_reason: Option<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Versioned artifact envelope returned by the orchestrator.
 /// invariants:
 ///   - `schema_version` is explicit at root.
@@ -532,6 +559,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub inferred_guidance: Vec<GuidanceItem>,
     pub uncertainty_notes: Vec<String>,
     pub provenance: Vec<SourceProvenance>,
+    #[serde(default)]
+    pub source_coverage: Vec<SourceCoverageV1>,
     #[serde(default)]
     pub ingest_cleaning_notes: Vec<IngestCleaningNoteV1>,
     pub validation: AnalyticsValidationReportV1,
@@ -749,6 +778,8 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub decision_feed: Vec<DecisionFeedCardV1>,
     #[serde(default)]
     pub publish_export_gate: PublishExportGateV1,
+    #[serde(default)]
+    pub source_coverage: Vec<SourceCoverageV1>,
     pub quality_controls: AnalyticsQualityControlsV1,
     pub historical_analysis: HistoricalAnalysisV1,
     pub operator_summary: OperatorSummaryV1,

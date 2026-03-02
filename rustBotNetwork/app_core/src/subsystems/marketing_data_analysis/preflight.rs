@@ -14,6 +14,11 @@ pub struct AnalyticsPreflightSourceStatusV1 {
     pub source_system: String,
     pub enabled: bool,
     pub credentials_present: bool,
+    pub live_probe_ok: bool,
+    pub probe_status: String,
+    #[serde(default)]
+    pub probe_message: Option<String>,
+    pub readiness_validated: bool,
     pub ready: bool,
     pub blocking_reasons: Vec<String>,
     pub warning_reasons: Vec<String>,
@@ -99,13 +104,29 @@ pub async fn evaluate_analytics_connectors_preflight(
                 .source_status
                 .into_iter()
                 .map(|source| {
-                    let ready = source.enabled
-                        && source.credentials_present
-                        && source.blocking_reasons.is_empty();
+                    let readiness_validated = !source.enabled
+                        || source.live_probe_ok
+                        || matches!(
+                            source.probe_status.as_str(),
+                            "not_run" | "not_applicable" | "passed"
+                        );
+                    let ready = if !source.enabled {
+                        true
+                    } else if source.live_probe_ok {
+                        source.blocking_reasons.is_empty()
+                    } else {
+                        source.credentials_present
+                            && source.blocking_reasons.is_empty()
+                            && source.probe_status == "not_run"
+                    };
                     AnalyticsPreflightSourceStatusV1 {
                         source_system: source.source_system,
                         enabled: source.enabled,
                         credentials_present: source.credentials_present,
+                        live_probe_ok: source.live_probe_ok,
+                        probe_status: source.probe_status,
+                        probe_message: source.probe_message,
+                        readiness_validated,
                         ready,
                         blocking_reasons: source.blocking_reasons,
                         warning_reasons: source.warning_reasons,

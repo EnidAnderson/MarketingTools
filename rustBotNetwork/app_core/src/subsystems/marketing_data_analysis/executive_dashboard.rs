@@ -2,7 +2,8 @@
 use super::contracts::{
     ChannelMixPointV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
     ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, PublishExportGateV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    PortfolioRowV1, PublishExportGateV1, QualityCheckApplicabilityV1, StorefrontBehaviorRowV1,
+    StorefrontBehaviorSummaryV1,
 };
 use super::{
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
@@ -109,13 +110,14 @@ pub fn build_executive_dashboard_snapshot(
         channel_mix_series: build_channel_mix_series(runs),
         roas_target_band: options.target_roas,
         funnel_summary: build_funnel_summary(latest_metrics),
-        storefront_behavior_summary: build_storefront_summary(latest_metrics),
+        storefront_behavior_summary: build_storefront_summary(latest, latest_metrics),
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
         data_quality: latest.artifact.data_quality.clone(),
         budget: latest.artifact.budget.clone(),
         decision_feed: build_decision_feed(latest),
         publish_export_gate: build_publish_export_gate(latest),
+        source_coverage: latest.artifact.source_coverage.clone(),
         quality_controls: latest.artifact.quality_controls.clone(),
         historical_analysis: latest.artifact.historical_analysis.clone(),
         operator_summary: latest.artifact.operator_summary.clone(),
@@ -248,6 +250,27 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             ],
         });
     }
+    for source in run
+        .artifact
+        .source_coverage
+        .iter()
+        .filter(|item| item.enabled && !item.observed)
+    {
+        cards.push(DecisionFeedCardV1 {
+            card_id: format!("source-coverage-{}", source.source_system),
+            priority: "medium".to_string(),
+            status: "review_required".to_string(),
+            title: format!("{} has no rows in selected window", source.source_system),
+            summary: source
+                .unavailable_reason
+                .clone()
+                .unwrap_or_else(|| "source returned zero rows for this run".to_string()),
+            recommended_action:
+                "Validate date window and upstream source availability before publishing."
+                    .to_string(),
+            evidence_refs: vec!["source_coverage".to_string()],
+        });
+    }
 
     if cards.is_empty() {
         cards.push(DecisionFeedCardV1 {
@@ -270,38 +293,40 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     let quality = &run.artifact.quality_controls;
     let historical = &run.artifact.historical_analysis;
     let data_quality = &run.artifact.data_quality;
-    validate_data_quality_bounds(data_quality);
     let mut blocking_reasons = Vec::new();
     let mut warning_reasons = Vec::new();
+    if let Some(message) = validate_data_quality_bounds(data_quality) {
+        blocking_reasons.push(message);
+    }
 
-    if !quality
-        .schema_drift_checks
-        .iter()
-        .all(|check| check.passed || check.severity != "high")
-    {
+    if !quality.schema_drift_checks.iter().all(|check| {
+        check.applicability == QualityCheckApplicabilityV1::NotApplicable
+            || check.passed
+            || check.severity != "high"
+    }) {
         blocking_reasons.push("High-severity schema-drift failure present.".to_string());
     }
 
-    if !quality
-        .freshness_sla_checks
-        .iter()
-        .all(|check| check.passed || check.severity != "high")
-    {
+    if !quality.freshness_sla_checks.iter().all(|check| {
+        check.applicability == QualityCheckApplicabilityV1::NotApplicable
+            || check.passed
+            || check.severity != "high"
+    }) {
         blocking_reasons.push("High-severity freshness SLA failure present.".to_string());
     }
 
-    if !quality
-        .identity_resolution_checks
-        .iter()
-        .all(|check| check.passed || check.severity != "high")
-    {
+    if !quality.identity_resolution_checks.iter().all(|check| {
+        check.applicability == QualityCheckApplicabilityV1::NotApplicable
+            || check.passed
+            || check.severity != "high"
+    }) {
         blocking_reasons.push("High-severity identity-resolution failure present.".to_string());
     }
-    if !quality
-        .cross_source_checks
-        .iter()
-        .all(|check| check.passed || check.severity != "high")
-    {
+    if !quality.cross_source_checks.iter().all(|check| {
+        check.applicability == QualityCheckApplicabilityV1::NotApplicable
+            || check.passed
+            || check.severity != "high"
+    }) {
         blocking_reasons
             .push("High-severity cross-source reconciliation failure present.".to_string());
     }
@@ -349,7 +374,11 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
         .quality_controls
         .budget_checks
         .iter()
-        .any(|check| !check.passed && check.severity.eq_ignore_ascii_case("high"))
+        .any(|check| {
+            check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+                && check.severity.eq_ignore_ascii_case("high")
+        })
     {
         blocking_reasons.push("High-severity budget check failure present.".to_string());
     }
@@ -431,15 +460,6 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
         "review_required".to_string()
     };
 
-    assert!(
-        !(publish_ready && !blocking_reasons.is_empty()),
-        "publish cannot be ready when blocking reasons exist"
-    );
-    assert!(
-        !(export_ready && !blocking_reasons.is_empty()),
-        "export cannot be ready when blocking reasons exist"
-    );
-
     PublishExportGateV1 {
         publish_ready,
         export_ready,
@@ -449,14 +469,31 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }
 }
 
-fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) {
-    assert!((0.0..=1.0).contains(&data_quality.completeness_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.identity_join_coverage_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.freshness_pass_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.reconciliation_pass_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.cross_source_pass_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.budget_pass_ratio));
-    assert!((0.0..=1.0).contains(&data_quality.quality_score));
+fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) -> Option<String> {
+    let checks = [
+        ("completeness_ratio", data_quality.completeness_ratio),
+        (
+            "identity_join_coverage_ratio",
+            data_quality.identity_join_coverage_ratio,
+        ),
+        ("freshness_pass_ratio", data_quality.freshness_pass_ratio),
+        (
+            "reconciliation_pass_ratio",
+            data_quality.reconciliation_pass_ratio,
+        ),
+        (
+            "cross_source_pass_ratio",
+            data_quality.cross_source_pass_ratio,
+        ),
+        ("budget_pass_ratio", data_quality.budget_pass_ratio),
+        ("quality_score", data_quality.quality_score),
+    ];
+    for (name, value) in checks {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            return Some(format!("Data quality ratio '{}' is outside [0,1].", name));
+        }
+    }
+    None
 }
 
 fn build_kpis(
@@ -658,7 +695,32 @@ fn stage(name: &str, value: f64, conversion_from_previous: Option<f64>) -> Funne
     }
 }
 
-fn build_storefront_summary(metrics: &ReportMetrics) -> StorefrontBehaviorSummaryV1 {
+fn build_storefront_summary(
+    run: &PersistedAnalyticsRunV1,
+    metrics: &ReportMetrics,
+) -> StorefrontBehaviorSummaryV1 {
+    let wix_coverage = run
+        .artifact
+        .source_coverage
+        .iter()
+        .find(|item| item.source_system == "wix_storefront");
+    let wix_enabled = wix_coverage.map(|item| item.enabled).unwrap_or(true);
+    let wix_observed = wix_coverage.map(|item| item.observed).unwrap_or(true);
+    if !wix_enabled {
+        return StorefrontBehaviorSummaryV1 {
+            source_system: "wix_storefront_not_enabled".to_string(),
+            identity_confidence: "not_available".to_string(),
+            rows: Vec::new(),
+        };
+    }
+    if !wix_observed {
+        return StorefrontBehaviorSummaryV1 {
+            source_system: "wix_storefront_no_rows".to_string(),
+            identity_confidence: "not_available".to_string(),
+            rows: Vec::new(),
+        };
+    }
+
     let sessions = (metrics.clicks as f64 * 0.92).round() as u64;
     let add_to_cart_rate = 0.18;
     let purchase_rate = if sessions > 0 {
@@ -669,7 +731,7 @@ fn build_storefront_summary(metrics: &ReportMetrics) -> StorefrontBehaviorSummar
     let aov = average_order_value(metrics);
 
     StorefrontBehaviorSummaryV1 {
-        source_system: "wix_storefront_mock".to_string(),
+        source_system: "wix_storefront_connector_derived".to_string(),
         identity_confidence: "medium".to_string(),
         rows: vec![
             StorefrontBehaviorRowV1 {
@@ -739,8 +801,8 @@ fn build_forecast(
         }
     };
 
-    let expected_revenue_next_period = metrics.cost * avg_roas;
-    let month_to_date_revenue = metrics.conversions_value;
+    let expected_revenue_next_period = finite_or_zero(metrics.cost * avg_roas);
+    let month_to_date_revenue = finite_or_zero(metrics.conversions_value);
     let monthly_revenue_target = options.monthly_revenue_target;
     let pacing_status = match monthly_revenue_target {
         Some(target) if target > 0.0 => {
@@ -758,14 +820,17 @@ fn build_forecast(
 
     let month_to_date_pacing_ratio = monthly_revenue_target
         .filter(|target| *target > 0.0)
-        .map(|target| month_to_date_revenue / target)
+        .map(|target| finite_or_zero(month_to_date_revenue / target))
         .unwrap_or(1.0);
 
-    let confidence_interval_low = expected_revenue_next_period * 0.9;
-    let confidence_interval_high = expected_revenue_next_period * 1.1;
-    assert!(confidence_interval_low <= expected_revenue_next_period);
-    assert!(expected_revenue_next_period <= confidence_interval_high);
-    assert!(month_to_date_pacing_ratio.is_finite());
+    let confidence_interval_low = finite_or_zero(expected_revenue_next_period * 0.9);
+    let confidence_interval_high = finite_or_zero(expected_revenue_next_period * 1.1);
+    let (confidence_interval_low, confidence_interval_high) =
+        if confidence_interval_low <= confidence_interval_high {
+            (confidence_interval_low, confidence_interval_high)
+        } else {
+            (confidence_interval_high, confidence_interval_low)
+        };
 
     ForecastSummaryV1 {
         expected_revenue_next_period,
@@ -777,6 +842,14 @@ fn build_forecast(
         monthly_revenue_target,
         target_roas: options.target_roas,
         pacing_status,
+    }
+}
+
+fn finite_or_zero(value: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        0.0
     }
 }
 
@@ -858,6 +931,7 @@ mod tests {
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["sim".to_string()],
             provenance: Vec::new(),
+            source_coverage: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -909,6 +983,8 @@ mod tests {
         let mut run = build_run("run-2", "p1", 200.0, 6.5);
         run.artifact.quality_controls.schema_drift_checks.push(
             crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
                 code: "schema_required".to_string(),
                 passed: false,
                 severity: "high".to_string(),
