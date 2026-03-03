@@ -1073,6 +1073,9 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 traffic_source.medium AS traffic_source_medium, \
                 (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key = 'campaign' LIMIT 1) AS campaign_name, \
                 (SELECT CAST(ep.value.int_value AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_id' LIMIT 1) AS ga_session_id, \
+                ecommerce.transaction_id AS transaction_id, \
+                CAST(ecommerce.purchase_revenue AS STRING) AS purchase_revenue, \
+                CAST(ecommerce.purchase_revenue_in_usd AS STRING) AS purchase_revenue_in_usd, \
                 CAST(event_bundle_sequence_id AS STRING) AS event_bundle_sequence_id, \
                 CAST(event_server_timestamp_offset AS STRING) AS event_server_timestamp_offset, \
                 CAST(batch_event_index AS STRING) AS batch_event_index, \
@@ -1150,12 +1153,33 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .map(|value| format!("ga_session:{}", value));
+            let transaction_id = row
+                .remove("transaction_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let purchase_revenue = row
+                .remove("purchase_revenue")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let purchase_revenue_in_usd = row
+                .remove("purchase_revenue_in_usd")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
             let mut dimensions = BTreeMap::new();
             dimensions.insert(
                 "ga4_read_backend".to_string(),
                 "bigquery_export".to_string(),
             );
             dimensions.insert("event_timestamp_micros".to_string(), micros.to_string());
+            if let Some(value) = transaction_id {
+                dimensions.insert("transaction_id".to_string(), value);
+            }
+            if let Some(value) = purchase_revenue {
+                dimensions.insert("purchase_revenue".to_string(), value);
+            }
+            if let Some(value) = purchase_revenue_in_usd {
+                dimensions.insert("purchase_revenue_in_usd".to_string(), value);
+            }
             for key in [
                 "event_bundle_sequence_id",
                 "event_server_timestamp_offset",

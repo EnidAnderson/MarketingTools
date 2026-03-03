@@ -599,12 +599,37 @@ fn ga4_events_to_report(
     let mut total = ReportMetrics::default();
     let mut campaigns: BTreeMap<String, ReportMetrics> = BTreeMap::new();
     let mut event_buckets: BTreeMap<(String, String), ReportMetrics> = BTreeMap::new();
+    let mut canonical_purchase_seconds: BTreeMap<(String, String), Vec<i64>> = BTreeMap::new();
+    for event in ga4_events {
+        if !is_ga4_canonical_purchase_event(&event.event_name) {
+            continue;
+        }
+        let Some(tx_id) = ga4_transaction_id(event) else {
+            continue;
+        };
+        let Some(event_second) = ga4_event_epoch_seconds(event) else {
+            continue;
+        };
+        let user = event.user_pseudo_id.trim().to_string();
+        let session = ga4_session_key(event);
+        canonical_purchase_seconds
+            .entry((user, session))
+            .or_default()
+            .push(event_second);
+        debug_assert!(!tx_id.trim().is_empty());
+    }
+    for seconds in canonical_purchase_seconds.values_mut() {
+        seconds.sort_unstable();
+    }
+    let mut seen_purchase_transaction_ids = BTreeSet::new();
+    let mut seen_custom_purchase_second_keys = BTreeSet::new();
 
     for event in ga4_events {
         let event_name = event.event_name.trim().to_string();
         if event_name.is_empty() {
             continue;
         }
+        let event_name_lower = event_name.to_ascii_lowercase();
         let campaign = event
             .campaign
             .as_ref()
@@ -612,18 +637,63 @@ fn ga4_events_to_report(
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "GA4 (Campaign Unavailable)".to_string());
         let count = ga4_event_count_hint(event);
-        let impressions = count;
+        let mut include_in_kpi_rollup = true;
+        let mut effective_count = count;
+        let event_second = ga4_event_epoch_seconds(event);
+        let session_key = ga4_session_key(event);
+
+        if is_ga4_canonical_purchase_event(&event_name_lower) {
+            if let Some(tx_id) = ga4_transaction_id(event) {
+                if !seen_purchase_transaction_ids.insert(tx_id) {
+                    include_in_kpi_rollup = false;
+                } else {
+                    effective_count = 1;
+                }
+            }
+        } else if is_ga4_custom_purchase_event(&event_name_lower) {
+            if let Some(second) = event_second {
+                let second_key = (
+                    event.user_pseudo_id.trim().to_string(),
+                    session_key.clone(),
+                    second,
+                );
+                if !seen_custom_purchase_second_keys.insert(second_key) {
+                    // Track repeated emission signature even though custom purchase is excluded from KPI rollups.
+                }
+                if has_canonical_purchase_within_window(
+                    &canonical_purchase_seconds,
+                    event.user_pseudo_id.trim(),
+                    &session_key,
+                    second,
+                    30,
+                ) {
+                    // Canonical purchase exists nearby; keep custom purchase event out of KPI rollups.
+                }
+            }
+            // Never allow custom purchase without transaction_id to drive KPI totals.
+            include_in_kpi_rollup = false;
+        }
+        if !include_in_kpi_rollup {
+            continue;
+        }
+
+        let impressions = effective_count;
         let clicks = if is_ga4_click_event(&event_name) {
-            count
+            effective_count
         } else {
             0
         };
         let conversions = if is_ga4_conversion_event(&event_name) {
-            count as f64
+            effective_count as f64
         } else {
             0.0
         };
-        let metrics = derived_metrics(impressions, clicks, 0.0, conversions, 0.0);
+        let conversions_value = if is_ga4_canonical_purchase_event(&event_name_lower) {
+            ga4_purchase_revenue(event).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let metrics = derived_metrics(impressions, clicks, 0.0, conversions, conversions_value);
         total = sum_metrics(&total, &metrics);
 
         let campaign_entry = campaigns.entry(campaign.clone()).or_default();
@@ -708,6 +778,77 @@ fn ga4_event_count_hint(event: &Ga4EventRawV1) -> u64 {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|count| *count > 0)
         .unwrap_or(1)
+}
+
+fn ga4_dimension(event: &Ga4EventRawV1, key: &str) -> Option<String> {
+    event
+        .dimensions
+        .get(key)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn ga4_transaction_id(event: &Ga4EventRawV1) -> Option<String> {
+    ga4_dimension(event, "transaction_id")
+}
+
+fn ga4_purchase_revenue(event: &Ga4EventRawV1) -> Option<f64> {
+    ga4_dimension(event, "purchase_revenue")
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .or_else(|| {
+            ga4_dimension(event, "purchase_revenue_in_usd")
+                .and_then(|value| value.parse::<f64>().ok())
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        })
+}
+
+fn ga4_event_epoch_seconds(event: &Ga4EventRawV1) -> Option<i64> {
+    ga4_dimension(event, "event_timestamp_micros")
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|micros| micros.div_euclid(1_000_000))
+        .or_else(|| {
+            DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim())
+                .ok()
+                .map(|value| value.timestamp())
+        })
+}
+
+fn ga4_session_key(event: &Ga4EventRawV1) -> String {
+    ga4_dimension(event, "ga_session_id")
+        .or_else(|| {
+            event
+                .session_id
+                .as_ref()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_default()
+}
+
+fn has_canonical_purchase_within_window(
+    canonical_purchase_seconds: &BTreeMap<(String, String), Vec<i64>>,
+    user_pseudo_id: &str,
+    session_key: &str,
+    event_second: i64,
+    tolerance_seconds: i64,
+) -> bool {
+    canonical_purchase_seconds
+        .get(&(user_pseudo_id.to_string(), session_key.to_string()))
+        .map(|seconds| {
+            seconds
+                .iter()
+                .any(|candidate| (candidate - event_second).abs() <= tolerance_seconds)
+        })
+        .unwrap_or(false)
+}
+
+fn is_ga4_canonical_purchase_event(event_name: &str) -> bool {
+    event_name.trim().eq_ignore_ascii_case("purchase")
+}
+
+fn is_ga4_custom_purchase_event(event_name: &str) -> bool {
+    event_name.trim().eq_ignore_ascii_case("purchase_ndp")
 }
 
 fn is_ga4_click_event(event_name: &str) -> bool {
@@ -2386,6 +2527,103 @@ mod tests {
         assert_eq!(duplicate_rows, 2);
         assert_eq!(duplicate_groups, 1);
         assert!((ratio - 0.5).abs() < 0.0001);
+    }
+
+    #[test]
+    fn ga4_report_uses_canonical_purchase_and_ignores_purchase_ndp_duplicates() {
+        let request = MockAnalyticsRequestV1 {
+            start_date: "2026-03-01".to_string(),
+            end_date: "2026-03-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(1),
+            profile_id: "qa".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+        let mut purchase_dims = BTreeMap::new();
+        purchase_dims.insert(
+            "event_timestamp_micros".to_string(),
+            "1772500001000000".to_string(),
+        );
+        purchase_dims.insert("ga_session_id".to_string(), "session-1".to_string());
+        purchase_dims.insert("transaction_id".to_string(), "tx-123".to_string());
+        purchase_dims.insert("purchase_revenue".to_string(), "57.25".to_string());
+
+        let mut purchase_dup_dims = purchase_dims.clone();
+        purchase_dup_dims.insert("batch_event_index".to_string(), "2".to_string());
+
+        let mut purchase_ndp_dims = BTreeMap::new();
+        purchase_ndp_dims.insert(
+            "event_timestamp_micros".to_string(),
+            "1772500001000000".to_string(),
+        );
+        purchase_ndp_dims.insert("ga_session_id".to_string(), "session-1".to_string());
+        purchase_ndp_dims.insert("event_bundle_sequence_id".to_string(), "44".to_string());
+        purchase_ndp_dims.insert("batch_event_index".to_string(), "1".to_string());
+
+        let mut purchase_ndp_dup_dims = purchase_ndp_dims.clone();
+        purchase_ndp_dup_dims.insert("batch_event_index".to_string(), "2".to_string());
+
+        let report = ga4_events_to_report(
+            &[
+                Ga4EventRawV1 {
+                    event_name: "purchase_ndp".to_string(),
+                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_ndp_dims,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase_ndp".to_string(),
+                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_ndp_dup_dims,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase".to_string(),
+                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_dims,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase".to_string(),
+                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_dup_dims,
+                    metrics: BTreeMap::new(),
+                },
+            ],
+            &request,
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+        );
+
+        assert_eq!(report.total_metrics.conversions, 1.0);
+        assert!((report.total_metrics.conversions_value - 57.25).abs() < 0.0001);
+        assert!(!report
+            .keyword_data
+            .iter()
+            .any(|row| row.keyword_text.eq_ignore_ascii_case("purchase_ndp")));
     }
 
     #[test]
