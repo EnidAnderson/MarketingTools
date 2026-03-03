@@ -146,12 +146,12 @@ pub fn maybe_sign_connector_attestation_v1(
     artifact_id: &str,
     attestation: &mut ConnectorConfigAttestationV1,
 ) -> Result<(), AnalyticsError> {
-    let Some((signing_key, key_id)) = maybe_load_signing_key_from_env()? else {
-        return Ok(());
-    };
     if attestation_is_empty(attestation) {
         return Ok(());
     }
+    let Some((signing_key, key_id)) = maybe_load_signing_key_from_env()? else {
+        return Ok(());
+    };
     if attestation.connector_mode_effective.trim().is_empty()
         || attestation.connector_config_fingerprint.trim().is_empty()
         || attestation.fingerprint_alg.trim().is_empty()
@@ -625,6 +625,27 @@ mod tests {
             assert!(att.fingerprint_signature.is_none());
             assert!(att.fingerprint_key_id.is_none());
         });
+    }
+
+    #[test]
+    fn maybe_sign_skips_empty_attestation_even_when_key_id_is_missing() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[
+                (
+                    ENV_PRIVATE_KEY_B64,
+                    Some("BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="),
+                ),
+                (ENV_KEY_ID, None),
+            ],
+            || {
+                let mut att = ConnectorConfigAttestationV1::default();
+                let result = maybe_sign_connector_attestation_v1("run-1", "artifact-1", &mut att);
+                assert!(result.is_ok());
+                assert!(att.fingerprint_signature.is_none());
+                assert!(att.fingerprint_key_id.is_none());
+            },
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use super::analytics_config::{
     validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
+    AnalyticsSourceTopologyV1,
 };
 use super::connector_v2::AnalyticsConnectorContractV2;
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,7 @@ pub struct AnalyticsConnectorPreflightResultV1 {
     pub connector_id: String,
     pub contract_version: String,
     pub mode: String,
+    pub source_topology: String,
     pub ok: bool,
     pub config_valid: bool,
     pub credentials_present: bool,
@@ -46,6 +48,7 @@ impl AnalyticsConnectorPreflightResultV1 {
         connector_id: String,
         contract_version: String,
         mode: &AnalyticsConnectorModeV1,
+        source_topology: &AnalyticsSourceTopologyV1,
     ) -> Self {
         Self {
             schema_version: ANALYTICS_PREFLIGHT_SCHEMA_VERSION_V1.to_string(),
@@ -54,6 +57,10 @@ impl AnalyticsConnectorPreflightResultV1 {
             mode: match mode {
                 AnalyticsConnectorModeV1::Simulated => "simulated".to_string(),
                 AnalyticsConnectorModeV1::ObservedReadOnly => "observed_read_only".to_string(),
+            },
+            source_topology: match source_topology {
+                AnalyticsSourceTopologyV1::IndependentStreams => "independent_streams".to_string(),
+                AnalyticsSourceTopologyV1::Ga4Unified => "ga4_unified".to_string(),
             },
             ok: false,
             config_valid: false,
@@ -80,6 +87,7 @@ pub async fn evaluate_analytics_connectors_preflight(
         capabilities.connector_id,
         capabilities.contract_version,
         &config.mode,
+        &config.source_topology,
     );
 
     if let Err(err) = validate_analytics_connector_config_v1(config) {
@@ -193,6 +201,7 @@ mod tests {
         assert!(!result.ok);
         assert!(!result.blocking_reasons.is_empty());
         assert_eq!(result.mode, "observed_read_only");
+        assert_eq!(result.source_topology, "independent_streams");
     }
 
     #[tokio::test]
@@ -204,5 +213,6 @@ mod tests {
         assert_eq!(result.schema_version, ANALYTICS_PREFLIGHT_SCHEMA_VERSION_V1);
         assert!(result.config_valid);
         assert_eq!(result.mode, "simulated");
+        assert_eq!(result.source_topology, "independent_streams");
     }
 }

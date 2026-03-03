@@ -192,6 +192,26 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec!["quality_controls.cross_source_checks".to_string()],
         });
     }
+    let cross_source_not_applicable = !quality.cross_source_checks.is_empty()
+        && quality
+            .cross_source_checks
+            .iter()
+            .all(|check| check.applicability == QualityCheckApplicabilityV1::NotApplicable);
+    if cross_source_not_applicable {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "cross-source-not-applicable".to_string(),
+            priority: "low".to_string(),
+            status: "monitor".to_string(),
+            title: "Cross-source checks intentionally not applicable".to_string(),
+            summary:
+                "Current connector topology does not provide independent Ads/Wix source streams."
+                    .to_string(),
+            recommended_action:
+                "Use GA4-derived trends for directional decisions; enable independent connectors before relying on cross-source reconciliation."
+                    .to_string(),
+            evidence_refs: vec!["quality_controls.cross_source_checks".to_string()],
+        });
+    }
 
     for anomaly in historical.anomaly_flags.iter().take(3) {
         cards.push(DecisionFeedCardV1 {
@@ -366,6 +386,12 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
             data_quality.cross_source_pass_ratio * 100.0
         ));
     }
+    if data_quality.cross_source_applicability_ratio == 0.0 {
+        warning_reasons.push(
+            "Cross-source reconciliation is not applicable for the current source topology."
+                .to_string(),
+        );
+    }
     if data_quality.budget_pass_ratio < 1.0 {
         blocking_reasons.push("Budget checks not fully passing.".to_string());
     }
@@ -476,6 +502,10 @@ fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) -> Option<S
             "identity_join_coverage_ratio",
             data_quality.identity_join_coverage_ratio,
         ),
+        (
+            "identity_applicability_ratio",
+            data_quality.identity_applicability_ratio,
+        ),
         ("freshness_pass_ratio", data_quality.freshness_pass_ratio),
         (
             "reconciliation_pass_ratio",
@@ -484,6 +514,10 @@ fn validate_data_quality_bounds(data_quality: &DataQualitySummaryV1) -> Option<S
         (
             "cross_source_pass_ratio",
             data_quality.cross_source_pass_ratio,
+        ),
+        (
+            "cross_source_applicability_ratio",
+            data_quality.cross_source_applicability_ratio,
         ),
         ("budget_pass_ratio", data_quality.budget_pass_ratio),
         ("quality_score", data_quality.quality_score),
@@ -704,16 +738,22 @@ fn build_storefront_summary(
         .source_coverage
         .iter()
         .find(|item| item.source_system == "wix_storefront");
+    let ga4_coverage = run
+        .artifact
+        .source_coverage
+        .iter()
+        .find(|item| item.source_system == "ga4");
     let wix_enabled = wix_coverage.map(|item| item.enabled).unwrap_or(true);
     let wix_observed = wix_coverage.map(|item| item.observed).unwrap_or(true);
-    if !wix_enabled {
+    let ga4_observed = ga4_coverage.map(|item| item.observed).unwrap_or(false);
+    if !wix_enabled && !ga4_observed {
         return StorefrontBehaviorSummaryV1 {
-            source_system: "wix_storefront_not_enabled".to_string(),
+            source_system: "storefront_not_available".to_string(),
             identity_confidence: "not_available".to_string(),
             rows: Vec::new(),
         };
     }
-    if !wix_observed {
+    if wix_enabled && !wix_observed && !ga4_observed {
         return StorefrontBehaviorSummaryV1 {
             source_system: "wix_storefront_no_rows".to_string(),
             identity_confidence: "not_available".to_string(),
@@ -731,8 +771,16 @@ fn build_storefront_summary(
     let aov = average_order_value(metrics);
 
     StorefrontBehaviorSummaryV1 {
-        source_system: "wix_storefront_connector_derived".to_string(),
-        identity_confidence: "medium".to_string(),
+        source_system: if wix_observed {
+            "wix_storefront_observed".to_string()
+        } else {
+            "ga4_derived_storefront_proxy".to_string()
+        },
+        identity_confidence: if wix_observed {
+            "medium".to_string()
+        } else {
+            "low".to_string()
+        },
         rows: vec![
             StorefrontBehaviorRowV1 {
                 segment: "mobile".to_string(),
@@ -1019,6 +1067,42 @@ mod tests {
             .blocking_reasons
             .iter()
             .any(|reason| reason.contains("Budget spend exceeded")));
+    }
+
+    #[test]
+    fn storefront_summary_uses_ga4_derived_proxy_when_wix_unavailable() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.source_coverage = vec![
+            crate::subsystems::marketing_data_analysis::contracts::SourceCoverageV1 {
+                source_system: "ga4".to_string(),
+                enabled: true,
+                observed: true,
+                row_count: 42,
+                unavailable_reason: None,
+            },
+            crate::subsystems::marketing_data_analysis::contracts::SourceCoverageV1 {
+                source_system: "wix_storefront".to_string(),
+                enabled: false,
+                observed: false,
+                row_count: 0,
+                unavailable_reason: Some("disabled_by_ga4_unified_topology".to_string()),
+            },
+        ];
+        let summary = build_storefront_summary(&run, &run.artifact.report.total_metrics);
+        assert_eq!(summary.source_system, "ga4_derived_storefront_proxy");
+        assert_eq!(summary.identity_confidence, "low");
+        assert!(!summary.rows.is_empty());
+    }
+
+    #[test]
+    fn publish_gate_warns_when_cross_source_not_applicable() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.data_quality.cross_source_applicability_ratio = 0.0;
+        let gate = build_publish_export_gate(&run);
+        assert!(gate
+            .warning_reasons
+            .iter()
+            .any(|reason| { reason.contains("Cross-source reconciliation is not applicable") }));
     }
 
     #[test]

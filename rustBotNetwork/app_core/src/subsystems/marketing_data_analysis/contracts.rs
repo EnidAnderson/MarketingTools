@@ -350,9 +350,13 @@ impl FreshnessSlaPolicyV1 {
 pub struct DataQualitySummaryV1 {
     pub completeness_ratio: f64,
     pub identity_join_coverage_ratio: f64,
+    #[serde(default = "default_ratio_one")]
+    pub identity_applicability_ratio: f64,
     pub freshness_pass_ratio: f64,
     pub reconciliation_pass_ratio: f64,
     pub cross_source_pass_ratio: f64,
+    #[serde(default = "default_ratio_one")]
+    pub cross_source_applicability_ratio: f64,
     pub budget_pass_ratio: f64,
     pub quality_score: f64,
 }
@@ -362,13 +366,19 @@ impl Default for DataQualitySummaryV1 {
         Self {
             completeness_ratio: 1.0,
             identity_join_coverage_ratio: 1.0,
+            identity_applicability_ratio: 1.0,
             freshness_pass_ratio: 1.0,
             reconciliation_pass_ratio: 1.0,
             cross_source_pass_ratio: 1.0,
+            cross_source_applicability_ratio: 1.0,
             budget_pass_ratio: 1.0,
             quality_score: 1.0,
         }
     }
+}
+
+fn default_ratio_one() -> f64 {
+    1.0
 }
 
 impl Default for AnalyticsQualityControlsV1 {

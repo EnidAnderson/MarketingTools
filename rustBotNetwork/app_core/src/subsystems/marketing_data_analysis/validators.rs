@@ -345,9 +345,11 @@ pub fn validate_mock_analytics_artifact_v1(
     let ratios_valid = [
         artifact.data_quality.completeness_ratio,
         artifact.data_quality.identity_join_coverage_ratio,
+        artifact.data_quality.identity_applicability_ratio,
         artifact.data_quality.freshness_pass_ratio,
         artifact.data_quality.reconciliation_pass_ratio,
         artifact.data_quality.cross_source_pass_ratio,
+        artifact.data_quality.cross_source_applicability_ratio,
         artifact.data_quality.budget_pass_ratio,
         artifact.data_quality.quality_score,
     ]

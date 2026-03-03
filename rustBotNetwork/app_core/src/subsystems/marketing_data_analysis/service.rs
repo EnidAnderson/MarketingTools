@@ -1,5 +1,6 @@
 use super::analytics_config::{
     validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
+    AnalyticsSourceTopologyV1,
 };
 use super::budget::{build_budget_plan, enforce_daily_hard_cap, BudgetCategory, BudgetGuard};
 use super::connector_v2::{
@@ -121,9 +122,11 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget_plan.estimated.retrieval_units,
             "mock_analytics.fetch",
         )?;
-        let ads_enabled = self.connector_config.google_ads.enabled;
+        let ga4_unified_topology =
+            self.connector_config.source_topology == AnalyticsSourceTopologyV1::Ga4Unified;
+        let ads_enabled = self.connector_config.google_ads.enabled && !ga4_unified_topology;
         let ga4_enabled = self.connector_config.ga4.enabled;
-        let wix_enabled = self.connector_config.wix.enabled;
+        let wix_enabled = self.connector_config.wix.enabled && !ga4_unified_topology;
 
         let rows = if ads_enabled {
             match self
@@ -267,8 +270,13 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
                 &ga4_events,
                 &wix_orders,
             )?;
-        let cross_source_checks =
-            build_cross_source_checks(&report, seed, &reconciliation_policy, &source_coverage);
+        let cross_source_checks = build_cross_source_checks(
+            &report,
+            seed,
+            &reconciliation_policy,
+            &source_coverage,
+            &self.connector_config.source_topology,
+        );
         let source_class_label =
             if self.connector_config.mode == AnalyticsConnectorModeV1::ObservedReadOnly {
                 "observed"
@@ -289,6 +297,12 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         if no_data_window {
             uncertainty_notes.push(
                 "No observed rows were returned for the selected date window; artifact represents a valid zero-activity interval."
+                    .to_string(),
+            );
+        }
+        if ga4_unified_topology {
+            uncertainty_notes.push(
+                "source_topology=ga4_unified: Google Ads and Wix connectors are intentionally disabled; cross-source reconciliation checks are reported as not applicable."
                     .to_string(),
             );
         }
@@ -697,10 +711,7 @@ fn ga4_event_count_hint(event: &Ga4EventRawV1) -> u64 {
 
 fn is_ga4_click_event(event_name: &str) -> bool {
     let name = event_name.to_ascii_lowercase();
-    name.contains("click")
-        || name.contains("select")
-        || name.contains("cta")
-        || name == "outbound"
+    name.contains("click") || name.contains("select") || name.contains("cta") || name == "outbound"
 }
 
 fn is_ga4_conversion_event(event_name: &str) -> bool {
@@ -925,13 +936,18 @@ fn build_source_coverage(
     ga4_events: u64,
     wix_rows: u64,
 ) -> Vec<SourceCoverageV1> {
+    let ga4_unified_topology = config.source_topology == AnalyticsSourceTopologyV1::Ga4Unified;
+    let google_ads_enabled = config.google_ads.enabled && !ga4_unified_topology;
+    let wix_enabled = config.wix.enabled && !ga4_unified_topology;
     vec![
         SourceCoverageV1 {
             source_system: "google_ads".to_string(),
-            enabled: config.google_ads.enabled,
-            observed: config.google_ads.enabled && google_ads_rows > 0,
+            enabled: google_ads_enabled,
+            observed: google_ads_enabled && google_ads_rows > 0,
             row_count: google_ads_rows,
-            unavailable_reason: if !config.google_ads.enabled {
+            unavailable_reason: if ga4_unified_topology {
+                Some("disabled_by_ga4_unified_topology".to_string())
+            } else if !config.google_ads.enabled {
                 Some("source_disabled".to_string())
             } else if google_ads_rows == 0 {
                 Some("no_rows_in_requested_window".to_string())
@@ -954,10 +970,12 @@ fn build_source_coverage(
         },
         SourceCoverageV1 {
             source_system: "wix_storefront".to_string(),
-            enabled: config.wix.enabled,
-            observed: config.wix.enabled && wix_rows > 0,
+            enabled: wix_enabled,
+            observed: wix_enabled && wix_rows > 0,
             row_count: wix_rows,
-            unavailable_reason: if !config.wix.enabled {
+            unavailable_reason: if ga4_unified_topology {
+                Some("disabled_by_ga4_unified_topology".to_string())
+            } else if !config.wix.enabled {
                 Some("source_disabled".to_string())
             } else if wix_rows == 0 {
                 Some("no_rows_in_requested_window".to_string())
@@ -1018,7 +1036,32 @@ fn build_cross_source_checks(
     seed: u64,
     reconciliation_policy: &ReconciliationPolicyV1,
     source_coverage: &[SourceCoverageV1],
+    source_topology: &AnalyticsSourceTopologyV1,
 ) -> Vec<QualityCheckV1> {
+    if *source_topology == AnalyticsSourceTopologyV1::Ga4Unified {
+        return vec![
+            QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::NotApplicable,
+                code: "cross_source_attributed_revenue_within_wix_gross".to_string(),
+                passed: true,
+                severity: "low".to_string(),
+                observed: "source_topology=ga4_unified".to_string(),
+                expected:
+                    "independent google_ads and wix_storefront streams required for reconciliation"
+                        .to_string(),
+            },
+            QualityCheckV1 {
+                applicability: QualityCheckApplicabilityV1::NotApplicable,
+                code: "cross_source_ga4_sessions_within_click_bound".to_string(),
+                passed: true,
+                severity: "low".to_string(),
+                observed: "source_topology=ga4_unified".to_string(),
+                expected: "independent google_ads and ga4 streams required for reconciliation"
+                    .to_string(),
+            },
+        ];
+    }
+
     let source_ready = |name: &str| -> bool {
         source_coverage
             .iter()
@@ -1581,6 +1624,8 @@ fn build_data_quality_summary(
     let completeness_ratio =
         pass_ratio_filtered(&quality_controls.freshness_sla_checks, "completeness_sla_");
     let identity_join_coverage_ratio = pass_ratio(&quality_controls.identity_resolution_checks);
+    let identity_applicability_ratio =
+        applicability_ratio(&quality_controls.identity_resolution_checks);
     let freshness_pass_ratio =
         pass_ratio_filtered(&quality_controls.freshness_sla_checks, "freshness_sla_");
     let reconciliation_pass_ratio = quality_controls
@@ -1590,6 +1635,8 @@ fn build_data_quality_summary(
         .map(|check| if check.passed { 1.0 } else { 0.0 })
         .unwrap_or(0.0);
     let cross_source_pass_ratio = pass_ratio(&quality_controls.cross_source_checks);
+    let cross_source_applicability_ratio =
+        applicability_ratio(&quality_controls.cross_source_checks);
     let budget_pass_ratio = pass_ratio(&quality_controls.budget_checks);
 
     let quality_score = round4(
@@ -1605,9 +1652,11 @@ fn build_data_quality_summary(
     DataQualitySummaryV1 {
         completeness_ratio,
         identity_join_coverage_ratio,
+        identity_applicability_ratio,
         freshness_pass_ratio,
         reconciliation_pass_ratio,
         cross_source_pass_ratio,
+        cross_source_applicability_ratio,
         budget_pass_ratio,
         quality_score,
     }
@@ -1703,6 +1752,17 @@ fn pass_ratio_filtered(checks: &[QualityCheckV1], code_prefix: &str) -> f64 {
         return 1.0;
     }
     round4((passed as f64 / total as f64).clamp(0.0, 1.0))
+}
+
+fn applicability_ratio(checks: &[QualityCheckV1]) -> f64 {
+    if checks.is_empty() {
+        return 1.0;
+    }
+    let applicable = checks
+        .iter()
+        .filter(|check| check.applicability == QualityCheckApplicabilityV1::Applies)
+        .count() as f64;
+    round4((applicable / checks.len() as f64).clamp(0.0, 1.0))
 }
 
 fn build_operator_summary(
@@ -1934,7 +1994,9 @@ mod tests {
             assert!((0.0..=1.0).contains(&artifact.data_quality.quality_score));
             assert!((0.0..=1.0).contains(&artifact.data_quality.completeness_ratio));
             assert!((0.0..=1.0).contains(&artifact.data_quality.identity_join_coverage_ratio));
+            assert!((0.0..=1.0).contains(&artifact.data_quality.identity_applicability_ratio));
             assert!((0.0..=1.0).contains(&artifact.data_quality.cross_source_pass_ratio));
+            assert!((0.0..=1.0).contains(&artifact.data_quality.cross_source_applicability_ratio));
             assert!(
                 artifact.budget.estimated.retrieval_units
                     >= artifact.budget.actuals.retrieval_units
@@ -2045,6 +2107,7 @@ mod tests {
 
         let summary = build_data_quality_summary(&controls);
         assert_eq!(summary.completeness_ratio, 0.0);
+        assert_eq!(summary.identity_applicability_ratio, 1.0);
         assert_eq!(summary.freshness_pass_ratio, 1.0);
         assert_eq!(summary.reconciliation_pass_ratio, 1.0);
         assert_eq!(summary.quality_score, 0.75);
@@ -2444,8 +2507,10 @@ mod tests {
 
     #[tokio::test]
     async fn ga4_only_observed_mode_populates_report_tables() {
-        let mut cfg = super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
         cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = super::super::analytics_config::AnalyticsSourceTopologyV1::Ga4Unified;
         cfg.google_ads.enabled = false;
         cfg.wix.enabled = false;
         cfg.ga4.enabled = true;
@@ -2477,6 +2542,29 @@ mod tests {
         assert_eq!(artifact.report.total_metrics.impressions, 28);
         assert_eq!(artifact.report.total_metrics.clicks, 5);
         assert!((artifact.report.total_metrics.conversions - 3.0).abs() < 0.001);
+        assert!(artifact
+            .quality_controls
+            .cross_source_checks
+            .iter()
+            .all(|check| check.applicability == QualityCheckApplicabilityV1::NotApplicable));
+        let google_ads = artifact
+            .source_coverage
+            .iter()
+            .find(|item| item.source_system == "google_ads")
+            .expect("google_ads coverage");
+        assert_eq!(
+            google_ads.unavailable_reason.as_deref(),
+            Some("disabled_by_ga4_unified_topology")
+        );
+        let wix = artifact
+            .source_coverage
+            .iter()
+            .find(|item| item.source_system == "wix_storefront")
+            .expect("wix coverage");
+        assert_eq!(
+            wix.unavailable_reason.as_deref(),
+            Some("disabled_by_ga4_unified_topology")
+        );
     }
 
     #[test]

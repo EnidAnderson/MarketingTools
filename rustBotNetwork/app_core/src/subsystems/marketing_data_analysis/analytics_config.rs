@@ -41,6 +41,22 @@ impl Default for AnalyticsConnectorModeV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::analytics_config`
+/// purpose: Declares whether source metrics arrive as independent streams or GA4-unified ingestion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalyticsSourceTopologyV1 {
+    IndependentStreams,
+    Ga4Unified,
+}
+
+impl Default for AnalyticsSourceTopologyV1 {
+    fn default() -> Self {
+        Self::IndependentStreams
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::analytics_config`
 /// purpose: GA4 connector configuration contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Ga4ConfigV1 {
@@ -84,6 +100,7 @@ pub struct WixConfigV1 {
 pub struct AnalyticsConnectorConfigV1 {
     pub profile_id: String,
     pub mode: AnalyticsConnectorModeV1,
+    pub source_topology: AnalyticsSourceTopologyV1,
     pub default_timezone: String,
     pub ga4: Ga4ConfigV1,
     pub google_ads: GoogleAdsConfigV1,
@@ -94,6 +111,7 @@ pub struct AnalyticsConnectorConfigV1 {
 struct ConnectorFingerprintInputV1<'a> {
     profile_id: &'a str,
     mode: &'a AnalyticsConnectorModeV1,
+    source_topology: &'a AnalyticsSourceTopologyV1,
     default_timezone: &'a str,
     ga4: ConnectorFingerprintGa4V1<'a>,
     google_ads: ConnectorFingerprintGoogleAdsV1<'a>,
@@ -134,6 +152,7 @@ impl AnalyticsConnectorConfigV1 {
         Self {
             profile_id: "simulated_default".to_string(),
             mode: AnalyticsConnectorModeV1::Simulated,
+            source_topology: AnalyticsSourceTopologyV1::IndependentStreams,
             default_timezone: "UTC".to_string(),
             ga4: Ga4ConfigV1 {
                 enabled: true,
@@ -191,10 +210,30 @@ pub fn analytics_connector_config_from_env() -> Result<AnalyticsConnectorConfigV
             ));
         }
     };
+    let source_topology_default = match mode {
+        AnalyticsConnectorModeV1::Simulated => "independent_streams",
+        AnalyticsConnectorModeV1::ObservedReadOnly => "ga4_unified",
+    };
+    let source_topology = match env_or_default("ANALYTICS_SOURCE_TOPOLOGY", source_topology_default)
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "independent_streams" => AnalyticsSourceTopologyV1::IndependentStreams,
+        "ga4_unified" => AnalyticsSourceTopologyV1::Ga4Unified,
+        _ => {
+            return Err(AnalyticsError::validation(
+                "analytics_config_source_topology_invalid",
+                "ANALYTICS_SOURCE_TOPOLOGY must be one of: independent_streams, ga4_unified",
+                "source_topology",
+            ));
+        }
+    };
 
     let config = AnalyticsConnectorConfigV1 {
         profile_id: env_or_default("ANALYTICS_PROFILE_ID", &defaults.profile_id),
         mode,
+        source_topology,
         default_timezone: env_or_default("ANALYTICS_DEFAULT_TIMEZONE", &defaults.default_timezone),
         ga4: Ga4ConfigV1 {
             enabled: env_bool_or_default("ANALYTICS_ENABLE_GA4", defaults.ga4.enabled)?,
@@ -258,6 +297,7 @@ pub fn analytics_connector_config_fingerprint_v1(
     let canonical = ConnectorFingerprintInputV1 {
         profile_id: config.profile_id.trim(),
         mode: &config.mode,
+        source_topology: &config.source_topology,
         default_timezone: config.default_timezone.trim(),
         ga4: ConnectorFingerprintGa4V1 {
             enabled: config.ga4.enabled,
@@ -382,8 +422,38 @@ pub fn validate_analytics_connector_config_v1(
     validate_ga4(&config.ga4)?;
     validate_google_ads(&config.google_ads)?;
     validate_wix(&config.wix)?;
+    validate_source_topology(config)?;
 
     Ok(())
+}
+
+fn validate_source_topology(config: &AnalyticsConnectorConfigV1) -> Result<(), AnalyticsError> {
+    match config.source_topology {
+        AnalyticsSourceTopologyV1::IndependentStreams => Ok(()),
+        AnalyticsSourceTopologyV1::Ga4Unified => {
+            if !config.ga4.enabled {
+                return Err(AnalyticsError::validation(
+                    "analytics_config_ga4_unified_requires_ga4",
+                    "source_topology=ga4_unified requires ga4.enabled=true",
+                    "ga4.enabled",
+                ));
+            }
+            if config.mode == AnalyticsConnectorModeV1::ObservedReadOnly
+                && (config.google_ads.enabled || config.wix.enabled)
+            {
+                return Err(AnalyticsError::new(
+                    "analytics_config_ga4_unified_secondary_sources_must_be_disabled",
+                    "source_topology=ga4_unified in observed_read_only mode requires ANALYTICS_ENABLE_GOOGLE_ADS=false and ANALYTICS_ENABLE_WIX=false",
+                    vec![
+                        "google_ads.enabled".to_string(),
+                        "wix.enabled".to_string(),
+                    ],
+                    None,
+                ));
+            }
+            Ok(())
+        }
+    }
 }
 
 fn validate_ga4(config: &Ga4ConfigV1) -> Result<(), AnalyticsError> {
@@ -590,6 +660,7 @@ mod tests {
         with_temp_env(
             &[
                 ("ANALYTICS_CONNECTOR_MODE", Some("observed_read_only")),
+                ("ANALYTICS_ENABLE_GOOGLE_ADS", Some("false")),
                 ("ANALYTICS_ENABLE_WIX", Some("false")),
                 ("ANALYTICS_PROFILE_ID", Some("ops_profile")),
                 ("ANALYTICS_DEFAULT_TIMEZONE", Some("UTC")),
@@ -600,6 +671,7 @@ mod tests {
             || {
                 let cfg = analytics_connector_config_from_env().expect("env config should parse");
                 assert_eq!(cfg.mode, AnalyticsConnectorModeV1::ObservedReadOnly);
+                assert_eq!(cfg.source_topology, AnalyticsSourceTopologyV1::Ga4Unified);
                 assert!(!cfg.wix.enabled);
                 assert_eq!(cfg.profile_id, "ops_profile");
             },
@@ -613,6 +685,41 @@ mod tests {
             let err = analytics_connector_config_from_env().expect_err("must fail");
             assert_eq!(err.code, "analytics_config_bool_invalid");
         });
+    }
+
+    #[test]
+    fn from_env_rejects_invalid_source_topology() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[("ANALYTICS_SOURCE_TOPOLOGY", Some("totally_unknown_mode"))],
+            || {
+                let err = analytics_connector_config_from_env().expect_err("must fail");
+                assert_eq!(err.code, "analytics_config_source_topology_invalid");
+            },
+        );
+    }
+
+    #[test]
+    fn ga4_unified_requires_ga4_enabled() {
+        let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.source_topology = AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.ga4.enabled = false;
+        let err = validate_analytics_connector_config_v1(&cfg).expect_err("must fail");
+        assert_eq!(err.code, "analytics_config_ga4_unified_requires_ga4");
+    }
+
+    #[test]
+    fn observed_ga4_unified_requires_ads_and_wix_disabled() {
+        let mut cfg = AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.google_ads.enabled = true;
+        cfg.wix.enabled = true;
+        let err = validate_analytics_connector_config_v1(&cfg).expect_err("must fail");
+        assert_eq!(
+            err.code,
+            "analytics_config_ga4_unified_secondary_sources_must_be_disabled"
+        );
     }
 
     #[test]

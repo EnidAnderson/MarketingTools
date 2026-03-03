@@ -7,8 +7,8 @@ use app_core::subsystems::marketing_data_analysis::{
     build_analytics_connector_v2, build_historical_analysis,
     evaluate_analytics_connectors_preflight, is_production_profile_like,
     resolve_attestation_policy_v1, AnalyticsConnectorModeV1, AnalyticsRunStore,
-    ConnectorConfigAttestationV1, DefaultMarketAnalysisService, GuidanceItem,
-    MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
+    AnalyticsSourceTopologyV1, ConnectorConfigAttestationV1, DefaultMarketAnalysisService,
+    GuidanceItem, MarketAnalysisService, MockAnalyticsRequestV1, PersistedAnalyticsRunV1,
     CONNECTOR_CONFIG_FINGERPRINT_ALG_V1, CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
 };
 use app_core::tools::tool_registry::ToolRegistry;
@@ -434,6 +434,31 @@ impl JobManager {
                         "context": {
                             "profile_id": request.profile_id,
                             "mode": mode_label.clone(),
+                            "config_fingerprint": config_fingerprint.clone()
+                        }
+                    }),
+                );
+                manager.emit_failed(&app_handle, &spawned_job_id);
+                return;
+            }
+            if let Err(message) = enforce_production_profile_source_topology(
+                &request.profile_id,
+                &config.source_topology,
+            ) {
+                manager.update_failed(
+                    &spawned_job_id,
+                    serde_json::json!({
+                        "code": "analytics_topology_guard_blocked",
+                        "category": "configuration",
+                        "source": "connector_topology_guard",
+                        "message": message,
+                        "retryable": false,
+                        "field_paths": ["request.profile_id", "connector_config.source_topology"],
+                        "trace_id": "",
+                        "context": {
+                            "profile_id": request.profile_id,
+                            "mode": mode_label.clone(),
+                            "source_topology": source_topology_label(&config.source_topology),
                             "config_fingerprint": config_fingerprint.clone()
                         }
                     }),
@@ -1097,10 +1122,32 @@ fn is_production_profile(profile_id: &str) -> bool {
     is_production_profile_like(profile_id)
 }
 
+fn enforce_production_profile_source_topology(
+    profile_id: &str,
+    source_topology: &AnalyticsSourceTopologyV1,
+) -> Result<(), String> {
+    if is_production_profile(profile_id)
+        && *source_topology != AnalyticsSourceTopologyV1::Ga4Unified
+    {
+        return Err(
+            "production profiles require ANALYTICS_SOURCE_TOPOLOGY=ga4_unified in this rollout"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn connector_mode_label(mode: &AnalyticsConnectorModeV1) -> &'static str {
     match mode {
         AnalyticsConnectorModeV1::Simulated => "simulated",
         AnalyticsConnectorModeV1::ObservedReadOnly => "observed_read_only",
+    }
+}
+
+fn source_topology_label(source_topology: &AnalyticsSourceTopologyV1) -> &'static str {
+    match source_topology {
+        AnalyticsSourceTopologyV1::IndependentStreams => "independent_streams",
+        AnalyticsSourceTopologyV1::Ga4Unified => "ga4_unified",
     }
 }
 
@@ -1224,6 +1271,24 @@ mod tests {
         let result = enforce_production_profile_connector_mode(
             "marketing_default",
             &AnalyticsConnectorModeV1::Simulated,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn production_profile_blocks_independent_streams_topology() {
+        let result = enforce_production_profile_source_topology(
+            "production",
+            &AnalyticsSourceTopologyV1::IndependentStreams,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn non_production_profile_allows_independent_streams_topology() {
+        let result = enforce_production_profile_source_topology(
+            "marketing_default",
+            &AnalyticsSourceTopologyV1::IndependentStreams,
         );
         assert!(result.is_ok());
     }
