@@ -323,6 +323,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         let budget_checks = build_budget_checks(&budget);
         let quality_controls = build_quality_controls(
             &report,
+            &ga4_events,
             &provenance,
             budget_checks,
             cross_source_checks,
@@ -726,6 +727,111 @@ fn is_ga4_conversion_event(event_name: &str) -> bool {
             | "subscribe"
             | "sign_up"
     )
+}
+
+fn ga4_duplicate_signature_stats(ga4_events: &[Ga4EventRawV1]) -> (usize, usize, f64) {
+    if ga4_events.is_empty() {
+        return (0, 0, 0.0);
+    }
+    let mut signature_counts: BTreeMap<(String, String, String, String, String), usize> =
+        BTreeMap::new();
+    for event in ga4_events {
+        let event_name = event.event_name.trim().to_ascii_lowercase();
+        let user_pseudo_id = event.user_pseudo_id.trim().to_string();
+        let timestamp_key = event
+            .dimensions
+            .get("event_timestamp_micros")
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| event.event_timestamp_utc.trim().to_string());
+        let session_key = event
+            .dimensions
+            .get("ga_session_id")
+            .map(|value| value.trim().to_string())
+            .or_else(|| event.session_id.clone())
+            .unwrap_or_default();
+        let bundle_key = [
+            event
+                .dimensions
+                .get("event_bundle_sequence_id")
+                .map(|value| value.trim())
+                .unwrap_or(""),
+            event
+                .dimensions
+                .get("batch_event_index")
+                .map(|value| value.trim())
+                .unwrap_or(""),
+            event
+                .dimensions
+                .get("event_server_timestamp_offset")
+                .map(|value| value.trim())
+                .unwrap_or(""),
+        ]
+        .join("|");
+        let signature = (
+            event_name,
+            user_pseudo_id,
+            timestamp_key,
+            session_key,
+            bundle_key,
+        );
+        *signature_counts.entry(signature).or_insert(0) += 1;
+    }
+    let duplicate_rows = signature_counts
+        .values()
+        .map(|count| count.saturating_sub(1))
+        .sum::<usize>();
+    let duplicate_ratio = duplicate_rows as f64 / ga4_events.len() as f64;
+    (duplicate_rows, signature_counts.len(), duplicate_ratio)
+}
+
+fn ga4_event_second_key(event: &Ga4EventRawV1) -> String {
+    if let Some(seconds) = event
+        .dimensions
+        .get("event_timestamp_micros")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|micros| micros.div_euclid(1_000_000))
+    {
+        return seconds.to_string();
+    }
+
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim()) {
+        return parsed.timestamp().to_string();
+    }
+
+    event.event_timestamp_utc.trim().to_string()
+}
+
+fn ga4_near_duplicate_second_stats(ga4_events: &[Ga4EventRawV1]) -> (usize, usize, f64) {
+    if ga4_events.is_empty() {
+        return (0, 0, 0.0);
+    }
+    let mut signature_counts: BTreeMap<(String, String, String, String), usize> = BTreeMap::new();
+    for event in ga4_events {
+        let event_name = event.event_name.trim().to_ascii_lowercase();
+        let user_pseudo_id = event.user_pseudo_id.trim().to_string();
+        let second_key = ga4_event_second_key(event);
+        let session_key = event
+            .dimensions
+            .get("ga_session_id")
+            .map(|value| value.trim().to_string())
+            .or_else(|| event.session_id.clone())
+            .unwrap_or_default();
+        let signature = (event_name, user_pseudo_id, session_key, second_key);
+        *signature_counts.entry(signature).or_insert(0) += 1;
+    }
+    let duplicate_groups = signature_counts
+        .values()
+        .filter(|count| **count > 1)
+        .count();
+    let duplicate_rows = signature_counts
+        .values()
+        .map(|count| count.saturating_sub(1))
+        .sum::<usize>();
+    let duplicate_ratio = duplicate_rows as f64 / ga4_events.len() as f64;
+    (duplicate_rows, duplicate_groups, duplicate_ratio)
 }
 
 fn google_ads_rows_to_raw_v1(
@@ -1293,6 +1399,7 @@ fn resolve_source_window_inputs(
 
 fn build_quality_controls(
     report: &AnalyticsReport,
+    ga4_events: &[Ga4EventRawV1],
     provenance: &[SourceProvenance],
     budget_checks: Vec<QualityCheckV1>,
     cross_source_checks: Vec<QualityCheckV1>,
@@ -1403,6 +1510,52 @@ fn build_quality_controls(
             expected: "every provenance entry has validated_contract_version".to_string(),
         },
     ];
+    let ga4_enabled = source_by_name("ga4")
+        .map(|item| item.enabled)
+        .unwrap_or(false);
+    let ga4_observed = source_by_name("ga4")
+        .map(|item| item.row_count > 0)
+        .unwrap_or(false);
+    let ga4_applicability = if ga4_enabled && ga4_observed {
+        QualityCheckApplicabilityV1::Applies
+    } else {
+        QualityCheckApplicabilityV1::NotApplicable
+    };
+    let (ga4_duplicate_rows, ga4_unique_signatures, ga4_duplicate_ratio) =
+        ga4_duplicate_signature_stats(ga4_events);
+    let (ga4_near_duplicate_rows, ga4_near_duplicate_groups, ga4_near_duplicate_ratio) =
+        ga4_near_duplicate_second_stats(ga4_events);
+    let mut schema_drift_checks = schema_drift_checks;
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_applicability.clone(),
+        code: "ga4_duplicate_event_signature_rate".to_string(),
+        passed: ga4_applicability == QualityCheckApplicabilityV1::NotApplicable
+            || ga4_duplicate_ratio <= 0.02,
+        severity: "medium".to_string(),
+        observed: format!(
+            "duplicate_rows={}, total_rows={}, unique_signatures={}, ratio={:.4}",
+            ga4_duplicate_rows,
+            ga4_events.len(),
+            ga4_unique_signatures,
+            ga4_duplicate_ratio
+        ),
+        expected: "duplicate ratio <= 0.02".to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_applicability.clone(),
+        code: "ga4_near_duplicate_second_rate".to_string(),
+        passed: ga4_applicability == QualityCheckApplicabilityV1::NotApplicable
+            || ga4_near_duplicate_ratio <= 0.05,
+        severity: "high".to_string(),
+        observed: format!(
+            "extra_rows={}, total_rows={}, duplicate_groups={}, ratio={:.4}",
+            ga4_near_duplicate_rows,
+            ga4_events.len(),
+            ga4_near_duplicate_groups,
+            ga4_near_duplicate_ratio
+        ),
+        expected: "near-duplicate ratio <= 0.05".to_string(),
+    });
     let reconciliation_code = "identity_campaign_rollup_reconciliation";
     let reconciliation_tol = reconciliation_policy.tolerance_for(reconciliation_code);
     let spend_delta = (sum_campaign_spend - report.total_metrics.cost).abs();
@@ -2111,6 +2264,128 @@ mod tests {
         assert_eq!(summary.freshness_pass_ratio, 1.0);
         assert_eq!(summary.reconciliation_pass_ratio, 1.0);
         assert_eq!(summary.quality_score, 0.75);
+    }
+
+    #[test]
+    fn ga4_duplicate_signature_stats_detects_duplicate_rows() {
+        let mut dimensions = BTreeMap::new();
+        dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1709500000000000".to_string(),
+        );
+        dimensions.insert("ga_session_id".to_string(), "1234".to_string());
+        dimensions.insert("event_bundle_sequence_id".to_string(), "10".to_string());
+        dimensions.insert("batch_event_index".to_string(), "1".to_string());
+        let base = Ga4EventRawV1 {
+            event_name: "purchase".to_string(),
+            event_timestamp_utc: "2026-03-01T12:00:00Z".to_string(),
+            user_pseudo_id: "user-1".to_string(),
+            session_id: Some("ga_session:1234".to_string()),
+            campaign: Some("spring".to_string()),
+            device_category: Some("mobile".to_string()),
+            source_medium: Some("google / cpc".to_string()),
+            dimensions: dimensions.clone(),
+            metrics: BTreeMap::new(),
+        };
+        let events = vec![
+            base.clone(),
+            base,
+            Ga4EventRawV1 {
+                event_name: "page_view".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("ga_session:1234".to_string()),
+                campaign: Some("spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions,
+                metrics: BTreeMap::new(),
+            },
+        ];
+        let (duplicate_rows, unique_signatures, ratio) = ga4_duplicate_signature_stats(&events);
+        assert_eq!(duplicate_rows, 1);
+        assert_eq!(unique_signatures, 2);
+        assert!(ratio > 0.0);
+    }
+
+    #[test]
+    fn ga4_near_duplicate_second_stats_detects_same_second_replays() {
+        let mut base_dimensions = BTreeMap::new();
+        base_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1709500000000000".to_string(),
+        );
+        base_dimensions.insert("ga_session_id".to_string(), "1234".to_string());
+        base_dimensions.insert("event_bundle_sequence_id".to_string(), "10".to_string());
+        base_dimensions.insert("batch_event_index".to_string(), "1".to_string());
+
+        let mut second_dimensions = base_dimensions.clone();
+        second_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1709500000200000".to_string(),
+        );
+        second_dimensions.insert("event_bundle_sequence_id".to_string(), "11".to_string());
+        second_dimensions.insert("batch_event_index".to_string(), "2".to_string());
+
+        let mut third_dimensions = base_dimensions.clone();
+        third_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1709500000400000".to_string(),
+        );
+        third_dimensions.insert("event_bundle_sequence_id".to_string(), "12".to_string());
+        third_dimensions.insert("batch_event_index".to_string(), "3".to_string());
+
+        let events = vec![
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("1234".to_string()),
+                campaign: Some("spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: base_dimensions,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("1234".to_string()),
+                campaign: Some("spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: second_dimensions,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("1234".to_string()),
+                campaign: Some("spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: third_dimensions,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "page_view".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("1234".to_string()),
+                campaign: Some("spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: BTreeMap::new(),
+                metrics: BTreeMap::new(),
+            },
+        ];
+
+        let (duplicate_rows, duplicate_groups, ratio) = ga4_near_duplicate_second_stats(&events);
+        assert_eq!(duplicate_rows, 2);
+        assert_eq!(duplicate_groups, 1);
+        assert!((ratio - 0.5).abs() < 0.0001);
     }
 
     #[test]

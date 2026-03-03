@@ -9,6 +9,12 @@ static ENV_VAR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Z][A-Z0-9_]*$").expect("env var regex must compile"));
 static GA4_PROPERTY_ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[0-9]{6,16}$").expect("ga4 property regex must compile"));
+static BIGQUERY_PROJECT_ID_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$").expect("bigquery project regex must compile")
+});
+static BIGQUERY_DATASET_ID_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^[A-Za-z_][A-Za-z0-9_]{0,1023}$").expect("bigquery dataset regex must compile")
+});
 static GOOGLE_ADS_CUSTOMER_ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[0-9]{10}$").expect("google ads customer regex must compile"));
 static WIX_SITE_ID_RE: Lazy<Regex> =
@@ -57,6 +63,22 @@ impl Default for AnalyticsSourceTopologyV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::analytics_config`
+/// purpose: Backend used for GA4 read-only ingestion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Ga4ReadBackendV1 {
+    DataApiRunReport,
+    BigqueryExport,
+}
+
+impl Default for Ga4ReadBackendV1 {
+    fn default() -> Self {
+        Self::DataApiRunReport
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::analytics_config`
 /// purpose: GA4 connector configuration contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Ga4ConfigV1 {
@@ -64,6 +86,11 @@ pub struct Ga4ConfigV1 {
     pub property_id: String,
     pub read_credentials_env_var: String,
     pub timezone: String,
+    pub read_backend: Ga4ReadBackendV1,
+    pub bigquery_project_id: Option<String>,
+    pub bigquery_dataset_id: Option<String>,
+    pub bigquery_max_rows: u32,
+    pub bigquery_max_bytes_billed: u64,
 }
 
 /// # NDOC
@@ -124,6 +151,11 @@ struct ConnectorFingerprintGa4V1<'a> {
     property_id: &'a str,
     read_credentials_env_var: &'a str,
     timezone: &'a str,
+    read_backend: &'a Ga4ReadBackendV1,
+    bigquery_project_id: Option<&'a str>,
+    bigquery_dataset_id: Option<&'a str>,
+    bigquery_max_rows: u32,
+    bigquery_max_bytes_billed: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,6 +191,11 @@ impl AnalyticsConnectorConfigV1 {
                 property_id: "123456789".to_string(),
                 read_credentials_env_var: "GOOGLE_APPLICATION_CREDENTIALS".to_string(),
                 timezone: "UTC".to_string(),
+                read_backend: Ga4ReadBackendV1::DataApiRunReport,
+                bigquery_project_id: None,
+                bigquery_dataset_id: None,
+                bigquery_max_rows: 10_000,
+                bigquery_max_bytes_billed: 1_000_000_000,
             },
             google_ads: GoogleAdsConfigV1 {
                 enabled: true,
@@ -243,6 +280,37 @@ pub fn analytics_connector_config_from_env() -> Result<AnalyticsConnectorConfigV
                 &defaults.ga4.read_credentials_env_var,
             ),
             timezone: env_or_default("ANALYTICS_GA4_TIMEZONE", &defaults.ga4.timezone),
+            read_backend: match env_or_default(
+                "ANALYTICS_GA4_READ_BACKEND",
+                match defaults.ga4.read_backend {
+                    Ga4ReadBackendV1::DataApiRunReport => "data_api_run_report",
+                    Ga4ReadBackendV1::BigqueryExport => "bigquery_export",
+                },
+            )
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+            {
+                "data_api_run_report" => Ga4ReadBackendV1::DataApiRunReport,
+                "bigquery_export" => Ga4ReadBackendV1::BigqueryExport,
+                _ => {
+                    return Err(AnalyticsError::validation(
+                        "analytics_config_ga4_read_backend_invalid",
+                        "ANALYTICS_GA4_READ_BACKEND must be one of: data_api_run_report, bigquery_export",
+                        "ga4.read_backend",
+                    ));
+                }
+            },
+            bigquery_project_id: env_opt("ANALYTICS_GA4_BIGQUERY_PROJECT_ID"),
+            bigquery_dataset_id: env_opt("ANALYTICS_GA4_BIGQUERY_DATASET_ID"),
+            bigquery_max_rows: env_u32_or_default(
+                "ANALYTICS_GA4_BIGQUERY_MAX_ROWS",
+                defaults.ga4.bigquery_max_rows,
+            )?,
+            bigquery_max_bytes_billed: env_u64_or_default(
+                "ANALYTICS_GA4_BIGQUERY_MAX_BYTES_BILLED",
+                defaults.ga4.bigquery_max_bytes_billed,
+            )?,
         },
         google_ads: GoogleAdsConfigV1 {
             enabled: env_bool_or_default(
@@ -304,6 +372,21 @@ pub fn analytics_connector_config_fingerprint_v1(
             property_id: config.ga4.property_id.trim(),
             read_credentials_env_var: config.ga4.read_credentials_env_var.trim(),
             timezone: config.ga4.timezone.trim(),
+            read_backend: &config.ga4.read_backend,
+            bigquery_project_id: config
+                .ga4
+                .bigquery_project_id
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty()),
+            bigquery_dataset_id: config
+                .ga4
+                .bigquery_dataset_id
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty()),
+            bigquery_max_rows: config.ga4.bigquery_max_rows,
+            bigquery_max_bytes_billed: config.ga4.bigquery_max_bytes_billed,
         },
         google_ads: ConnectorFingerprintGoogleAdsV1 {
             enabled: config.google_ads.enabled,
@@ -389,6 +472,32 @@ fn env_bool_or_default(key: &str, default: bool) -> Result<bool, AnalyticsError>
             key.to_ascii_lowercase(),
         )),
     }
+}
+
+fn env_u32_or_default(key: &str, default: u32) -> Result<u32, AnalyticsError> {
+    let Some(raw) = std::env::var(key).ok() else {
+        return Ok(default);
+    };
+    raw.trim().parse::<u32>().map_err(|_| {
+        AnalyticsError::validation(
+            "analytics_config_u32_invalid",
+            format!("{key} must be a valid unsigned integer"),
+            key.to_ascii_lowercase(),
+        )
+    })
+}
+
+fn env_u64_or_default(key: &str, default: u64) -> Result<u64, AnalyticsError> {
+    let Some(raw) = std::env::var(key).ok() else {
+        return Ok(default);
+    };
+    raw.trim().parse::<u64>().map_err(|_| {
+        AnalyticsError::validation(
+            "analytics_config_u64_invalid",
+            format!("{key} must be a valid unsigned integer"),
+            key.to_ascii_lowercase(),
+        )
+    })
 }
 
 /// # NDOC
@@ -482,6 +591,39 @@ fn validate_ga4(config: &Ga4ConfigV1) -> Result<(), AnalyticsError> {
             "ga4.read_credentials_env_var must reference read-only GA credentials, not measurement protocol secrets",
             "ga4.read_credentials_env_var",
         ));
+    }
+
+    if config.bigquery_max_rows == 0 || config.bigquery_max_rows > 500_000 {
+        return Err(AnalyticsError::validation(
+            "analytics_config_ga4_bigquery_max_rows_invalid",
+            "ga4.bigquery_max_rows must be in range 1..=500000",
+            "ga4.bigquery_max_rows",
+        ));
+    }
+    if config.bigquery_max_bytes_billed == 0 {
+        return Err(AnalyticsError::validation(
+            "analytics_config_ga4_bigquery_max_bytes_billed_invalid",
+            "ga4.bigquery_max_bytes_billed must be > 0",
+            "ga4.bigquery_max_bytes_billed",
+        ));
+    }
+    if let Some(project_id) = config.bigquery_project_id.as_ref().map(|v| v.trim()) {
+        if !project_id.is_empty() && !BIGQUERY_PROJECT_ID_RE.is_match(project_id) {
+            return Err(AnalyticsError::validation(
+                "analytics_config_ga4_bigquery_project_invalid",
+                "ga4.bigquery_project_id must match a valid GCP project id pattern",
+                "ga4.bigquery_project_id",
+            ));
+        }
+    }
+    if let Some(dataset_id) = config.bigquery_dataset_id.as_ref().map(|v| v.trim()) {
+        if !dataset_id.is_empty() && !BIGQUERY_DATASET_ID_RE.is_match(dataset_id) {
+            return Err(AnalyticsError::validation(
+                "analytics_config_ga4_bigquery_dataset_invalid",
+                "ga4.bigquery_dataset_id must match a valid BigQuery dataset id pattern",
+                "ga4.bigquery_dataset_id",
+            ));
+        }
     }
 
     Ok(())
@@ -665,6 +807,7 @@ mod tests {
                 ("ANALYTICS_PROFILE_ID", Some("ops_profile")),
                 ("ANALYTICS_DEFAULT_TIMEZONE", Some("UTC")),
                 ("GA4_PROPERTY_ID", Some("123456789")),
+                ("ANALYTICS_GA4_READ_BACKEND", Some("data_api_run_report")),
                 ("GOOGLE_ADS_CUSTOMER_ID", Some("1234567890")),
                 ("WIX_SITE_ID", Some("natures-diet-store")),
             ],
@@ -695,6 +838,49 @@ mod tests {
             || {
                 let err = analytics_connector_config_from_env().expect_err("must fail");
                 assert_eq!(err.code, "analytics_config_source_topology_invalid");
+            },
+        );
+    }
+
+    #[test]
+    fn from_env_rejects_invalid_ga4_read_backend() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(&[("ANALYTICS_GA4_READ_BACKEND", Some("bad_mode"))], || {
+            let err = analytics_connector_config_from_env().expect_err("must fail");
+            assert_eq!(err.code, "analytics_config_ga4_read_backend_invalid");
+        });
+    }
+
+    #[test]
+    fn from_env_parses_bigquery_backend_config() {
+        let _guard = ENV_MUTEX.lock().expect("env mutex");
+        with_temp_env(
+            &[
+                ("ANALYTICS_GA4_READ_BACKEND", Some("bigquery_export")),
+                (
+                    "ANALYTICS_GA4_BIGQUERY_PROJECT_ID",
+                    Some("naturesdietpet-1667857303420"),
+                ),
+                (
+                    "ANALYTICS_GA4_BIGQUERY_DATASET_ID",
+                    Some("analytics_341439880"),
+                ),
+                ("ANALYTICS_GA4_BIGQUERY_MAX_ROWS", Some("5000")),
+                ("ANALYTICS_GA4_BIGQUERY_MAX_BYTES_BILLED", Some("250000000")),
+            ],
+            || {
+                let cfg = analytics_connector_config_from_env().expect("env config should parse");
+                assert_eq!(cfg.ga4.read_backend, Ga4ReadBackendV1::BigqueryExport);
+                assert_eq!(
+                    cfg.ga4.bigquery_project_id.as_deref(),
+                    Some("naturesdietpet-1667857303420")
+                );
+                assert_eq!(
+                    cfg.ga4.bigquery_dataset_id.as_deref(),
+                    Some("analytics_341439880")
+                );
+                assert_eq!(cfg.ga4.bigquery_max_rows, 5000);
+                assert_eq!(cfg.ga4.bigquery_max_bytes_billed, 250_000_000);
             },
         );
     }

@@ -1,5 +1,6 @@
 use super::analytics_config::{
     validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
+    Ga4ReadBackendV1,
 };
 use super::contracts::{AnalyticsError, MockAnalyticsRequestV1};
 use super::ingest::{Ga4EventRawV1, WixOrderRawV1};
@@ -27,7 +28,9 @@ const OBSERVED_CONNECTOR_ID_V2: &str = "analytics_observed_read_only_connector_v
 const DEFAULT_GA4_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_GA4_DATA_API_BASE_URL: &str = "https://analyticsdata.googleapis.com/v1beta";
 const GA4_SCOPE_READONLY: &str = "https://www.googleapis.com/auth/analytics.readonly";
+const BIGQUERY_SCOPE_READONLY: &str = "https://www.googleapis.com/auth/bigquery";
 const GA4_RAW_REPORT_SCHEMA_VERSION_V1: &str = "ga4_raw_report.v1";
+const DEFAULT_BIGQUERY_API_BASE_URL: &str = "https://bigquery.googleapis.com/bigquery/v2";
 const DEFAULT_GA4_PAGE_LIMIT: u32 = 10_000;
 const MAX_GA4_PAGE_LIMIT: u32 = 100_000;
 const DEFAULT_GA4_MAX_PAGES: u32 = 25;
@@ -205,6 +208,8 @@ struct ServiceAccountCredentials {
     private_key: String,
     #[serde(default)]
     token_uri: Option<String>,
+    #[serde(default)]
+    project_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -258,6 +263,38 @@ struct Ga4RunReportRow {
 struct Ga4RunReportValue {
     #[serde(default)]
     value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BigQueryQueryResponse {
+    #[serde(default)]
+    schema: Option<BigQueryTableSchema>,
+    #[serde(default)]
+    rows: Vec<BigQueryQueryRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BigQueryTableSchema {
+    #[serde(default)]
+    fields: Vec<BigQueryFieldSchema>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BigQueryFieldSchema {
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BigQueryQueryRow {
+    #[serde(default)]
+    f: Vec<BigQueryFieldValue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BigQueryFieldValue {
+    #[serde(default)]
+    v: Option<String>,
 }
 
 /// # NDOC
@@ -529,6 +566,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
         &self,
         credentials: &ServiceAccountCredentials,
         token_url: &str,
+        scope: &str,
     ) -> Result<String, AnalyticsError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -537,7 +575,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
         let claims = ServiceAccountClaims {
             iss: credentials.client_email.trim(),
             sub: credentials.client_email.trim(),
-            scope: GA4_SCOPE_READONLY,
+            scope,
             aud: token_url,
             iat: now.saturating_sub(30),
             exp: now.saturating_add(3600),
@@ -663,13 +701,23 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
         Ok(output.stdout)
     }
 
-    async fn fetch_access_token(
+    async fn fetch_access_token_for_scope(
         &self,
         config: &AnalyticsConnectorConfigV1,
+        scope: &str,
     ) -> Result<String, AnalyticsError> {
         let credentials = self.load_service_account(config)?;
-        let token_url = self.oauth_token_url(&credentials);
-        let assertion = self.signed_assertion(&credentials, &token_url)?;
+        self.fetch_access_token_for_scope_with_credentials(&credentials, scope)
+            .await
+    }
+
+    async fn fetch_access_token_for_scope_with_credentials(
+        &self,
+        credentials: &ServiceAccountCredentials,
+        scope: &str,
+    ) -> Result<String, AnalyticsError> {
+        let token_url = self.oauth_token_url(credentials);
+        let assertion = self.signed_assertion(credentials, &token_url, scope)?;
         let response = self
             .http
             .post(token_url.clone())
@@ -727,7 +775,9 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
         offset: u32,
         event_names: &[String],
     ) -> Result<Ga4RunReportResponse, AnalyticsError> {
-        let access_credential = self.fetch_access_token(config).await?;
+        let access_credential = self
+            .fetch_access_token_for_scope(config, GA4_SCOPE_READONLY)
+            .await?;
         let base_url = self.ga4_data_api_base_url();
         let url = format!(
             "{}/properties/{}:runReport",
@@ -817,6 +867,324 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             .await
     }
 
+    fn bigquery_api_base_url(&self) -> String {
+        std::env::var("ANALYTICS_BIGQUERY_API_BASE_URL")
+            .ok()
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_BIGQUERY_API_BASE_URL.to_string())
+    }
+
+    fn resolve_bigquery_project_id(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        credentials: &ServiceAccountCredentials,
+    ) -> Result<String, AnalyticsError> {
+        let candidate = config
+            .ga4
+            .bigquery_project_id
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                std::env::var("GOOGLE_CLOUD_PROJECT")
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            })
+            .or_else(|| {
+                credentials
+                    .project_id
+                    .as_ref()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            })
+            .ok_or_else(|| {
+                AnalyticsError::new(
+                    "analytics_bigquery_project_id_missing",
+                    "BigQuery GA4 backend requires a project id (set ANALYTICS_GA4_BIGQUERY_PROJECT_ID or provide project_id in service account JSON)",
+                    vec!["ga4.bigquery_project_id".to_string()],
+                    None,
+                )
+            })?;
+
+        if !is_valid_bigquery_project_id(&candidate) {
+            return Err(AnalyticsError::new(
+                "analytics_bigquery_project_id_invalid",
+                "BigQuery project id contains invalid characters",
+                vec!["ga4.bigquery_project_id".to_string()],
+                Some(json!({ "project_id": candidate })),
+            ));
+        }
+        Ok(candidate)
+    }
+
+    fn resolve_bigquery_dataset_id(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+    ) -> Result<String, AnalyticsError> {
+        let dataset = config
+            .ga4
+            .bigquery_dataset_id
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("analytics_{}", config.ga4.property_id.trim()));
+        if !is_valid_bigquery_dataset_id(&dataset) {
+            return Err(AnalyticsError::new(
+                "analytics_bigquery_dataset_id_invalid",
+                "BigQuery dataset id contains invalid characters",
+                vec!["ga4.bigquery_dataset_id".to_string()],
+                Some(json!({ "dataset_id": dataset })),
+            ));
+        }
+        Ok(dataset)
+    }
+
+    fn bigquery_max_rows(&self, config: &AnalyticsConnectorConfigV1) -> u32 {
+        config.ga4.bigquery_max_rows.clamp(1, 500_000)
+    }
+
+    async fn run_bigquery_query(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        sql: &str,
+        max_results: u32,
+    ) -> Result<BigQueryQueryResponse, AnalyticsError> {
+        let credentials = self.load_service_account(config)?;
+        let project_id = self.resolve_bigquery_project_id(config, &credentials)?;
+        let access_credential = self
+            .fetch_access_token_for_scope_with_credentials(&credentials, BIGQUERY_SCOPE_READONLY)
+            .await?;
+        let url = format!(
+            "{}/projects/{}/queries",
+            self.bigquery_api_base_url(),
+            project_id
+        );
+
+        let payload = json!({
+            "query": sql,
+            "useLegacySql": false,
+            "maxResults": max_results,
+            "timeoutMs": 30000,
+            "useQueryCache": true,
+            "maximumBytesBilled": config.ga4.bigquery_max_bytes_billed.to_string()
+        });
+
+        let response = self
+            .http
+            .post(url.clone())
+            .bearer_auth(access_credential)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|err| {
+                AnalyticsError::new(
+                    "analytics_bigquery_query_failed",
+                    format!("BigQuery query request failed: {}", err),
+                    vec!["ga4.bigquery_project_id".to_string()],
+                    Some(json!({ "url": url })),
+                )
+            })?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AnalyticsError::new(
+                "analytics_bigquery_query_failed",
+                format!("BigQuery query failed with status {}", status),
+                vec!["ga4.bigquery_project_id".to_string()],
+                Some(json!({ "status": status, "body": body })),
+            ));
+        }
+        response.json().await.map_err(|err| {
+            AnalyticsError::new(
+                "analytics_bigquery_schema_parse_failed",
+                format!("failed to parse BigQuery query response: {}", err),
+                vec!["ga4.bigquery_dataset_id".to_string()],
+                None,
+            )
+        })
+    }
+
+    fn bigquery_rows_to_named_maps(
+        &self,
+        response: &BigQueryQueryResponse,
+    ) -> Vec<BTreeMap<String, String>> {
+        let field_names = response
+            .schema
+            .as_ref()
+            .map(|schema| {
+                schema
+                    .fields
+                    .iter()
+                    .map(|field| field.name.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let mut rows_out = Vec::with_capacity(response.rows.len());
+        for row in &response.rows {
+            let mut out = BTreeMap::new();
+            for (idx, value) in row.f.iter().enumerate() {
+                let key = field_names
+                    .get(idx)
+                    .cloned()
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| format!("field_{}", idx));
+                out.insert(key, value.v.clone().unwrap_or_default());
+            }
+            rows_out.push(out);
+        }
+        rows_out
+    }
+
+    async fn run_bigquery_probe(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+    ) -> Result<BigQueryQueryResponse, AnalyticsError> {
+        let credentials = self.load_service_account(config)?;
+        let project_id = self.resolve_bigquery_project_id(config, &credentials)?;
+        let dataset_id = self.resolve_bigquery_dataset_id(config)?;
+        let sql = format!(
+            "SELECT table_name FROM `{}.{}.INFORMATION_SCHEMA.TABLES` WHERE STARTS_WITH(table_name, 'events_') ORDER BY table_name DESC LIMIT 1",
+            project_id, dataset_id
+        );
+        self.run_bigquery_query(config, &sql, 1).await
+    }
+
+    async fn fetch_ga4_events_bigquery(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        start: NaiveDate,
+        end: NaiveDate,
+    ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+        let credentials = self.load_service_account(config)?;
+        let project_id = self.resolve_bigquery_project_id(config, &credentials)?;
+        let dataset_id = self.resolve_bigquery_dataset_id(config)?;
+        let start_suffix = start.format("%Y%m%d").to_string();
+        let end_suffix = end.format("%Y%m%d").to_string();
+        let limit = self.bigquery_max_rows(config);
+        let sql = format!(
+            "SELECT \
+                event_name, \
+                CAST(event_timestamp AS STRING) AS event_timestamp_micros, \
+                user_pseudo_id, \
+                device.category AS device_category, \
+                traffic_source.source AS traffic_source_source, \
+                traffic_source.medium AS traffic_source_medium, \
+                (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key = 'campaign' LIMIT 1) AS campaign_name, \
+                (SELECT CAST(ep.value.int_value AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_id' LIMIT 1) AS ga_session_id, \
+                CAST(event_bundle_sequence_id AS STRING) AS event_bundle_sequence_id, \
+                CAST(event_server_timestamp_offset AS STRING) AS event_server_timestamp_offset, \
+                CAST(batch_event_index AS STRING) AS batch_event_index, \
+                _TABLE_SUFFIX AS table_suffix \
+            FROM `{}.{}.events_*` \
+            WHERE _TABLE_SUFFIX BETWEEN '{}' AND '{}' \
+            ORDER BY event_timestamp \
+            LIMIT {}",
+            project_id, dataset_id, start_suffix, end_suffix, limit
+        );
+        let response = self.run_bigquery_query(config, &sql, limit).await?;
+        let rows = self.bigquery_rows_to_named_maps(&response);
+        let mut events = Vec::with_capacity(rows.len());
+        for (idx, mut row) in rows.into_iter().enumerate() {
+            let event_name = row
+                .remove("event_name")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    AnalyticsError::new(
+                        "analytics_bigquery_schema_mismatch",
+                        "BigQuery row missing event_name",
+                        vec!["ga4.bigquery_dataset_id".to_string()],
+                        Some(json!({ "row_index": idx })),
+                    )
+                })?;
+            let micros = row
+                .remove("event_timestamp_micros")
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .ok_or_else(|| {
+                    AnalyticsError::new(
+                        "analytics_bigquery_schema_mismatch",
+                        "BigQuery row missing valid event_timestamp_micros",
+                        vec!["ga4.bigquery_dataset_id".to_string()],
+                        Some(json!({ "row_index": idx })),
+                    )
+                })?;
+            let timestamp = micros_to_rfc3339(micros).ok_or_else(|| {
+                AnalyticsError::new(
+                    "analytics_bigquery_schema_mismatch",
+                    "BigQuery row event_timestamp_micros could not be converted to RFC3339",
+                    vec!["ga4.bigquery_dataset_id".to_string()],
+                    Some(json!({ "row_index": idx, "event_timestamp_micros": micros })),
+                )
+            })?;
+            let user_pseudo_id = row
+                .remove("user_pseudo_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| format!("ga4_bq_user_{}", idx));
+            let campaign = row
+                .remove("campaign_name")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let device_category = row
+                .remove("device_category")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let source = row
+                .remove("traffic_source_source")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let medium = row
+                .remove("traffic_source_medium")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let source_medium = match (source, medium) {
+                (Some(source), Some(medium)) => Some(format!("{} / {}", source, medium)),
+                (Some(source), None) => Some(source),
+                (None, Some(medium)) => Some(medium),
+                (None, None) => None,
+            };
+            let session_id = row
+                .remove("ga_session_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("ga_session:{}", value));
+            let mut dimensions = BTreeMap::new();
+            dimensions.insert(
+                "ga4_read_backend".to_string(),
+                "bigquery_export".to_string(),
+            );
+            dimensions.insert("event_timestamp_micros".to_string(), micros.to_string());
+            for key in [
+                "event_bundle_sequence_id",
+                "event_server_timestamp_offset",
+                "batch_event_index",
+                "table_suffix",
+            ] {
+                if let Some(value) = row.remove(key) {
+                    if !value.trim().is_empty() {
+                        dimensions.insert(key.to_string(), value);
+                    }
+                }
+            }
+            let mut metrics = BTreeMap::new();
+            metrics.insert("eventCount".to_string(), "1".to_string());
+            events.push(Ga4EventRawV1 {
+                event_name,
+                event_timestamp_utc: timestamp,
+                user_pseudo_id,
+                session_id,
+                campaign,
+                device_category,
+                source_medium,
+                dimensions,
+                metrics,
+            });
+        }
+        Ok(events)
+    }
+
     fn parse_date_hour_rfc3339(&self, value: &str, timezone: &str) -> Option<String> {
         let trimmed = value.trim();
         if trimmed.len() != 10 {
@@ -853,7 +1221,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
     ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
         let named_rows = self.rows_to_named_maps(response);
         let mut events = Vec::with_capacity(named_rows.len());
-        for (idx, row) in named_rows.into_iter().enumerate() {
+        for (idx, mut row) in named_rows.into_iter().enumerate() {
             let event_name = row
                 .dimensions
                 .get("eventName")
@@ -927,6 +1295,9 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .and_then(|metric| metric.trim().parse::<u64>().ok())
                 .filter(|count| *count > 0)
                 .unwrap_or(1);
+            row.dimensions
+                .entry("ga4_read_backend".to_string())
+                .or_insert_with(|| "data_api_run_report".to_string());
             events.push(Ga4EventRawV1 {
                 event_name,
                 event_timestamp_utc: timestamp,
@@ -984,19 +1355,30 @@ impl AnalyticsConnectorContractV2 for ObservedReadOnlyAnalyticsConnectorV2 {
         } else {
             let mut status = source_health("ga4", true, &[&config.ga4.read_credentials_env_var]);
             if status.credentials_present {
-                match self
-                    .run_ga4_report(
-                        config,
-                        Utc::now().date_naive() - Duration::days(1),
-                        Utc::now().date_naive() - Duration::days(1),
-                        1,
-                    )
-                    .await
-                {
+                let probe_result = match config.ga4.read_backend {
+                    Ga4ReadBackendV1::DataApiRunReport => self
+                        .run_ga4_report(
+                            config,
+                            Utc::now().date_naive() - Duration::days(1),
+                            Utc::now().date_naive() - Duration::days(1),
+                            1,
+                        )
+                        .await
+                        .map(|_| ()),
+                    Ga4ReadBackendV1::BigqueryExport => {
+                        self.run_bigquery_probe(config).await.map(|_| ())
+                    }
+                };
+                match probe_result {
                     Ok(_) => {
                         status.live_probe_ok = true;
                         status.probe_status = "passed".to_string();
-                        status.probe_message = Some("ga4 runReport probe succeeded".to_string());
+                        let probe_backend = match config.ga4.read_backend {
+                            Ga4ReadBackendV1::DataApiRunReport => "ga4_data_api_runreport",
+                            Ga4ReadBackendV1::BigqueryExport => "bigquery_export",
+                        };
+                        status.probe_message =
+                            Some(format!("ga4 probe succeeded via {}", probe_backend));
                     }
                     Err(err) => {
                         status.live_probe_ok = false;
@@ -1076,8 +1458,15 @@ impl AnalyticsConnectorContractV2 for ObservedReadOnlyAnalyticsConnectorV2 {
                 "ga4.enabled",
             ));
         }
-        let response = self.run_ga4_report(config, start, end, 1000).await?;
-        self.map_ga4_rows(config, &response)
+        match config.ga4.read_backend {
+            Ga4ReadBackendV1::DataApiRunReport => {
+                let response = self.run_ga4_report(config, start, end, 1000).await?;
+                self.map_ga4_rows(config, &response)
+            }
+            Ga4ReadBackendV1::BigqueryExport => {
+                self.fetch_ga4_events_bigquery(config, start, end).await
+            }
+        }
     }
 
     async fn fetch_google_ads_rows(
@@ -1308,6 +1697,44 @@ fn is_valid_ga4_field_name(name: &str) -> bool {
         && name.chars().all(|ch| {
             ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' || ch == '.' || ch == '-'
         })
+}
+
+fn is_valid_bigquery_project_id(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.len() < 6 || trimmed.len() > 63 {
+        return false;
+    }
+    let mut chars = trimmed.chars();
+    let first = chars.next().unwrap_or_default();
+    let last = trimmed.chars().last().unwrap_or_default();
+    if !first.is_ascii_lowercase() || !last.is_ascii_alphanumeric() {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+}
+
+fn is_valid_bigquery_dataset_id(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 1024 {
+        return false;
+    }
+    let mut chars = trimmed.chars();
+    let first = chars.next().unwrap_or_default();
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn micros_to_rfc3339(micros: i64) -> Option<String> {
+    let seconds = micros.div_euclid(1_000_000);
+    let micros_remainder = micros.rem_euclid(1_000_000) as u32;
+    let nanos = micros_remainder.saturating_mul(1000);
+    chrono::DateTime::<Utc>::from_timestamp(seconds, nanos).map(|dt| dt.to_rfc3339())
 }
 
 fn source_health(

@@ -24,7 +24,7 @@ pub mod validators;
 pub use analytics_config::{
     analytics_connector_config_fingerprint_v1, analytics_connector_config_from_env,
     validate_analytics_connector_config_v1, AnalyticsConnectorConfigV1, AnalyticsConnectorModeV1,
-    AnalyticsSourceTopologyV1, Ga4ConfigV1, GoogleAdsConfigV1, WixConfigV1,
+    AnalyticsSourceTopologyV1, Ga4ConfigV1, Ga4ReadBackendV1, GoogleAdsConfigV1, WixConfigV1,
     CONNECTOR_CONFIG_FINGERPRINT_ALG_V1, CONNECTOR_CONFIG_FINGERPRINT_SCHEMA_V1,
 };
 pub use attestation::{
