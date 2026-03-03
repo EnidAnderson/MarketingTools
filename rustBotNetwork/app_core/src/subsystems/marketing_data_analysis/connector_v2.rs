@@ -9,7 +9,7 @@ use crate::data_models::analytics::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc};
 use chrono_tz::Tz;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -189,6 +189,8 @@ struct Ga4RunReportResponse {
 struct Ga4RunReportRow {
     #[serde(rename = "dimensionValues", default)]
     dimension_values: Vec<Ga4RunReportValue>,
+    #[serde(rename = "metricValues", default)]
+    metric_values: Vec<Ga4RunReportValue>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,9 +215,12 @@ impl Default for ObservedReadOnlyAnalyticsConnectorV2 {
 
 impl ObservedReadOnlyAnalyticsConnectorV2 {
     pub fn new() -> Self {
-        Self {
-            http: Client::new(),
-        }
+        // Avoid platform proxy-resolution panics in constrained/headless environments.
+        let http = Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap_or_else(|_| Client::new());
+        Self { http }
     }
 
     fn credentials_path(&self, config: &AnalyticsConnectorConfigV1) -> Option<String> {
@@ -506,9 +511,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 }],
                 "dimensions": [
                     { "name": "eventName" },
-                    { "name": "dateHour" },
-                    { "name": "userPseudoId" },
-                    { "name": "campaignName" }
+                    { "name": "dateHour" }
                 ],
                 "metrics": [{ "name": "eventCount" }],
                 "limit": limit.to_string()
@@ -545,8 +548,26 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
 
     fn parse_date_hour_rfc3339(&self, value: &str, timezone: &str) -> Option<String> {
         let trimmed = value.trim();
-        let naive = NaiveDateTime::parse_from_str(trimmed, "%Y%m%d%H").ok()?;
-        let tz: Tz = timezone.parse().ok()?;
+        if trimmed.len() != 10 {
+            return None;
+        }
+        let day = chrono::NaiveDate::parse_from_str(&trimmed[0..8], "%Y%m%d").ok()?;
+        let hour: u32 = trimmed[8..10].parse().ok()?;
+        let naive = day.and_hms_opt(hour, 0, 0)?;
+        let tz_name = timezone.trim();
+        if tz_name.is_empty() || tz_name.eq_ignore_ascii_case("utc") {
+            return Some(
+                chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).to_rfc3339(),
+            );
+        }
+        let tz: Tz = match tz_name.parse() {
+            Ok(value) => value,
+            Err(_) => {
+                return Some(
+                    chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc).to_rfc3339(),
+                )
+            }
+        };
         let local = tz
             .from_local_datetime(&naive)
             .single()
@@ -561,7 +582,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
     ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
         let mut events = Vec::with_capacity(rows.len());
         for (idx, row) in rows.iter().enumerate() {
-            if row.dimension_values.len() < 3 {
+            if row.dimension_values.len() < 2 {
                 return Err(AnalyticsError::new(
                     "analytics_ga4_schema_mismatch",
                     "GA4 runReport row did not include expected dimensions",
@@ -573,8 +594,7 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             }
             let event_name = row.dimension_values[0].value.trim().to_string();
             let date_hour = row.dimension_values[1].value.trim().to_string();
-            let user = row.dimension_values[2].value.trim().to_string();
-            if event_name.is_empty() || user.is_empty() {
+            if event_name.is_empty() {
                 continue;
             }
             let timestamp = self
@@ -591,16 +611,19 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                         })),
                     )
                 })?;
-            let campaign = row
-                .dimension_values
-                .get(3)
-                .map(|item| item.value.trim().to_string())
-                .filter(|value| !value.is_empty());
+            let campaign = None;
+            let user = format!("ga4_row_{}_{}_{}", idx, date_hour, event_name);
+            let event_count = row
+                .metric_values
+                .first()
+                .and_then(|metric| metric.value.trim().parse::<u64>().ok())
+                .filter(|count| *count > 0)
+                .unwrap_or(1);
             events.push(Ga4EventRawV1 {
                 event_name,
                 event_timestamp_utc: timestamp,
                 user_pseudo_id: user,
-                session_id: None,
+                session_id: Some(format!("ga4_count:{}", event_count)),
                 campaign,
             });
         }
@@ -1452,7 +1475,6 @@ mod tests {
                     "dimensionValues": [
                         {"value": "purchase"},
                         {"value": "2026020112"},
-                        {"value": "user_001"},
                         {"value": "spring_launch"}
                     ],
                     "metricValues": [{"value": "1"}]

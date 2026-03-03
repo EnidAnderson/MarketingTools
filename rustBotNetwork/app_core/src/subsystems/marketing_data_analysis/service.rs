@@ -243,7 +243,10 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         );
 
         let google_ads_raw_rows = google_ads_rows_to_raw_v1(&rows)?;
-        let report = rows_to_report(rows, &request, start, budget_plan.effective_end);
+        let mut report = rows_to_report(rows, &request, start, budget_plan.effective_end);
+        if report.campaign_data.is_empty() && !ga4_events.is_empty() {
+            report = ga4_events_to_report(&ga4_events, &request, start, budget_plan.effective_end);
+        }
         let ingest_audit =
             collect_ingest_cleaning_notes(&ga4_events, &google_ads_raw_rows, &wix_orders)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
@@ -570,6 +573,148 @@ fn rows_to_report(
         ad_group_data,
         keyword_data,
     }
+}
+
+fn ga4_events_to_report(
+    ga4_events: &[Ga4EventRawV1],
+    request: &MockAnalyticsRequestV1,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> AnalyticsReport {
+    let mut total = ReportMetrics::default();
+    let mut campaigns: BTreeMap<String, ReportMetrics> = BTreeMap::new();
+    let mut event_buckets: BTreeMap<(String, String), ReportMetrics> = BTreeMap::new();
+
+    for event in ga4_events {
+        let event_name = event.event_name.trim().to_string();
+        if event_name.is_empty() {
+            continue;
+        }
+        let campaign = event
+            .campaign
+            .as_ref()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "GA4 (Campaign Unavailable)".to_string());
+        let count = ga4_event_count_hint(event);
+        let impressions = count;
+        let clicks = if is_ga4_click_event(&event_name) {
+            count
+        } else {
+            0
+        };
+        let conversions = if is_ga4_conversion_event(&event_name) {
+            count as f64
+        } else {
+            0.0
+        };
+        let metrics = derived_metrics(impressions, clicks, 0.0, conversions, 0.0);
+        total = sum_metrics(&total, &metrics);
+
+        let campaign_entry = campaigns.entry(campaign.clone()).or_default();
+        *campaign_entry = sum_metrics(campaign_entry, &metrics);
+
+        let bucket_entry = event_buckets.entry((campaign, event_name)).or_default();
+        *bucket_entry = sum_metrics(bucket_entry, &metrics);
+    }
+
+    let campaign_data = campaigns
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (name, metrics))| CampaignReportRow {
+            date: "".to_string(),
+            campaign_id: format!("ga4_campaign_{:03}", idx + 1),
+            campaign_name: name,
+            campaign_status: "ENABLED".to_string(),
+            metrics: round_metrics(metrics),
+        })
+        .collect::<Vec<_>>();
+
+    let campaign_id_by_name = campaign_data
+        .iter()
+        .map(|row| (row.campaign_name.clone(), row.campaign_id.clone()))
+        .collect::<BTreeMap<_, _>>();
+
+    let ad_group_data = campaign_data
+        .iter()
+        .map(|row| AdGroupReportRow {
+            date: "".to_string(),
+            campaign_id: row.campaign_id.clone(),
+            campaign_name: row.campaign_name.clone(),
+            ad_group_id: format!("{}_aggregate", row.campaign_id),
+            ad_group_name: "GA4 Aggregate".to_string(),
+            ad_group_status: "ENABLED".to_string(),
+            metrics: row.metrics.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let keyword_data = event_buckets
+        .into_iter()
+        .enumerate()
+        .map(|(idx, ((campaign_name, event_name), metrics))| {
+            let campaign_id = campaign_id_by_name
+                .get(&campaign_name)
+                .cloned()
+                .unwrap_or_else(|| "ga4_campaign_unmapped".to_string());
+            let ad_group_id = format!("{}_aggregate", campaign_id);
+            KeywordReportRow {
+                date: "".to_string(),
+                campaign_id: campaign_id.clone(),
+                campaign_name,
+                ad_group_id: ad_group_id.clone(),
+                ad_group_name: "GA4 Aggregate".to_string(),
+                keyword_id: format!("ga4_event_{:03}", idx + 1),
+                keyword_text: event_name,
+                match_type: "EXACT".to_string(),
+                quality_score: None,
+                metrics: round_metrics(metrics),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    AnalyticsReport {
+        report_name: format!(
+            "GA4 Observed Report: {} to {}",
+            request.start_date, request.end_date
+        ),
+        date_range: format!("{} to {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d")),
+        total_metrics: round_metrics(total),
+        campaign_data,
+        ad_group_data,
+        keyword_data,
+    }
+}
+
+fn ga4_event_count_hint(event: &Ga4EventRawV1) -> u64 {
+    event
+        .session_id
+        .as_ref()
+        .and_then(|value| value.strip_prefix("ga4_count:"))
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|count| *count > 0)
+        .unwrap_or(1)
+}
+
+fn is_ga4_click_event(event_name: &str) -> bool {
+    let name = event_name.to_ascii_lowercase();
+    name.contains("click")
+        || name.contains("select")
+        || name.contains("cta")
+        || name == "outbound"
+}
+
+fn is_ga4_conversion_event(event_name: &str) -> bool {
+    let name = event_name.to_ascii_lowercase();
+    matches!(
+        name.as_str(),
+        "purchase"
+            | "generate_lead"
+            | "begin_checkout"
+            | "add_to_cart"
+            | "add_payment_info"
+            | "subscribe"
+            | "sign_up"
+    )
 }
 
 fn google_ads_rows_to_raw_v1(
@@ -2204,6 +2349,134 @@ mod tests {
             .uncertainty_notes
             .iter()
             .any(|note| note.contains("zero rows")));
+    }
+
+    struct Ga4OnlyObservedConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2 for Ga4OnlyObservedConnector {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "ga4_observed_connector".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "ga4_observed_connector".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            Ok(vec![
+                Ga4EventRawV1 {
+                    event_name: "page_view".to_string(),
+                    event_timestamp_utc: "2026-01-01T12:00:00Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("ga4_count:20".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase".to_string(),
+                    event_timestamp_utc: "2026-01-01T13:00:00Z".to_string(),
+                    user_pseudo_id: "user-2".to_string(),
+                    session_id: Some("ga4_count:3".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                },
+                Ga4EventRawV1 {
+                    event_name: "cta_click".to_string(),
+                    event_timestamp_utc: "2026-01-01T14:00:00Z".to_string(),
+                    user_pseudo_id: "user-3".to_string(),
+                    session_id: Some("ga4_count:5".to_string()),
+                    campaign: Some("Brand Search".to_string()),
+                },
+            ])
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn ga4_only_observed_mode_populates_report_tables() {
+        let mut cfg = super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(Ga4OnlyObservedConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(12),
+            profile_id: "staging-ga4-only".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let artifact = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("ga4-only observed run should produce non-empty report tables");
+        assert!(!artifact.report.campaign_data.is_empty());
+        assert!(!artifact.report.ad_group_data.is_empty());
+        assert!(!artifact.report.keyword_data.is_empty());
+        assert_eq!(artifact.report.total_metrics.impressions, 28);
+        assert_eq!(artifact.report.total_metrics.clicks, 5);
+        assert!((artifact.report.total_metrics.conversions - 3.0).abs() < 0.001);
     }
 
     #[test]
