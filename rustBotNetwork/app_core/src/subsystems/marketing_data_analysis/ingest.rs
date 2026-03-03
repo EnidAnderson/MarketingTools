@@ -3,6 +3,7 @@ use chrono::{DateTime, Datelike, Duration, NaiveDate, Timelike, Utc};
 use chrono_tz::Tz;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// # NDOC
@@ -116,6 +117,14 @@ pub struct Ga4EventRawV1 {
     pub user_pseudo_id: String,
     pub session_id: Option<String>,
     pub campaign: Option<String>,
+    #[serde(default)]
+    pub device_category: Option<String>,
+    #[serde(default)]
+    pub source_medium: Option<String>,
+    #[serde(default)]
+    pub dimensions: BTreeMap<String, String>,
+    #[serde(default)]
+    pub metrics: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -498,6 +507,10 @@ mod tests {
             user_pseudo_id: "u1".to_string(),
             session_id: None,
             campaign: None,
+            device_category: None,
+            source_medium: None,
+            dimensions: BTreeMap::new(),
+            metrics: BTreeMap::new(),
         };
         let parsed = Cleaned::<Ga4EventV1>::try_from(raw);
         assert!(parsed.is_err());

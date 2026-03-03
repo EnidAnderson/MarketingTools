@@ -7,9 +7,10 @@ use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_analytics_connector_v2,
     build_executive_dashboard_snapshot, evaluate_analytics_connectors_preflight,
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
-    verify_connector_attestation_with_registry_v1, AnalyticsConnectorConfigV1, AnalyticsRunStore,
-    DashboardExportAuditRecordV1, DashboardExportAuditStore, MockAnalyticsRequestV1,
-    PersistedAnalyticsRunV1, SnapshotBuildOptions,
+    verify_connector_attestation_with_registry_v1, AnalyticsConnectorConfigV1,
+    AnalyticsConnectorModeV1, AnalyticsRunStore, DashboardExportAuditRecordV1,
+    DashboardExportAuditStore, Ga4RawQueryV1, MockAnalyticsRequestV1,
+    ObservedReadOnlyAnalyticsConnectorV2, PersistedAnalyticsRunV1, SnapshotBuildOptions,
 };
 use app_core::tools::base_tool::BaseTool;
 use app_core::tools::css_analyzer::CssAnalyzerTool;
@@ -531,6 +532,54 @@ async fn validate_analytics_connectors_preflight(
 }
 
 /// # NDOC
+/// component: `tauri_commands::fetch_ga4_raw_report`
+/// purpose: Execute an observed/read-only GA4 raw report query with caller-defined dimensions and metrics.
+#[tauri::command]
+async fn fetch_ga4_raw_report(
+    query: Ga4RawQueryV1,
+    config: Option<AnalyticsConnectorConfigV1>,
+) -> Result<Value, String> {
+    let effective_config = match config {
+        Some(cfg) => cfg,
+        None => analytics_connector_config_from_env().map_err(|err| {
+            format!(
+                "{}: {} (field_paths={:?})",
+                err.code, err.message, err.field_paths
+            )
+        })?,
+    };
+    if effective_config.mode != AnalyticsConnectorModeV1::ObservedReadOnly {
+        return Err(serde_json::json!({
+            "code": "analytics_ga4_raw_requires_observed_mode",
+            "message": "GA4 raw report queries require observed_read_only connector mode.",
+            "source": "fetch_ga4_raw_report",
+            "details": {
+                "mode": match effective_config.mode {
+                    AnalyticsConnectorModeV1::Simulated => "simulated",
+                    AnalyticsConnectorModeV1::ObservedReadOnly => "observed_read_only"
+                }
+            }
+        })
+        .to_string());
+    }
+    let connector = ObservedReadOnlyAnalyticsConnectorV2::new();
+    let report = connector
+        .fetch_ga4_raw_report(&effective_config, query)
+        .await
+        .map_err(|err| {
+            serde_json::json!({
+                "code": err.code,
+                "message": err.message,
+                "field_paths": err.field_paths,
+                "context": err.context
+            })
+            .to_string()
+        })?;
+    serde_json::to_value(report)
+        .map_err(|err| format!("failed to serialize GA4 raw report payload: {err}"))
+}
+
+/// # NDOC
 /// component: `tauri_commands::start_mock_text_workflow_job`
 /// purpose: Start async deterministic text workflow run and return job id for polling.
 #[tauri::command]
@@ -589,6 +638,7 @@ fn get_analysis_workflows() -> Result<Value, String> {
             "entrypoint": "start_mock_analytics_job",
             "history_entrypoint": "get_mock_analytics_run_history",
             "preflight_entrypoint": "validate_analytics_connectors_preflight",
+            "raw_ga4_entrypoint": "fetch_ga4_raw_report",
             "stages": [
                 "validating_input",
                 "preflight_connectors",
@@ -1064,6 +1114,7 @@ pub fn run() {
             cancel_tool_job,
             start_mock_analytics_job,
             validate_analytics_connectors_preflight,
+            fetch_ga4_raw_report,
             start_mock_text_workflow_job,
             get_mock_analytics_run_history,
             get_analysis_workflows,
@@ -1227,6 +1278,26 @@ mod tests {
             .and_then(Value::as_array)
             .map(|items| !items.is_empty())
             .unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn ga4_raw_report_command_rejects_simulated_mode() {
+        let result = fetch_ga4_raw_report(
+            Ga4RawQueryV1 {
+                start_date: "2026-02-01".to_string(),
+                end_date: "2026-02-01".to_string(),
+                dimensions: vec!["eventName".to_string(), "dateHour".to_string()],
+                metrics: vec!["eventCount".to_string()],
+                event_names: Vec::new(),
+                page_limit: Some(100),
+                max_pages: Some(1),
+            },
+            Some(AnalyticsConnectorConfigV1::simulated_defaults()),
+        )
+        .await;
+        assert!(result.is_err());
+        let err = result.expect_err("simulated mode should be blocked");
+        assert!(err.contains("analytics_ga4_raw_requires_observed_mode"));
     }
 
     #[test]

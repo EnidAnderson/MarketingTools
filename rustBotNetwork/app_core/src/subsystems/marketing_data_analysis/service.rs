@@ -2121,6 +2121,10 @@ mod tests {
             user_pseudo_id: " user_1 ".to_string(),
             session_id: Some("session-1".to_string()),
             campaign: Some("spring_launch".to_string()),
+            device_category: Some("mobile".to_string()),
+            source_medium: Some("google / cpc".to_string()),
+            dimensions: BTreeMap::new(),
+            metrics: BTreeMap::new(),
         }];
         let ads = vec![GoogleAdsRowRawV1 {
             campaign_id: " camp-1 ".to_string(),
@@ -2455,6 +2459,10 @@ mod tests {
                     user_pseudo_id: "user-1".to_string(),
                     session_id: Some("ga4_count:20".to_string()),
                     campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("desktop".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: BTreeMap::new(),
+                    metrics: BTreeMap::new(),
                 },
                 Ga4EventRawV1 {
                     event_name: "purchase".to_string(),
@@ -2462,6 +2470,10 @@ mod tests {
                     user_pseudo_id: "user-2".to_string(),
                     session_id: Some("ga4_count:3".to_string()),
                     campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: BTreeMap::new(),
+                    metrics: BTreeMap::new(),
                 },
                 Ga4EventRawV1 {
                     event_name: "cta_click".to_string(),
@@ -2469,6 +2481,10 @@ mod tests {
                     user_pseudo_id: "user-3".to_string(),
                     session_id: Some("ga4_count:5".to_string()),
                     campaign: Some("Brand Search".to_string()),
+                    device_category: Some("tablet".to_string()),
+                    source_medium: Some("direct / none".to_string()),
+                    dimensions: BTreeMap::new(),
+                    metrics: BTreeMap::new(),
                 },
             ])
         }

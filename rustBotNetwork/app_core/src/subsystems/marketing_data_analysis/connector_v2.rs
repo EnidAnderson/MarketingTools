@@ -16,6 +16,7 @@ use rand_chacha::ChaCha8Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -26,6 +27,10 @@ const OBSERVED_CONNECTOR_ID_V2: &str = "analytics_observed_read_only_connector_v
 const DEFAULT_GA4_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const DEFAULT_GA4_DATA_API_BASE_URL: &str = "https://analyticsdata.googleapis.com/v1beta";
 const GA4_SCOPE_READONLY: &str = "https://www.googleapis.com/auth/analytics.readonly";
+const GA4_RAW_REPORT_SCHEMA_VERSION_V1: &str = "ga4_raw_report.v1";
+const DEFAULT_GA4_PAGE_LIMIT: u32 = 10_000;
+const MAX_GA4_PAGE_LIMIT: u32 = 100_000;
+const DEFAULT_GA4_MAX_PAGES: u32 = 25;
 const CAMPAIGN_NAMES: &[&str] = &[
     "Summer Pet Food Promo",
     "New Puppy Essentials",
@@ -106,6 +111,50 @@ pub struct WixSessionRawV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::connector_v2`
+/// purpose: Query contract for fetching GA4 raw rows through Data API runReport.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Ga4RawQueryV1 {
+    pub start_date: String,
+    pub end_date: String,
+    pub dimensions: Vec<String>,
+    pub metrics: Vec<String>,
+    #[serde(default)]
+    pub event_names: Vec<String>,
+    #[serde(default)]
+    pub page_limit: Option<u32>,
+    #[serde(default)]
+    pub max_pages: Option<u32>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::connector_v2`
+/// purpose: One GA4 raw row as named dimension/metric maps.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct Ga4RawReportRowV1 {
+    #[serde(default)]
+    pub dimensions: BTreeMap<String, String>,
+    #[serde(default)]
+    pub metrics: BTreeMap<String, String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::connector_v2`
+/// purpose: Stable envelope for paginated GA4 raw report export.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct Ga4RawReportV1 {
+    pub schema_version: String,
+    pub property_id: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub dimensions: Vec<String>,
+    pub metrics: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<Ga4RawReportRowV1>,
+    pub row_count_hint: Option<u32>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::connector_v2`
 /// purpose: Async connector contract for GA4 + Google Ads + Wix observed/simulated fetches.
 #[async_trait]
 pub trait AnalyticsConnectorContractV2: Send + Sync {
@@ -181,8 +230,20 @@ struct OAuthTokenResponse {
 
 #[derive(Debug, Deserialize)]
 struct Ga4RunReportResponse {
+    #[serde(rename = "dimensionHeaders", default)]
+    dimension_headers: Vec<Ga4RunReportHeader>,
+    #[serde(rename = "metricHeaders", default)]
+    metric_headers: Vec<Ga4RunReportHeader>,
+    #[serde(rename = "rowCount", default)]
+    row_count: Option<u32>,
     #[serde(default)]
     rows: Vec<Ga4RunReportRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Ga4RunReportHeader {
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -221,6 +282,175 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             .build()
             .unwrap_or_else(|_| Client::new());
         Self { http }
+    }
+
+    pub async fn fetch_ga4_raw_report(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        query: Ga4RawQueryV1,
+    ) -> Result<Ga4RawReportV1, AnalyticsError> {
+        validate_analytics_connector_config_v1(config)?;
+        if config.mode != AnalyticsConnectorModeV1::ObservedReadOnly {
+            return Err(AnalyticsError::validation(
+                "analytics_ga4_raw_requires_observed_mode",
+                "GA4 raw report export requires observed_read_only connector mode",
+                "mode",
+            ));
+        }
+        if !config.ga4.enabled {
+            return Err(AnalyticsError::validation(
+                "analytics_source_not_enabled",
+                "ga4 source is disabled in connector config",
+                "ga4.enabled",
+            ));
+        }
+        let query = self.normalize_ga4_query(query)?;
+        let start = parse_iso_date(&query.start_date, "start_date")?;
+        let end = parse_iso_date(&query.end_date, "end_date")?;
+        if start > end {
+            return Err(AnalyticsError::new(
+                "analytics_ga4_raw_invalid_date_range",
+                "start_date must be <= end_date",
+                vec!["start_date".to_string(), "end_date".to_string()],
+                None,
+            ));
+        }
+
+        let page_limit = query
+            .page_limit
+            .unwrap_or(DEFAULT_GA4_PAGE_LIMIT)
+            .clamp(1, MAX_GA4_PAGE_LIMIT);
+        let max_pages = query.max_pages.unwrap_or(DEFAULT_GA4_MAX_PAGES).max(1);
+        let mut rows_out = Vec::new();
+        let mut offset = 0_u32;
+        let mut row_count_hint = None;
+        let mut pages = 0_u32;
+        loop {
+            let page = self
+                .run_ga4_report_page(
+                    config,
+                    start,
+                    end,
+                    &query.dimensions,
+                    &query.metrics,
+                    page_limit,
+                    offset,
+                    &query.event_names,
+                )
+                .await?;
+            row_count_hint = row_count_hint.or(page.row_count);
+            let page_rows = self.rows_to_named_maps(&page);
+            if page_rows.is_empty() {
+                break;
+            }
+            offset = offset.saturating_add(page_rows.len() as u32);
+            rows_out.extend(page_rows);
+            pages = pages.saturating_add(1);
+            if pages >= max_pages {
+                break;
+            }
+            if let Some(total) = page.row_count {
+                if offset >= total {
+                    break;
+                }
+            }
+            if page.rows.len() < page_limit as usize {
+                break;
+            }
+        }
+
+        Ok(Ga4RawReportV1 {
+            schema_version: GA4_RAW_REPORT_SCHEMA_VERSION_V1.to_string(),
+            property_id: config.ga4.property_id.trim().to_string(),
+            start_date: query.start_date,
+            end_date: query.end_date,
+            dimensions: query.dimensions,
+            metrics: query.metrics,
+            rows: rows_out,
+            row_count_hint,
+        })
+    }
+
+    fn normalize_ga4_query(
+        &self,
+        mut query: Ga4RawQueryV1,
+    ) -> Result<Ga4RawQueryV1, AnalyticsError> {
+        query.start_date = query.start_date.trim().to_string();
+        query.end_date = query.end_date.trim().to_string();
+        query.dimensions = normalize_field_list(query.dimensions);
+        query.metrics = normalize_field_list(query.metrics);
+        query.event_names = query
+            .event_names
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+        if query.start_date.is_empty() || query.end_date.is_empty() {
+            return Err(AnalyticsError::validation(
+                "analytics_ga4_raw_query_dates_required",
+                "start_date and end_date are required",
+                "start_date",
+            ));
+        }
+        if query.dimensions.is_empty() {
+            return Err(AnalyticsError::validation(
+                "analytics_ga4_raw_query_dimensions_required",
+                "at least one GA4 dimension is required",
+                "dimensions",
+            ));
+        }
+        if query.metrics.is_empty() {
+            return Err(AnalyticsError::validation(
+                "analytics_ga4_raw_query_metrics_required",
+                "at least one GA4 metric is required",
+                "metrics",
+            ));
+        }
+        for name in query.dimensions.iter().chain(query.metrics.iter()) {
+            if !is_valid_ga4_field_name(name) {
+                return Err(AnalyticsError::validation(
+                    "analytics_ga4_raw_query_field_invalid",
+                    format!("GA4 field '{}' contains invalid characters", name),
+                    "dimensions",
+                ));
+            }
+        }
+        Ok(query)
+    }
+
+    fn rows_to_named_maps(&self, response: &Ga4RunReportResponse) -> Vec<Ga4RawReportRowV1> {
+        let mut rows_out = Vec::with_capacity(response.rows.len());
+        for row in &response.rows {
+            let mut dimensions = BTreeMap::new();
+            for (idx, value) in row.dimension_values.iter().enumerate() {
+                let key = response
+                    .dimension_headers
+                    .get(idx)
+                    .map(|header| header.name.trim())
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("dimension_{}", idx));
+                dimensions.insert(key, value.value.clone());
+            }
+
+            let mut metrics = BTreeMap::new();
+            for (idx, value) in row.metric_values.iter().enumerate() {
+                let key = response
+                    .metric_headers
+                    .get(idx)
+                    .map(|header| header.name.trim())
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("metric_{}", idx));
+                metrics.insert(key, value.value.clone());
+            }
+
+            rows_out.push(Ga4RawReportRowV1 {
+                dimensions,
+                metrics,
+            });
+        }
+        rows_out
     }
 
     fn credentials_path(&self, config: &AnalyticsConnectorConfigV1) -> Option<String> {
@@ -486,12 +716,16 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
         Ok(payload.access_token)
     }
 
-    async fn run_ga4_report(
+    async fn run_ga4_report_page(
         &self,
         config: &AnalyticsConnectorConfigV1,
         start: NaiveDate,
         end: NaiveDate,
+        dimensions: &[String],
+        metrics: &[String],
         limit: u32,
+        offset: u32,
+        event_names: &[String],
     ) -> Result<Ga4RunReportResponse, AnalyticsError> {
         let access_credential = self.fetch_access_token(config).await?;
         let base_url = self.ga4_data_api_base_url();
@@ -500,22 +734,40 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             base_url,
             config.ga4.property_id.trim()
         );
+        let dimensions_json = dimensions
+            .iter()
+            .map(|name| json!({ "name": name }))
+            .collect::<Vec<_>>();
+        let metrics_json = metrics
+            .iter()
+            .map(|name| json!({ "name": name }))
+            .collect::<Vec<_>>();
+        let mut payload = json!({
+            "dateRanges": [{
+                "startDate": start.format("%Y-%m-%d").to_string(),
+                "endDate": end.format("%Y-%m-%d").to_string()
+            }],
+            "dimensions": dimensions_json,
+            "metrics": metrics_json,
+            "limit": limit.to_string(),
+            "offset": offset.to_string()
+        });
+        if !event_names.is_empty() && dimensions.iter().any(|name| name == "eventName") {
+            payload["dimensionFilter"] = json!({
+                "filter": {
+                    "fieldName": "eventName",
+                    "inListFilter": {
+                        "values": event_names,
+                        "caseSensitive": false
+                    }
+                }
+            });
+        }
         let response = self
             .http
             .post(url.clone())
             .bearer_auth(access_credential)
-            .json(&json!({
-                "dateRanges": [{
-                    "startDate": start.format("%Y-%m-%d").to_string(),
-                    "endDate": end.format("%Y-%m-%d").to_string()
-                }],
-                "dimensions": [
-                    { "name": "eventName" },
-                    { "name": "dateHour" }
-                ],
-                "metrics": [{ "name": "eventCount" }],
-                "limit": limit.to_string()
-            }))
+            .json(&payload)
             .send()
             .await
             .map_err(|err| {
@@ -544,6 +796,25 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 None,
             )
         })
+    }
+
+    async fn run_ga4_report(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        start: NaiveDate,
+        end: NaiveDate,
+        limit: u32,
+    ) -> Result<Ga4RunReportResponse, AnalyticsError> {
+        let dimensions = vec![
+            "eventName".to_string(),
+            "dateHour".to_string(),
+            "campaignName".to_string(),
+            "deviceCategory".to_string(),
+            "sessionSourceMedium".to_string(),
+        ];
+        let metrics = vec!["eventCount".to_string()];
+        self.run_ga4_report_page(config, start, end, &dimensions, &metrics, limit, 0, &[])
+            .await
     }
 
     fn parse_date_hour_rfc3339(&self, value: &str, timezone: &str) -> Option<String> {
@@ -578,25 +849,47 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
     fn map_ga4_rows(
         &self,
         config: &AnalyticsConnectorConfigV1,
-        rows: &[Ga4RunReportRow],
+        response: &Ga4RunReportResponse,
     ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
-        let mut events = Vec::with_capacity(rows.len());
-        for (idx, row) in rows.iter().enumerate() {
-            if row.dimension_values.len() < 2 {
-                return Err(AnalyticsError::new(
-                    "analytics_ga4_schema_mismatch",
-                    "GA4 runReport row did not include expected dimensions",
-                    vec!["ga4.property_id".to_string()],
-                    Some(
-                        json!({ "row_index": idx, "dimension_count": row.dimension_values.len() }),
-                    ),
-                ));
-            }
-            let event_name = row.dimension_values[0].value.trim().to_string();
-            let date_hour = row.dimension_values[1].value.trim().to_string();
-            if event_name.is_empty() {
-                continue;
-            }
+        let named_rows = self.rows_to_named_maps(response);
+        let mut events = Vec::with_capacity(named_rows.len());
+        for (idx, row) in named_rows.into_iter().enumerate() {
+            let event_name = row
+                .dimensions
+                .get("eventName")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    let available_dimensions =
+                        row.dimensions.keys().cloned().collect::<Vec<String>>();
+                    AnalyticsError::new(
+                        "analytics_ga4_schema_mismatch",
+                        "GA4 runReport row did not include required 'eventName' dimension",
+                        vec!["ga4.property_id".to_string()],
+                        Some(json!({
+                            "row_index": idx,
+                            "available_dimensions": available_dimensions
+                        })),
+                    )
+                })?;
+            let date_hour = row
+                .dimensions
+                .get("dateHour")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    let available_dimensions =
+                        row.dimensions.keys().cloned().collect::<Vec<String>>();
+                    AnalyticsError::new(
+                        "analytics_ga4_schema_mismatch",
+                        "GA4 runReport row did not include required 'dateHour' dimension",
+                        vec!["ga4.property_id".to_string()],
+                        Some(json!({
+                            "row_index": idx,
+                            "available_dimensions": available_dimensions
+                        })),
+                    )
+                })?;
             let timestamp = self
                 .parse_date_hour_rfc3339(&date_hour, config.ga4.timezone.trim())
                 .ok_or_else(|| {
@@ -611,12 +904,27 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                         })),
                     )
                 })?;
-            let campaign = None;
+            let campaign = row
+                .dimensions
+                .get("campaignName")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let device_category = row
+                .dimensions
+                .get("deviceCategory")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let source_medium = row
+                .dimensions
+                .get("sessionSourceMedium")
+                .or_else(|| row.dimensions.get("sourceMedium"))
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
             let user = format!("ga4_row_{}_{}_{}", idx, date_hour, event_name);
             let event_count = row
-                .metric_values
-                .first()
-                .and_then(|metric| metric.value.trim().parse::<u64>().ok())
+                .metrics
+                .get("eventCount")
+                .and_then(|metric| metric.trim().parse::<u64>().ok())
                 .filter(|count| *count > 0)
                 .unwrap_or(1);
             events.push(Ga4EventRawV1 {
@@ -625,6 +933,10 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 user_pseudo_id: user,
                 session_id: Some(format!("ga4_count:{}", event_count)),
                 campaign,
+                device_category,
+                source_medium,
+                dimensions: row.dimensions,
+                metrics: row.metrics,
             });
         }
         Ok(events)
@@ -765,7 +1077,7 @@ impl AnalyticsConnectorContractV2 for ObservedReadOnlyAnalyticsConnectorV2 {
             ));
         }
         let response = self.run_ga4_report(config, start, end, 1000).await?;
-        self.map_ga4_rows(config, &response.rows)
+        self.map_ga4_rows(config, &response)
     }
 
     async fn fetch_google_ads_rows(
@@ -966,6 +1278,38 @@ impl AnalyticsConnectorContractV2 for SimulatedAnalyticsConnectorV2 {
     }
 }
 
+fn parse_iso_date(value: &str, field_path: &str) -> Result<NaiveDate, AnalyticsError> {
+    let trimmed = value.trim();
+    NaiveDate::parse_from_str(trimmed, "%Y-%m-%d").map_err(|_| {
+        AnalyticsError::validation(
+            "analytics_ga4_raw_invalid_date",
+            format!("{} must be in YYYY-MM-DD format", field_path),
+            field_path,
+        )
+    })
+}
+
+fn normalize_field_list(values: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !normalized.iter().any(|existing| existing == trimmed) {
+            normalized.push(trimmed.to_string());
+        }
+    }
+    normalized
+}
+
+fn is_valid_ga4_field_name(name: &str) -> bool {
+    !name.trim().is_empty()
+        && name.chars().all(|ch| {
+            ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' || ch == '.' || ch == '-'
+        })
+}
+
 fn source_health(
     source_system: &str,
     enabled: bool,
@@ -1040,6 +1384,10 @@ pub fn generate_simulated_ga4_events(
             user_pseudo_id: format!(" user_{}_{} ", seed % 1000, current.ordinal()),
             session_id: Some(format!("sess_{}_{}", seed, current.ordinal())),
             campaign: Some("spring_launch".to_string()),
+            device_category: Some("mobile".to_string()),
+            source_medium: Some("google / cpc".to_string()),
+            dimensions: BTreeMap::new(),
+            metrics: BTreeMap::new(),
         });
         let Some(next) = current.checked_add_signed(Duration::days(1)) else {
             break;

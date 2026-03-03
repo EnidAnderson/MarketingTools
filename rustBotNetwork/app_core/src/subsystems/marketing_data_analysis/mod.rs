@@ -47,8 +47,9 @@ pub use connector_v2::{
     generate_simulated_ga4_events, generate_simulated_google_ads_rows,
     generate_simulated_wix_orders, generate_simulated_wix_sessions,
     AnalyticsConnectorCapabilitiesV1, AnalyticsConnectorContractV2, ConnectorHealthStatusV1,
-    ConnectorSourceCapabilityV1, ConnectorSourceHealthV1, ObservedReadOnlyAnalyticsConnectorV2,
-    SimulatedAnalyticsConnectorV2, WixSessionRawV1,
+    ConnectorSourceCapabilityV1, ConnectorSourceHealthV1, Ga4RawQueryV1, Ga4RawReportRowV1,
+    Ga4RawReportV1, ObservedReadOnlyAnalyticsConnectorV2, SimulatedAnalyticsConnectorV2,
+    WixSessionRawV1,
 };
 pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
