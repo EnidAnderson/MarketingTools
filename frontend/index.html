@@ -136,9 +136,11 @@
         </label>
         <label>Workflow Template
           <select id="textTemplateSelect"></select>
+          <small class="field-hint">Select a loaded template ID (example: <code>tpl.email_landing_sequence.v1</code>).</small>
         </label>
         <label>Ad Variant Count
           <input id="textVariantCount" type="number" min="1" max="30" value="12" />
+          <small class="field-hint">Integer between <code>1</code> and <code>30</code>.</small>
         </label>
         <label>Route Policy
           <select id="textRoutePolicy">
@@ -146,12 +148,15 @@
             <option value="balanced" selected>Balanced</option>
             <option value="quality">Quality</option>
           </select>
+          <small class="field-hint">Allowed values: <code>economy</code>, <code>balanced</code>, <code>quality</code>.</small>
         </label>
         <label>Product Name
           <input id="textProductName" type="text" value="Nature's Diet Raw Mix" />
+          <small class="field-hint">Short product label (max 80 chars).</small>
         </label>
         <label>Offer Summary
           <input id="textOfferSummary" type="text" value="Save 20% on first order" />
+          <small class="field-hint">Concrete offer text (max 140 chars).</small>
         </label>
         <label>Audience Segments (comma separated)
           <input
@@ -164,13 +169,15 @@
         </label>
         <label>Positioning Statement
           <input id="textPositioningStatement" type="text" value="Raw-first nutrition with practical prep" />
+          <small class="field-hint">Single sentence positioning line (max 160 chars).</small>
         </label>
         <label>Message Big Idea
           <input id="textBigIdea" type="text" value="Fresh confidence in every bowl" />
+          <small class="field-hint">Campaign theme in one sentence (max 120 chars).</small>
         </label>
         <label>Primary Proof Claim
           <input id="textProofClaim" type="text" value="high digestibility blend" />
-          <small class="field-hint">Keep factual and concise; avoid medical cure claims.</small>
+          <small class="field-hint">Keep factual and concise; avoid medical cure claims (max 120 chars).</small>
         </label>
       </div>
       <div class="control-actions">
@@ -183,6 +190,7 @@
           Allow paid calls (still capped)
         </label>
       </div>
+      <div id="textWorkflowInputErrors" class="input-errors" aria-live="polite"></div>
       <div id="textWorkflowStatus" class="job-status is-info">Workflow studio is ready.</div>
       <div id="textBudgetSummary" class="narrative-item">Policy summary will appear here.</div>
       <div id="textTemplateSummary" class="narrative-item">Load templates to view graph and workflow metadata.</div>

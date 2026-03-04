@@ -23,6 +23,20 @@ const MAX_ANALYTICS_DATE_SPAN_DAYS = 93;
 const MAX_PROFILE_ID_LENGTH = 128;
 const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const MAX_COMPARE_WINDOW_RUNS = 24;
+const TEXT_VARIANT_MIN = 1;
+const TEXT_VARIANT_MAX = 30;
+const TEXT_MAX_SPINE_ID_LENGTH = 128;
+const TEXT_MAX_TEMPLATE_ID_LENGTH = 128;
+const TEXT_CAMPAIGN_SPINE_PATTERN = /^spine\.[a-z0-9][a-z0-9._-]{0,111}\.v\d+$/;
+const TEXT_TEMPLATE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const TEXT_ALLOWED_ROUTE_POLICIES = new Set(['economy', 'balanced', 'quality']);
+const TEXT_MAX_PRODUCT_NAME_LENGTH = 80;
+const TEXT_MAX_OFFER_SUMMARY_LENGTH = 140;
+const TEXT_MAX_POSITIONING_LENGTH = 160;
+const TEXT_MAX_BIG_IDEA_LENGTH = 120;
+const TEXT_MAX_PROOF_CLAIM_LENGTH = 120;
+const TEXT_MAX_AUDIENCE_SEGMENTS = 12;
+const TEXT_MAX_AUDIENCE_SEGMENT_LENGTH = 64;
 
 const el = {
   profileId: document.getElementById('profileId'),
@@ -74,6 +88,7 @@ const el = {
   textRoutePolicy: document.getElementById('textRoutePolicy'),
   textIncludeEvidence: document.getElementById('textIncludeEvidence'),
   textPaidCallsAllowed: document.getElementById('textPaidCallsAllowed'),
+  textWorkflowInputErrors: document.getElementById('textWorkflowInputErrors'),
   textBudgetSummary: document.getElementById('textBudgetSummary'),
   textExportPacketButton: document.getElementById('textExportPacketButton'),
   textWorkflowStatus: document.getElementById('textWorkflowStatus'),
@@ -105,8 +120,12 @@ function wireEvents() {
   el.loadTextTemplatesButton?.addEventListener('click', () => loadTextWorkflowTemplates());
   el.runTextWorkflowButton?.addEventListener('click', () => runTextWorkflowAndRender());
   el.textExportPacketButton?.addEventListener('click', () => exportTextWorkflowPacket());
-  el.textRoutePolicy?.addEventListener('change', () => updateTextBudgetSummary());
+  el.textRoutePolicy?.addEventListener('change', () => {
+    updateTextBudgetSummary();
+    validateTextWorkflowInputs({ showSummary: false, requireTemplate: false });
+  });
   wireAnalyticsInputValidation();
+  wireTextWorkflowInputValidation();
   el.exportPacketButton?.addEventListener('click', () => {
     status('Export packet is not yet wired to a file command. Gate status is active.');
   });
@@ -222,6 +241,30 @@ function wireAnalyticsInputValidation() {
   }
 }
 
+function wireTextWorkflowInputValidation() {
+  const fields = textWorkflowValidationFields();
+  for (const field of fields) {
+    field?.addEventListener('input', () => validateTextWorkflowInputs({ showSummary: false, requireTemplate: false }));
+    field?.addEventListener('change', () => validateTextWorkflowInputs({ showSummary: false, requireTemplate: false }));
+    field?.addEventListener('blur', () => validateTextWorkflowInputs({ showSummary: false, requireTemplate: false }));
+  }
+}
+
+function textWorkflowValidationFields() {
+  return [
+    el.textCampaignSpineId,
+    el.textTemplateSelect,
+    el.textVariantCount,
+    el.textRoutePolicy,
+    el.textProductName,
+    el.textOfferSummary,
+    el.textAudienceSegments,
+    el.textPositioningStatement,
+    el.textBigIdea,
+    el.textProofClaim
+  ];
+}
+
 function analyticsValidationFields() {
   return [
     el.profileId,
@@ -238,6 +281,14 @@ function analyticsValidationFields() {
 
 function clearAnalyticsInputValidationState() {
   for (const field of analyticsValidationFields()) {
+    if (!field) continue;
+    field.classList.remove('is-invalid');
+    field.removeAttribute('aria-invalid');
+  }
+}
+
+function clearTextWorkflowInputValidationState() {
+  for (const field of textWorkflowValidationFields()) {
     if (!field) continue;
     field.classList.remove('is-invalid');
     field.removeAttribute('aria-invalid');
@@ -261,6 +312,22 @@ function renderAnalyticsInputErrors(errors, { showSummary = true } = {}) {
   el.analyticsInputErrors.classList.add('is-visible');
   el.analyticsInputErrors.innerHTML = `
     <div class="input-errors-title">Please fix the highlighted inputs:</div>
+    <ul>
+      ${errors.map(err => `<li class="input-error-item">${escapeHtml(err)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+function renderTextWorkflowInputErrors(errors, { showSummary = true } = {}) {
+  if (!el.textWorkflowInputErrors) return;
+  if (!errors.length || !showSummary) {
+    el.textWorkflowInputErrors.classList.remove('is-visible');
+    el.textWorkflowInputErrors.innerHTML = '';
+    return;
+  }
+  el.textWorkflowInputErrors.classList.add('is-visible');
+  el.textWorkflowInputErrors.innerHTML = `
+    <div class="input-errors-title">Please fix the highlighted text workflow inputs:</div>
     <ul>
       ${errors.map(err => `<li class="input-error-item">${escapeHtml(err)}</li>`).join('')}
     </ul>
@@ -395,6 +462,170 @@ function validateAnalyticsRunInputs({ showSummary = true } = {}) {
   };
 }
 
+function validateTextWorkflowTemplateLoadInputs({ showSummary = true } = {}) {
+  const errors = [];
+  clearTextWorkflowInputValidationState();
+  const campaignSpineId = cleanText(el.textCampaignSpineId?.value);
+
+  if (!campaignSpineId) {
+    errors.push('Campaign Spine ID is required.');
+    markFieldInvalid(el.textCampaignSpineId, 'Campaign Spine ID is required.');
+  } else {
+    if (campaignSpineId.length > TEXT_MAX_SPINE_ID_LENGTH) {
+      errors.push(`Campaign Spine ID must be <= ${TEXT_MAX_SPINE_ID_LENGTH} characters.`);
+      markFieldInvalid(el.textCampaignSpineId, `Campaign Spine ID must be <= ${TEXT_MAX_SPINE_ID_LENGTH} characters.`);
+    }
+    if (!TEXT_CAMPAIGN_SPINE_PATTERN.test(campaignSpineId)) {
+      errors.push('Campaign Spine ID must match spine.<name>.v<number> (example: spine.default.v1).');
+      markFieldInvalid(el.textCampaignSpineId, 'Use format spine.<name>.v<number>.');
+    }
+  }
+
+  renderTextWorkflowInputErrors(errors, { showSummary });
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, values: { campaignSpineId } };
+}
+
+function validateTextWorkflowInputs({ showSummary = true, requireTemplate = true } = {}) {
+  const errors = [];
+  clearTextWorkflowInputValidationState();
+
+  const campaignSpineId = cleanText(el.textCampaignSpineId?.value);
+  if (!campaignSpineId) {
+    errors.push('Campaign Spine ID is required.');
+    markFieldInvalid(el.textCampaignSpineId, 'Campaign Spine ID is required.');
+  } else {
+    if (campaignSpineId.length > TEXT_MAX_SPINE_ID_LENGTH) {
+      errors.push(`Campaign Spine ID must be <= ${TEXT_MAX_SPINE_ID_LENGTH} characters.`);
+      markFieldInvalid(el.textCampaignSpineId, `Campaign Spine ID must be <= ${TEXT_MAX_SPINE_ID_LENGTH} characters.`);
+    }
+    if (!TEXT_CAMPAIGN_SPINE_PATTERN.test(campaignSpineId)) {
+      errors.push('Campaign Spine ID must match spine.<name>.v<number> (example: spine.default.v1).');
+      markFieldInvalid(el.textCampaignSpineId, 'Use format spine.<name>.v<number>.');
+    }
+  }
+
+  const templateId = cleanText(el.textTemplateSelect?.value);
+  if (requireTemplate) {
+    if (!templateId) {
+      errors.push('Workflow Template is required. Load templates, then select one.');
+      markFieldInvalid(el.textTemplateSelect, 'Workflow Template is required.');
+    } else {
+      if (templateId.length > TEXT_MAX_TEMPLATE_ID_LENGTH) {
+        errors.push(`Workflow Template must be <= ${TEXT_MAX_TEMPLATE_ID_LENGTH} characters.`);
+        markFieldInvalid(el.textTemplateSelect, `Workflow Template must be <= ${TEXT_MAX_TEMPLATE_ID_LENGTH} characters.`);
+      }
+      if (!TEXT_TEMPLATE_ID_PATTERN.test(templateId)) {
+        errors.push('Workflow Template must be lowercase slug/dot format (example: tpl.email_landing_sequence.v1).');
+        markFieldInvalid(el.textTemplateSelect, 'Use lowercase slug/dot format.');
+      }
+    }
+  }
+
+  const variantRaw = String(el.textVariantCount?.value || '').trim();
+  let variantCount = NaN;
+  if (!/^\d+$/.test(variantRaw)) {
+    errors.push(`Ad Variant Count must be an integer between ${TEXT_VARIANT_MIN} and ${TEXT_VARIANT_MAX}.`);
+    markFieldInvalid(el.textVariantCount, `Use an integer between ${TEXT_VARIANT_MIN} and ${TEXT_VARIANT_MAX}.`);
+  } else {
+    variantCount = Number(variantRaw);
+    if (!Number.isInteger(variantCount) || variantCount < TEXT_VARIANT_MIN || variantCount > TEXT_VARIANT_MAX) {
+      errors.push(`Ad Variant Count must be an integer between ${TEXT_VARIANT_MIN} and ${TEXT_VARIANT_MAX}.`);
+      markFieldInvalid(el.textVariantCount, `Use an integer between ${TEXT_VARIANT_MIN} and ${TEXT_VARIANT_MAX}.`);
+    }
+  }
+
+  const routePolicyId = String(el.textRoutePolicy?.value || '').trim().toLowerCase();
+  if (!TEXT_ALLOWED_ROUTE_POLICIES.has(routePolicyId)) {
+    errors.push('Route Policy must be one of: economy, balanced, quality.');
+    markFieldInvalid(el.textRoutePolicy, 'Use economy, balanced, or quality.');
+  }
+
+  const productName = cleanText(el.textProductName?.value);
+  if (!productName) {
+    errors.push('Product Name is required.');
+    markFieldInvalid(el.textProductName, 'Product Name is required.');
+  } else if (productName.length > TEXT_MAX_PRODUCT_NAME_LENGTH) {
+    errors.push(`Product Name must be <= ${TEXT_MAX_PRODUCT_NAME_LENGTH} characters.`);
+    markFieldInvalid(el.textProductName, `Product Name must be <= ${TEXT_MAX_PRODUCT_NAME_LENGTH} characters.`);
+  }
+
+  const offerSummary = cleanText(el.textOfferSummary?.value);
+  if (!offerSummary) {
+    errors.push('Offer Summary is required.');
+    markFieldInvalid(el.textOfferSummary, 'Offer Summary is required.');
+  } else if (offerSummary.length > TEXT_MAX_OFFER_SUMMARY_LENGTH) {
+    errors.push(`Offer Summary must be <= ${TEXT_MAX_OFFER_SUMMARY_LENGTH} characters.`);
+    markFieldInvalid(el.textOfferSummary, `Offer Summary must be <= ${TEXT_MAX_OFFER_SUMMARY_LENGTH} characters.`);
+  }
+
+  const positioningStatement = cleanText(el.textPositioningStatement?.value);
+  if (!positioningStatement) {
+    errors.push('Positioning Statement is required.');
+    markFieldInvalid(el.textPositioningStatement, 'Positioning Statement is required.');
+  } else if (positioningStatement.length > TEXT_MAX_POSITIONING_LENGTH) {
+    errors.push(`Positioning Statement must be <= ${TEXT_MAX_POSITIONING_LENGTH} characters.`);
+    markFieldInvalid(el.textPositioningStatement, `Positioning Statement must be <= ${TEXT_MAX_POSITIONING_LENGTH} characters.`);
+  }
+
+  const bigIdea = cleanText(el.textBigIdea?.value);
+  if (!bigIdea) {
+    errors.push('Message Big Idea is required.');
+    markFieldInvalid(el.textBigIdea, 'Message Big Idea is required.');
+  } else if (bigIdea.length > TEXT_MAX_BIG_IDEA_LENGTH) {
+    errors.push(`Message Big Idea must be <= ${TEXT_MAX_BIG_IDEA_LENGTH} characters.`);
+    markFieldInvalid(el.textBigIdea, `Message Big Idea must be <= ${TEXT_MAX_BIG_IDEA_LENGTH} characters.`);
+  }
+
+  const proofClaim = cleanText(el.textProofClaim?.value);
+  if (!proofClaim) {
+    errors.push('Primary Proof Claim is required.');
+    markFieldInvalid(el.textProofClaim, 'Primary Proof Claim is required.');
+  } else if (proofClaim.length > TEXT_MAX_PROOF_CLAIM_LENGTH) {
+    errors.push(`Primary Proof Claim must be <= ${TEXT_MAX_PROOF_CLAIM_LENGTH} characters.`);
+    markFieldInvalid(el.textProofClaim, `Primary Proof Claim must be <= ${TEXT_MAX_PROOF_CLAIM_LENGTH} characters.`);
+  }
+
+  const audienceSegments = String(el.textAudienceSegments?.value || '')
+    .split(',')
+    .map(segment => segment.trim())
+    .filter(Boolean);
+  if (!audienceSegments.length) {
+    errors.push('Audience Segments requires at least one segment.');
+    markFieldInvalid(el.textAudienceSegments, 'Provide at least one comma-separated segment.');
+  }
+  if (audienceSegments.length > TEXT_MAX_AUDIENCE_SEGMENTS) {
+    errors.push(`Audience Segments supports up to ${TEXT_MAX_AUDIENCE_SEGMENTS} segments.`);
+    markFieldInvalid(el.textAudienceSegments, `Use ${TEXT_MAX_AUDIENCE_SEGMENTS} segments or fewer.`);
+  }
+  const oversizedAudienceSegment = audienceSegments.find(segment => segment.length > TEXT_MAX_AUDIENCE_SEGMENT_LENGTH);
+  if (oversizedAudienceSegment) {
+    errors.push(`Each Audience Segment must be <= ${TEXT_MAX_AUDIENCE_SEGMENT_LENGTH} characters.`);
+    markFieldInvalid(el.textAudienceSegments, `Each segment must be <= ${TEXT_MAX_AUDIENCE_SEGMENT_LENGTH} chars.`);
+  }
+
+  renderTextWorkflowInputErrors(errors, { showSummary });
+  if (errors.length) return { ok: false, errors };
+
+  return {
+    ok: true,
+    values: {
+      campaignSpineId,
+      templateId: templateId || 'tpl.email_landing_sequence.v1',
+      variantCount,
+      routePolicyId,
+      productName,
+      offerSummary,
+      audienceSegments,
+      positioningStatement,
+      bigIdea,
+      proofClaim,
+      includeEvidence: !!el.textIncludeEvidence?.checked,
+      paidCallsAllowed: !!el.textPaidCallsAllowed?.checked
+    }
+  };
+}
+
 async function generateRunAndRefresh() {
   status('Validating analytics inputs...');
   setButtonBusy(el.runButton, true);
@@ -480,7 +711,12 @@ function defaultBudgetEnvelope() {
 }
 
 async function loadTextWorkflowTemplates() {
-  const campaignSpineId = cleanText(el.textCampaignSpineId?.value) || 'spine.default.v1';
+  const validation = validateTextWorkflowTemplateLoadInputs({ showSummary: true });
+  if (!validation.ok) {
+    textWorkflowStatus('Input validation failed. Fix highlighted fields and reload templates.');
+    return;
+  }
+  const campaignSpineId = validation.values.campaignSpineId;
   textWorkflowStatus('Loading available workflow templates...');
   setButtonBusy(el.loadTextTemplatesButton, true);
   try {
@@ -532,7 +768,12 @@ function renderTemplateSummary(template) {
 }
 
 async function runTextWorkflowAndRender() {
-  const request = buildTextWorkflowRequest();
+  const validation = validateTextWorkflowInputs({ showSummary: true, requireTemplate: true });
+  if (!validation.ok) {
+    textWorkflowStatus('Input validation failed. Fix highlighted text workflow fields and try again.');
+    return;
+  }
+  const request = buildTextWorkflowRequest(validation.values);
   textWorkflowStatus('Starting text workflow run...');
   setButtonBusy(el.runTextWorkflowButton, true);
   if (el.textExportPacketButton) {
@@ -570,21 +811,22 @@ async function runTextWorkflowAndRender() {
   }
 }
 
-function buildTextWorkflowRequest() {
+function buildTextWorkflowRequest(values = null) {
+  const resolved = values || {};
   return buildTextWorkflowRequestFromInputs({
-    routePolicyId: el.textRoutePolicy?.value || 'balanced',
-    templateId: cleanText(el.textTemplateSelect.value) || 'tpl.email_landing_sequence.v1',
-    variantCount: parseOptionalInt(el.textVariantCount.value) || 12,
-    paidCallsAllowed: !!el.textPaidCallsAllowed.checked,
-    campaignSpineId: cleanText(el.textCampaignSpineId.value) || 'spine.default.v1',
-    productName: cleanText(el.textProductName.value) || "Nature's Diet Raw Mix",
-    offerSummary: cleanText(el.textOfferSummary.value) || 'Save 20% on first order',
-    audienceSegments: cleanText(el.textAudienceSegments.value) || '',
+    routePolicyId: resolved.routePolicyId || (el.textRoutePolicy?.value || 'balanced'),
+    templateId: resolved.templateId || (cleanText(el.textTemplateSelect.value) || 'tpl.email_landing_sequence.v1'),
+    variantCount: resolved.variantCount ?? (parseOptionalInt(el.textVariantCount.value) || 12),
+    paidCallsAllowed: resolved.paidCallsAllowed ?? !!el.textPaidCallsAllowed.checked,
+    campaignSpineId: resolved.campaignSpineId || (cleanText(el.textCampaignSpineId.value) || 'spine.default.v1'),
+    productName: resolved.productName || (cleanText(el.textProductName.value) || "Nature's Diet Raw Mix"),
+    offerSummary: resolved.offerSummary || (cleanText(el.textOfferSummary.value) || 'Save 20% on first order'),
+    audienceSegments: resolved.audienceSegments || (cleanText(el.textAudienceSegments.value) || ''),
     positioningStatement:
-      cleanText(el.textPositioningStatement.value) || 'Raw-first nutrition with practical prep',
-    bigIdea: cleanText(el.textBigIdea.value) || 'Fresh confidence in every bowl',
-    proofClaim: cleanText(el.textProofClaim.value) || 'high digestibility blend',
-    includeEvidence: !!el.textIncludeEvidence.checked
+      resolved.positioningStatement || (cleanText(el.textPositioningStatement.value) || 'Raw-first nutrition with practical prep'),
+    bigIdea: resolved.bigIdea || (cleanText(el.textBigIdea.value) || 'Fresh confidence in every bowl'),
+    proofClaim: resolved.proofClaim || (cleanText(el.textProofClaim.value) || 'high digestibility blend'),
+    includeEvidence: resolved.includeEvidence ?? !!el.textIncludeEvidence.checked
   });
 }
 
