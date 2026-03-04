@@ -12,6 +12,7 @@ const state = {
   currentSnapshot: null,
   deltaChart: null,
   channelMixChart: null,
+  dailyRevenueChart: null,
   funnelSurvivalChart: null,
   attributionDeltaChart: null,
   historyRuns: [],
@@ -73,6 +74,7 @@ const el = {
   funnelSurvivalSummary: document.getElementById('funnelSurvivalSummary'),
   attributionDeltaSummary: document.getElementById('attributionDeltaSummary'),
   attributionDeltaTableBody: document.getElementById('attributionDeltaTableBody'),
+  dailyRevenueSummary: document.getElementById('dailyRevenueSummary'),
   highLeverageScorecardPanel: document.getElementById('highLeverageScorecardPanel'),
   loadTextTemplatesButton: document.getElementById('loadTextTemplatesButton'),
   runTextWorkflowButton: document.getElementById('runTextWorkflowButton'),
@@ -974,6 +976,7 @@ function renderExecutiveDashboard(snapshot) {
   renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
   renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
   renderChannelMixChart(snapshot.channel_mix_series || [], snapshot.roas_target_band);
+  renderDailyRevenueChart(snapshot.daily_revenue_series || []);
   renderQuality(snapshot.quality_controls || {});
   renderDataQuality(snapshot.data_quality || {});
   renderDrift(snapshot.historical_analysis || {});
@@ -1389,6 +1392,68 @@ function renderChannelMixChart(points, roasTarget) {
   });
 }
 
+function renderDailyRevenueChart(points) {
+  const ctx = document.getElementById('dailyRevenueChart');
+  const rows = Array.isArray(points) ? points : [];
+  if (el.dailyRevenueSummary) {
+    if (!rows.length) {
+      el.dailyRevenueSummary.textContent = 'No daily revenue series available in this run yet.';
+    } else {
+      const totalRevenue = rows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
+      const activeDays = rows.filter(row => Number(row.revenue || 0) > 0).length;
+      el.dailyRevenueSummary.textContent = `Total in selected window: $${fmtNum(totalRevenue, 2)} across ${rows.length} day(s); ${activeDays} day(s) recorded non-zero revenue.`;
+    }
+  }
+  if (!ctx || typeof Chart === 'undefined') return;
+
+  if (!rows.length) {
+    if (state.dailyRevenueChart) {
+      state.dailyRevenueChart.destroy();
+      state.dailyRevenueChart = null;
+    }
+    return;
+  }
+
+  const labels = rows.map(row => row.date || 'n/a');
+  const revenue = rows.map(row => Number((row.revenue || 0).toFixed(2)));
+  const conversions = rows.map(row => Number((row.conversions || 0).toFixed(2)));
+
+  if (state.dailyRevenueChart) state.dailyRevenueChart.destroy();
+  state.dailyRevenueChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'Revenue ($)',
+          data: revenue,
+          borderColor: 'rgba(11,143,140,1)',
+          backgroundColor: 'rgba(11,143,140,0.12)',
+          yAxisID: 'y',
+          tension: 0.25
+        },
+        {
+          type: 'bar',
+          label: 'Conversions',
+          data: conversions,
+          borderColor: 'rgba(47,110,165,1)',
+          backgroundColor: 'rgba(47,110,165,0.55)',
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { position: 'left', title: { display: true, text: 'Revenue ($)' } },
+        y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Conversions' } }
+      }
+    }
+  });
+}
+
 function renderQuality(quality) {
   const allChecks = [
     ...(quality.schema_drift_checks || []),
@@ -1645,6 +1710,7 @@ function emptySnapshot(profileId, opts, reason) {
     roas_target_band: opts?.targetRoas ?? null,
     kpis: [],
     channel_mix_series: [],
+    daily_revenue_series: [],
     funnel_summary: { stages: [], dropoff_hotspot_stage: 'n/a' },
     storefront_behavior_summary: {
       source_system: 'wix_storefront_not_available',
@@ -1764,6 +1830,15 @@ function fallbackSnapshot(profileId, opts) {
       { period_label: '2026-01-18 -> 2026-01-24', spend: 300, revenue: 1700, roas: 5.67 },
       { period_label: '2026-01-25 -> 2026-01-31', spend: 340, revenue: 2000, roas: 5.88 },
       { period_label: '2026-02-01 -> 2026-02-07', spend: 350, revenue: 2200, roas: 6.29 }
+    ],
+    daily_revenue_series: [
+      { date: '2026-02-01', revenue: 260, conversions: 4, source_system: 'ga4' },
+      { date: '2026-02-02', revenue: 290, conversions: 5, source_system: 'ga4' },
+      { date: '2026-02-03', revenue: 305, conversions: 5, source_system: 'ga4' },
+      { date: '2026-02-04', revenue: 312, conversions: 5, source_system: 'ga4' },
+      { date: '2026-02-05', revenue: 321, conversions: 5, source_system: 'ga4' },
+      { date: '2026-02-06', revenue: 354, conversions: 5, source_system: 'ga4' },
+      { date: '2026-02-07', revenue: 358, conversions: 5, source_system: 'ga4' }
     ],
     funnel_summary: {
       stages: [

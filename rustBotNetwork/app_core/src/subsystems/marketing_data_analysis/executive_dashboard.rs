@@ -1,11 +1,11 @@
 // provenance: decision_id=DEC-0015; change_request_id=CR-QA_FIXER-0032
 use super::contracts::{
-    AttributionDeltaReportV1, AttributionDeltaRowV1, ChannelMixPointV1, DataQualityScorecardV1,
-    DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1,
-    FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1,
-    HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1, PublishExportGateV1,
-    QualityCheckApplicabilityV1, RevenueTruthReportV1, StorefrontBehaviorRowV1,
-    StorefrontBehaviorSummaryV1,
+    AttributionDeltaReportV1, AttributionDeltaRowV1, ChannelMixPointV1, DailyRevenuePointV1,
+    DataQualityScorecardV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
+    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1,
+    FunnelSurvivalReportV1, HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1,
+    PortfolioRowV1, PublishExportGateV1, QualityCheckApplicabilityV1, RevenueTruthReportV1,
+    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
 };
 use super::{
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
@@ -114,6 +114,7 @@ pub fn build_executive_dashboard_snapshot(
             options.target_roas,
         ),
         channel_mix_series: build_channel_mix_series(runs),
+        daily_revenue_series: build_daily_revenue_series(latest),
         roas_target_band: options.target_roas,
         funnel_summary,
         storefront_behavior_summary: build_storefront_summary(latest, latest_metrics),
@@ -131,6 +132,10 @@ pub fn build_executive_dashboard_snapshot(
         trust_status,
         alerts,
     })
+}
+
+fn build_daily_revenue_series(run: &PersistedAnalyticsRunV1) -> Vec<DailyRevenuePointV1> {
+    run.artifact.daily_revenue_series.clone()
 }
 
 fn build_high_leverage_reports(
@@ -1215,6 +1220,7 @@ mod tests {
                 connector_attestation: Default::default(),
             },
             report: Default::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: Vec::new(),
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["sim".to_string()],
@@ -1276,6 +1282,31 @@ mod tests {
                 .gate_status,
             "ready"
         );
+    }
+
+    #[test]
+    fn snapshot_carries_daily_revenue_series() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.daily_revenue_series = vec![
+            crate::subsystems::marketing_data_analysis::contracts::DailyRevenuePointV1 {
+                date: "2026-02-01".to_string(),
+                revenue: 120.5,
+                conversions: 2.0,
+                source_system: "ga4".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::DailyRevenuePointV1 {
+                date: "2026-02-02".to_string(),
+                revenue: 130.5,
+                conversions: 2.0,
+                source_system: "ga4".to_string(),
+            },
+        ];
+        let snap =
+            build_executive_dashboard_snapshot("p1", &[run], SnapshotBuildOptions::default())
+                .expect("snapshot");
+        assert_eq!(snap.daily_revenue_series.len(), 2);
+        assert_eq!(snap.daily_revenue_series[0].date, "2026-02-01");
+        assert!((snap.daily_revenue_series[1].revenue - 130.5).abs() < 0.0001);
     }
 
     #[test]

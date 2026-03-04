@@ -565,6 +565,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub request: MockAnalyticsRequestV1,
     pub metadata: AnalyticsRunMetadataV1,
     pub report: AnalyticsReport,
+    #[serde(default)]
+    pub daily_revenue_series: Vec<DailyRevenuePointV1>,
     pub observed_evidence: Vec<EvidenceItem>,
     pub inferred_guidance: Vec<GuidanceItem>,
     pub uncertainty_notes: Vec<String>,
@@ -766,6 +768,17 @@ pub struct ChannelMixPointV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Daily revenue point for date-level revenue trend and reconciliation views.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct DailyRevenuePointV1 {
+    pub date: String,
+    pub revenue: f64,
+    pub conversions: f64,
+    pub source_system: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: One Wix storefront behavior aggregate row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct StorefrontBehaviorRowV1 {
@@ -860,6 +873,8 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub compare_window_runs: u8,
     pub kpis: Vec<KpiTileV1>,
     pub channel_mix_series: Vec<ChannelMixPointV1>,
+    #[serde(default)]
+    pub daily_revenue_series: Vec<DailyRevenuePointV1>,
     pub roas_target_band: Option<f64>,
     pub funnel_summary: FunnelSummaryV1,
     pub storefront_behavior_summary: StorefrontBehaviorSummaryV1,

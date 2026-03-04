@@ -202,6 +202,7 @@ mod tests {
                 connector_attestation: Default::default(),
             },
             report: Default::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: Vec::new(),
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["simulated".to_string()],

@@ -9,10 +9,11 @@ use super::connector_v2::{
 };
 use super::contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1, BudgetSummaryV1,
-    DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem, IngestCleaningNoteV1,
-    KpiAttributionNarrativeV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
-    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1, SourceCoverageV1,
-    SourceWindowGranularityV1, MOCK_ANALYTICS_SCHEMA_VERSION_V1,
+    DailyRevenuePointV1, DataQualitySummaryV1, EvidenceItem, FreshnessSlaPolicyV1, GuidanceItem,
+    IngestCleaningNoteV1, KpiAttributionNarrativeV1, MockAnalyticsArtifactV1,
+    MockAnalyticsRequestV1, OperatorSummaryV1, QualityCheckApplicabilityV1, QualityCheckV1,
+    ReconciliationPolicyV1, SourceCoverageV1, SourceWindowGranularityV1,
+    MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
 use super::ingest::{
     parse_ga4_event, parse_google_ads_row, parse_wix_order, window_completeness, CleaningNote,
@@ -246,10 +247,19 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         );
 
         let google_ads_raw_rows = google_ads_rows_to_raw_v1(&rows)?;
+        let mut report_from_ga4 = false;
         let mut report = rows_to_report(rows, &request, start, budget_plan.effective_end);
         if report.campaign_data.is_empty() && !ga4_events.is_empty() {
             report = ga4_events_to_report(&ga4_events, &request, start, budget_plan.effective_end);
+            report_from_ga4 = true;
         }
+        let daily_revenue_series = build_daily_revenue_series(
+            report_from_ga4,
+            &ga4_events,
+            &google_ads_raw_rows,
+            start,
+            budget_plan.effective_end,
+        );
         let ingest_audit =
             collect_ingest_cleaning_notes(&ga4_events, &google_ads_raw_rows, &wix_orders)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
@@ -355,6 +365,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             request,
             metadata,
             report,
+            daily_revenue_series,
             observed_evidence,
             inferred_guidance,
             uncertainty_notes,
@@ -770,6 +781,114 @@ fn ga4_events_to_report(
     }
 }
 
+fn build_daily_revenue_series(
+    report_from_ga4: bool,
+    ga4_events: &[Ga4EventRawV1],
+    google_ads_rows: &[GoogleAdsRowRawV1],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Vec<DailyRevenuePointV1> {
+    if report_from_ga4 && !ga4_events.is_empty() {
+        return build_daily_revenue_series_from_ga4(ga4_events, start, end);
+    }
+    if !google_ads_rows.is_empty() {
+        return build_daily_revenue_series_from_google_ads(google_ads_rows, start, end);
+    }
+    Vec::new()
+}
+
+fn build_daily_revenue_series_from_ga4(
+    ga4_events: &[Ga4EventRawV1],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Vec<DailyRevenuePointV1> {
+    let mut by_day = seeded_daily_revenue_map(start, end);
+    let mut seen_purchase_transaction_ids = BTreeSet::new();
+
+    for event in ga4_events {
+        if !is_ga4_canonical_purchase_event(&event.event_name) {
+            continue;
+        }
+        let first_transaction_occurrence = if let Some(tx_id) = ga4_transaction_id(event) {
+            if !seen_purchase_transaction_ids.insert(tx_id) {
+                continue;
+            }
+            true
+        } else {
+            false
+        };
+        let Some(day) = ga4_event_date_utc(event) else {
+            continue;
+        };
+        if day < start || day > end {
+            continue;
+        }
+        let revenue = ga4_purchase_revenue(event).unwrap_or(0.0).max(0.0);
+        let conversions = if first_transaction_occurrence {
+            1.0
+        } else {
+            ga4_event_count_hint(event) as f64
+        };
+        if let Some((day_revenue, day_conversions)) = by_day.get_mut(&day) {
+            *day_revenue += revenue;
+            *day_conversions += conversions.max(0.0);
+        }
+    }
+
+    by_day
+        .into_iter()
+        .map(|(date, (revenue, conversions))| DailyRevenuePointV1 {
+            date: date.format("%Y-%m-%d").to_string(),
+            revenue: round4(revenue.max(0.0)),
+            conversions: round4(conversions.max(0.0)),
+            source_system: "ga4".to_string(),
+        })
+        .collect()
+}
+
+fn build_daily_revenue_series_from_google_ads(
+    rows: &[GoogleAdsRowRawV1],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Vec<DailyRevenuePointV1> {
+    let mut by_day = seeded_daily_revenue_map(start, end);
+    for row in rows {
+        let Ok(day) = NaiveDate::parse_from_str(row.date.trim(), "%Y-%m-%d") else {
+            continue;
+        };
+        if day < start || day > end {
+            continue;
+        }
+        let revenue = row.conversions_micros as f64 / 1_000_000.0;
+        if let Some((day_revenue, _)) = by_day.get_mut(&day) {
+            *day_revenue += revenue.max(0.0);
+        }
+    }
+
+    by_day
+        .into_iter()
+        .map(|(date, (revenue, conversions))| DailyRevenuePointV1 {
+            date: date.format("%Y-%m-%d").to_string(),
+            revenue: round4(revenue.max(0.0)),
+            conversions: round4(conversions.max(0.0)),
+            source_system: "google_ads".to_string(),
+        })
+        .collect()
+}
+
+fn seeded_daily_revenue_map(start: NaiveDate, end: NaiveDate) -> BTreeMap<NaiveDate, (f64, f64)> {
+    let mut out = BTreeMap::new();
+    let mut day = start;
+    while day <= end {
+        out.insert(day, (0.0, 0.0));
+        let Some(next_day) = day.checked_add_signed(chrono::Duration::days(1)) else {
+            break;
+        };
+        day = next_day;
+    }
+    out
+}
+
 fn ga4_event_count_hint(event: &Ga4EventRawV1) -> u64 {
     event
         .session_id
@@ -811,6 +930,17 @@ fn ga4_event_epoch_seconds(event: &Ga4EventRawV1) -> Option<i64> {
             DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim())
                 .ok()
                 .map(|value| value.timestamp())
+        })
+}
+
+fn ga4_event_date_utc(event: &Ga4EventRawV1) -> Option<NaiveDate> {
+    ga4_event_epoch_seconds(event)
+        .and_then(|seconds| DateTime::<Utc>::from_timestamp(seconds, 0))
+        .map(|timestamp| timestamp.date_naive())
+        .or_else(|| {
+            DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim())
+                .ok()
+                .map(|value| value.with_timezone(&Utc).date_naive())
         })
 }
 
@@ -2627,6 +2757,72 @@ mod tests {
     }
 
     #[test]
+    fn daily_revenue_series_tracks_canonical_purchase_revenue_per_day() {
+        let mut purchase_day_one = BTreeMap::new();
+        purchase_day_one.insert("ga_session_id".to_string(), "session-1".to_string());
+        purchase_day_one.insert("transaction_id".to_string(), "tx-1".to_string());
+        purchase_day_one.insert("purchase_revenue".to_string(), "57.25".to_string());
+
+        let mut purchase_day_one_dup = purchase_day_one.clone();
+        purchase_day_one_dup.insert("batch_event_index".to_string(), "2".to_string());
+
+        let mut purchase_day_two = BTreeMap::new();
+        purchase_day_two.insert("ga_session_id".to_string(), "session-2".to_string());
+        purchase_day_two.insert("transaction_id".to_string(), "tx-2".to_string());
+        purchase_day_two.insert("purchase_revenue".to_string(), "42.75".to_string());
+
+        let events = vec![
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_day_one,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:02Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_day_one_dup,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-02T12:00:01Z".to_string(),
+                user_pseudo_id: "user-2".to_string(),
+                session_id: Some("session-2".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("desktop".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_day_two,
+                metrics: BTreeMap::new(),
+            },
+        ];
+
+        let series = build_daily_revenue_series_from_ga4(
+            &events,
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+            NaiveDate::from_ymd_opt(2026, 3, 3).expect("date"),
+        );
+
+        assert_eq!(series.len(), 3);
+        assert_eq!(series[0].date, "2026-03-01");
+        assert!((series[0].revenue - 57.25).abs() < 0.0001);
+        assert_eq!(series[1].date, "2026-03-02");
+        assert!((series[1].revenue - 42.75).abs() < 0.0001);
+        assert_eq!(series[2].date, "2026-03-03");
+        assert!(series[2].revenue.abs() < 0.0001);
+    }
+
+    #[test]
     fn ingest_cleaning_audit_includes_ads_and_wix_notes() {
         let ga4 = vec![Ga4EventRawV1 {
             event_name: " purchase ".to_string(),
@@ -3122,6 +3318,7 @@ mod tests {
                 connector_attestation: Default::default(),
             },
             report: AnalyticsReport::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: Vec::new(),
             inferred_guidance: Vec::new(),
             uncertainty_notes: vec!["sim".to_string()],

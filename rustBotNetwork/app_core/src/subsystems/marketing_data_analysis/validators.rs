@@ -158,6 +158,73 @@ pub fn validate_mock_analytics_artifact_v1(
         "total cost/conversions/conversion value must be non-negative",
     ));
 
+    let daily_revenue_dates_valid = artifact
+        .daily_revenue_series
+        .iter()
+        .all(|point| NaiveDate::parse_from_str(point.date.trim(), "%Y-%m-%d").is_ok());
+    checks.push(check(
+        "daily_revenue_dates_valid",
+        daily_revenue_dates_valid,
+        "daily_revenue_series dates must use YYYY-MM-DD",
+    ));
+
+    let daily_revenue_non_negative = artifact.daily_revenue_series.iter().all(|point| {
+        point.revenue.is_finite()
+            && point.revenue >= 0.0
+            && point.conversions.is_finite()
+            && point.conversions >= 0.0
+            && !point.source_system.trim().is_empty()
+    });
+    checks.push(check(
+        "daily_revenue_non_negative",
+        daily_revenue_non_negative,
+        "daily_revenue_series values must be finite, non-negative, and source-tagged",
+    ));
+
+    let daily_revenue_monotonic = artifact
+        .daily_revenue_series
+        .iter()
+        .try_fold(None, |previous: Option<NaiveDate>, point| {
+            let current = NaiveDate::parse_from_str(point.date.trim(), "%Y-%m-%d").ok()?;
+            if let Some(prev) = previous {
+                if current < prev {
+                    return None;
+                }
+            }
+            Some(Some(current))
+        })
+        .is_some();
+    checks.push(check(
+        "daily_revenue_monotonic",
+        daily_revenue_monotonic,
+        "daily_revenue_series must be date-sorted ascending",
+    ));
+    let daily_revenue_unique_dates = artifact
+        .daily_revenue_series
+        .iter()
+        .map(|point| point.date.trim())
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        == artifact.daily_revenue_series.len();
+    checks.push(check(
+        "daily_revenue_unique_dates",
+        daily_revenue_unique_dates,
+        "daily_revenue_series cannot contain duplicate dates",
+    ));
+
+    let daily_revenue_sum = artifact
+        .daily_revenue_series
+        .iter()
+        .map(|point| point.revenue)
+        .sum::<f64>();
+    let daily_revenue_matches_total = artifact.daily_revenue_series.is_empty()
+        || (daily_revenue_sum - artifact.report.total_metrics.conversions_value).abs() <= 0.05;
+    checks.push(check(
+        "daily_revenue_matches_total",
+        daily_revenue_matches_total,
+        "sum(daily_revenue_series.revenue) must match report total conversion value",
+    ));
+
     let derived_ctr = if artifact.report.total_metrics.impressions > 0 {
         (artifact.report.total_metrics.clicks as f64
             / artifact.report.total_metrics.impressions as f64)
@@ -510,6 +577,7 @@ mod tests {
                 connector_attestation: Default::default(),
             },
             report: AnalyticsReport::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: vec![EvidenceItem {
                 evidence_id: "e".to_string(),
                 label: "x".to_string(),
@@ -590,6 +658,7 @@ mod tests {
                 },
             },
             report: AnalyticsReport::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: vec![EvidenceItem {
                 evidence_id: "e".to_string(),
                 label: "x".to_string(),
@@ -673,6 +742,7 @@ mod tests {
                 connector_attestation: Default::default(),
             },
             report: AnalyticsReport::default(),
+            daily_revenue_series: Vec::new(),
             observed_evidence: vec![EvidenceItem {
                 evidence_id: "e".to_string(),
                 label: "x".to_string(),
@@ -757,6 +827,7 @@ mod tests {
                     connector_attestation: Default::default(),
                 },
                 report: AnalyticsReport::default(),
+                daily_revenue_series: Vec::new(),
                 observed_evidence: vec![EvidenceItem {
                     evidence_id: "e".to_string(),
                     label: "x".to_string(),
@@ -842,6 +913,7 @@ mod tests {
                     connector_attestation: Default::default(),
                 },
                 report: AnalyticsReport::default(),
+                daily_revenue_series: Vec::new(),
                 observed_evidence: vec![EvidenceItem {
                     evidence_id: "e".to_string(),
                     label: "x".to_string(),
