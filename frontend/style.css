@@ -145,6 +145,22 @@ label {
   color: var(--muted);
 }
 
+.field-hint {
+  margin-top: -2px;
+  font-size: 11px;
+  color: #6b7d8b;
+  line-height: 1.35;
+}
+
+.field-hint code {
+  font-size: 11px;
+  color: #31526b;
+  background: rgba(49, 82, 107, 0.08);
+  border: 1px solid rgba(49, 82, 107, 0.12);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
 input,
 select,
 button {
@@ -159,6 +175,12 @@ select {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.9);
   transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input.is-invalid,
+select.is-invalid {
+  border-color: rgba(211, 63, 73, 0.7);
+  background: rgba(254, 239, 242, 0.8);
 }
 
 input:focus-visible,
@@ -244,6 +266,34 @@ button:focus-visible {
   transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
+.input-errors {
+  display: none;
+  margin-top: 10px;
+  border: 1px solid rgba(211, 63, 73, 0.28);
+  border-radius: 10px;
+  background: #feeff2;
+  color: #9f2530;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.input-errors.is-visible {
+  display: block;
+}
+
+.input-errors-title {
+  font-weight: 600;
+}
+
+.input-errors ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.input-error-item {
+  margin: 2px 0;
+}
+
 .job-status.is-info {
   background: #f0f7f7;
   border-color: rgba(43, 122, 120, 0.28);
@@ -279,11 +329,67 @@ button:focus-visible {
   border-radius: 14px;
   padding: 12px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.8));
+  position: relative;
+}
+
+.kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .kpi .kpi-label {
   color: var(--muted);
   font-size: 12px;
+}
+
+.kpi-info {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(49, 82, 107, 0.35);
+  background: rgba(49, 82, 107, 0.08);
+  color: #31526b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  padding: 0;
+}
+
+.kpi-info:hover {
+  background: rgba(49, 82, 107, 0.15);
+}
+
+.kpi-tooltip {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: calc(100% - 6px);
+  z-index: 10;
+  border: 1px solid rgba(49, 82, 107, 0.25);
+  border-radius: 10px;
+  background: #f7fbff;
+  color: #26445b;
+  padding: 8px 10px;
+  font-size: 11px;
+  white-space: pre-line;
+  line-height: 1.35;
+  box-shadow: 0 8px 20px rgba(18, 25, 33, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.kpi:hover .kpi-tooltip,
+.kpi:focus-within .kpi-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .kpi .kpi-value {

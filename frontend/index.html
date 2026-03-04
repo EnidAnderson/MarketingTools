@@ -33,31 +33,70 @@
       </div>
       <div class="control-grid">
         <label>Workspace Profile
-          <input id="profileId" type="text" value="marketing_default" />
+          <input
+            id="profileId"
+            type="text"
+            value="marketing_default"
+            placeholder="marketing_default"
+            maxlength="128"
+            autocomplete="off"
+            title="Use lowercase slug format: letters, numbers, underscore, hyphen."
+          />
+          <small class="field-hint">Format: lowercase slug (example: <code>marketing_default</code> or <code>production-us</code>).</small>
         </label>
         <label>Start Date
           <input id="startDate" type="date" value="2026-02-01" />
+          <small class="field-hint">Format: <code>YYYY-MM-DD</code>.</small>
         </label>
         <label>End Date
           <input id="endDate" type="date" value="2026-02-07" />
+          <small class="field-hint">Must be on or after Start Date; max range is 93 days.</small>
         </label>
         <label>Campaign Filter (optional)
-          <input id="campaignFilter" type="text" placeholder="Optional" />
+          <input
+            id="campaignFilter"
+            type="text"
+            placeholder="e.g. Puppy"
+            maxlength="128"
+            autocomplete="off"
+            title="Contains match against campaign name (currently case-sensitive)."
+          />
+          <small class="field-hint">Contains match on campaign name.</small>
         </label>
         <label>Ad Group Filter (optional)
-          <input id="adGroupFilter" type="text" placeholder="Optional" />
+          <input
+            id="adGroupFilter"
+            type="text"
+            placeholder="e.g. Retarget"
+            maxlength="128"
+            autocomplete="off"
+            title="Contains match against ad group name (currently case-sensitive)."
+          />
+          <small class="field-hint">Contains match on ad group name.</small>
         </label>
         <label>Deterministic Seed (optional)
-          <input id="seed" type="number" placeholder="Use only when you want exact replay" />
+          <input
+            id="seed"
+            type="number"
+            min="0"
+            step="1"
+            inputmode="numeric"
+            placeholder="e.g. 42"
+            title="Unsigned integer used for exact replay."
+          />
+          <small class="field-hint">Unsigned integer. Leave blank for stable derived seed.</small>
         </label>
         <label>Baseline Window (runs)
-          <input id="compareWindowRuns" type="number" min="1" value="1" />
+          <input id="compareWindowRuns" type="number" min="1" max="24" step="1" value="1" />
+          <small class="field-hint">Positive integer. 1 compares against previous run.</small>
         </label>
         <label>Target ROAS (x)
-          <input id="targetRoas" type="number" step="0.01" value="6.00" />
+          <input id="targetRoas" type="number" min="0" step="0.01" value="6.00" />
+          <small class="field-hint">Non-negative decimal multiplier (example: <code>6.00</code>).</small>
         </label>
         <label>Monthly Revenue Goal ($)
-          <input id="monthlyRevenueTarget" type="number" step="0.01" value="3000" />
+          <input id="monthlyRevenueTarget" type="number" min="0" step="0.01" value="3000" />
+          <small class="field-hint">Non-negative dollar target (example: <code>3000</code>).</small>
         </label>
       </div>
       <div class="control-actions">
@@ -67,6 +106,7 @@
           Include operator narratives
         </label>
       </div>
+      <div id="analyticsInputErrors" class="input-errors" aria-live="polite"></div>
       <div id="jobStatus" class="job-status is-info">Ready when you are.</div>
     </section>
 
@@ -84,7 +124,15 @@
       </div>
       <div class="text-workflow-grid">
         <label>Campaign Spine ID
-          <input id="textCampaignSpineId" type="text" value="spine.default.v1" />
+          <input
+            id="textCampaignSpineId"
+            type="text"
+            value="spine.default.v1"
+            placeholder="spine.default.v1"
+            maxlength="128"
+            autocomplete="off"
+          />
+          <small class="field-hint">ID format: <code>spine.&lt;name&gt;.v1</code>.</small>
         </label>
         <label>Workflow Template
           <select id="textTemplateSelect"></select>
@@ -106,7 +154,13 @@
           <input id="textOfferSummary" type="text" value="Save 20% on first order" />
         </label>
         <label>Audience Segments (comma separated)
-          <input id="textAudienceSegments" type="text" value="new puppy owners,sensitive stomach" />
+          <input
+            id="textAudienceSegments"
+            type="text"
+            value="new puppy owners,sensitive stomach"
+            placeholder="new puppy owners, sensitive stomach"
+          />
+          <small class="field-hint">Comma-separated list. Example: <code>new puppy owners, sensitive stomach</code>.</small>
         </label>
         <label>Positioning Statement
           <input id="textPositioningStatement" type="text" value="Raw-first nutrition with practical prep" />
@@ -116,6 +170,7 @@
         </label>
         <label>Primary Proof Claim
           <input id="textProofClaim" type="text" value="high digestibility blend" />
+          <small class="field-hint">Keep factual and concise; avoid medical cure claims.</small>
         </label>
       </div>
       <div class="control-actions">

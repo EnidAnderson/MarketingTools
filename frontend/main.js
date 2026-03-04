@@ -19,6 +19,11 @@ const state = {
   textWorkflowResult: null
 };
 
+const MAX_ANALYTICS_DATE_SPAN_DAYS = 93;
+const MAX_PROFILE_ID_LENGTH = 128;
+const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const MAX_COMPARE_WINDOW_RUNS = 24;
+
 const el = {
   profileId: document.getElementById('profileId'),
   startDate: document.getElementById('startDate'),
@@ -30,6 +35,7 @@ const el = {
   targetRoas: document.getElementById('targetRoas'),
   monthlyRevenueTarget: document.getElementById('monthlyRevenueTarget'),
   includeNarratives: document.getElementById('includeNarratives'),
+  analyticsInputErrors: document.getElementById('analyticsInputErrors'),
   runButton: document.getElementById('runButton'),
   refreshButton: document.getElementById('refreshButton'),
   refreshStamp: document.getElementById('refreshStamp'),
@@ -100,6 +106,7 @@ function wireEvents() {
   el.runTextWorkflowButton?.addEventListener('click', () => runTextWorkflowAndRender());
   el.textExportPacketButton?.addEventListener('click', () => exportTextWorkflowPacket());
   el.textRoutePolicy?.addEventListener('change', () => updateTextBudgetSummary());
+  wireAnalyticsInputValidation();
   el.exportPacketButton?.addEventListener('click', () => {
     status('Export packet is not yet wired to a file command. Gate status is active.');
   });
@@ -206,10 +213,200 @@ function currentPhaseOptions() {
   };
 }
 
+function wireAnalyticsInputValidation() {
+  const fields = analyticsValidationFields();
+  for (const field of fields) {
+    field?.addEventListener('input', () => validateAnalyticsRunInputs({ showSummary: false }));
+    field?.addEventListener('change', () => validateAnalyticsRunInputs({ showSummary: false }));
+    field?.addEventListener('blur', () => validateAnalyticsRunInputs({ showSummary: false }));
+  }
+}
+
+function analyticsValidationFields() {
+  return [
+    el.profileId,
+    el.startDate,
+    el.endDate,
+    el.campaignFilter,
+    el.adGroupFilter,
+    el.seed,
+    el.compareWindowRuns,
+    el.targetRoas,
+    el.monthlyRevenueTarget
+  ];
+}
+
+function clearAnalyticsInputValidationState() {
+  for (const field of analyticsValidationFields()) {
+    if (!field) continue;
+    field.classList.remove('is-invalid');
+    field.removeAttribute('aria-invalid');
+  }
+}
+
+function markFieldInvalid(field, message) {
+  if (!field) return;
+  field.classList.add('is-invalid');
+  field.setAttribute('aria-invalid', 'true');
+  field.dataset.validationError = message;
+}
+
+function renderAnalyticsInputErrors(errors, { showSummary = true } = {}) {
+  if (!el.analyticsInputErrors) return;
+  if (!errors.length || !showSummary) {
+    el.analyticsInputErrors.classList.remove('is-visible');
+    el.analyticsInputErrors.innerHTML = '';
+    return;
+  }
+  el.analyticsInputErrors.classList.add('is-visible');
+  el.analyticsInputErrors.innerHTML = `
+    <div class="input-errors-title">Please fix the highlighted inputs:</div>
+    <ul>
+      ${errors.map(err => `<li class="input-error-item">${escapeHtml(err)}</li>`).join('')}
+    </ul>
+  `;
+}
+
+function parseIsoDateInput(value) {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [yearText, monthText, dayText] = text.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return { raw: text, date };
+}
+
+function validateAnalyticsRunInputs({ showSummary = true } = {}) {
+  const errors = [];
+  clearAnalyticsInputValidationState();
+
+  const profileIdRaw = String(el.profileId?.value || '');
+  const profileId = profileIdRaw.trim();
+  if (!profileId) {
+    errors.push('Workspace Profile is required.');
+    markFieldInvalid(el.profileId, 'Workspace Profile is required.');
+  } else {
+    if (profileId.length > MAX_PROFILE_ID_LENGTH) {
+      errors.push(`Workspace Profile must be <= ${MAX_PROFILE_ID_LENGTH} characters.`);
+      markFieldInvalid(el.profileId, `Workspace Profile must be <= ${MAX_PROFILE_ID_LENGTH} characters.`);
+    }
+    if (!PROFILE_ID_PATTERN.test(profileId)) {
+      errors.push('Workspace Profile must be lowercase slug format (letters, numbers, underscore, hyphen).');
+      markFieldInvalid(el.profileId, 'Use lowercase slug format (letters, numbers, underscore, hyphen).');
+    }
+  }
+
+  const start = parseIsoDateInput(el.startDate?.value);
+  const end = parseIsoDateInput(el.endDate?.value);
+  if (!start) {
+    errors.push('Start Date must use YYYY-MM-DD.');
+    markFieldInvalid(el.startDate, 'Start Date must use YYYY-MM-DD.');
+  }
+  if (!end) {
+    errors.push('End Date must use YYYY-MM-DD.');
+    markFieldInvalid(el.endDate, 'End Date must use YYYY-MM-DD.');
+  }
+  if (start && end) {
+    if (start.date > end.date) {
+      errors.push('Start Date must be on or before End Date.');
+      markFieldInvalid(el.startDate, 'Start Date must be on or before End Date.');
+      markFieldInvalid(el.endDate, 'End Date must be on or after Start Date.');
+    } else {
+      const spanDays = Math.round((end.date - start.date) / 86_400_000) + 1;
+      if (spanDays > MAX_ANALYTICS_DATE_SPAN_DAYS) {
+        errors.push(`Date range cannot exceed ${MAX_ANALYTICS_DATE_SPAN_DAYS} days.`);
+        markFieldInvalid(el.startDate, `Date range cannot exceed ${MAX_ANALYTICS_DATE_SPAN_DAYS} days.`);
+        markFieldInvalid(el.endDate, `Date range cannot exceed ${MAX_ANALYTICS_DATE_SPAN_DAYS} days.`);
+      }
+    }
+  }
+
+  const campaignFilter = cleanText(el.campaignFilter?.value);
+  if (campaignFilter && campaignFilter.length > 128) {
+    errors.push('Campaign Filter must be <= 128 characters.');
+    markFieldInvalid(el.campaignFilter, 'Campaign Filter must be <= 128 characters.');
+  }
+
+  const adGroupFilter = cleanText(el.adGroupFilter?.value);
+  if (adGroupFilter && adGroupFilter.length > 128) {
+    errors.push('Ad Group Filter must be <= 128 characters.');
+    markFieldInvalid(el.adGroupFilter, 'Ad Group Filter must be <= 128 characters.');
+  }
+
+  const seedRaw = String(el.seed?.value || '').trim();
+  let seed = null;
+  if (seedRaw) {
+    if (!/^\d+$/.test(seedRaw)) {
+      errors.push('Deterministic Seed must be an unsigned integer.');
+      markFieldInvalid(el.seed, 'Deterministic Seed must be an unsigned integer.');
+    } else {
+      seed = Number(seedRaw);
+      if (!Number.isSafeInteger(seed) || seed < 0) {
+        errors.push(`Deterministic Seed must be between 0 and ${Number.MAX_SAFE_INTEGER}.`);
+        markFieldInvalid(el.seed, `Seed must be between 0 and ${Number.MAX_SAFE_INTEGER}.`);
+      }
+    }
+  }
+
+  const compareWindowRaw = String(el.compareWindowRuns?.value || '').trim();
+  const compareWindowRuns = /^\d+$/.test(compareWindowRaw)
+    ? Number(compareWindowRaw)
+    : NaN;
+  if (!Number.isInteger(compareWindowRuns) || compareWindowRuns < 1 || compareWindowRuns > MAX_COMPARE_WINDOW_RUNS) {
+    errors.push(`Baseline Window must be an integer between 1 and ${MAX_COMPARE_WINDOW_RUNS}.`);
+    markFieldInvalid(el.compareWindowRuns, `Use an integer between 1 and ${MAX_COMPARE_WINDOW_RUNS}.`);
+  }
+
+  const targetRoas = parseOptionalFloat(el.targetRoas?.value);
+  if (targetRoas != null && targetRoas < 0) {
+    errors.push('Target ROAS must be a non-negative number.');
+    markFieldInvalid(el.targetRoas, 'Target ROAS must be a non-negative number.');
+  }
+
+  const monthlyRevenueTarget = parseOptionalFloat(el.monthlyRevenueTarget?.value);
+  if (monthlyRevenueTarget != null && monthlyRevenueTarget < 0) {
+    errors.push('Monthly Revenue Goal must be a non-negative number.');
+    markFieldInvalid(el.monthlyRevenueTarget, 'Monthly Revenue Goal must be a non-negative number.');
+  }
+
+  renderAnalyticsInputErrors(errors, { showSummary });
+  if (errors.length) return { ok: false, errors };
+
+  return {
+    ok: true,
+    values: {
+      profileId,
+      startDate: start.raw,
+      endDate: end.raw,
+      campaignFilter,
+      adGroupFilter,
+      seed
+    }
+  };
+}
+
 async function generateRunAndRefresh() {
-  status('Submitting analytics snapshot request...');
+  status('Validating analytics inputs...');
   setButtonBusy(el.runButton, true);
-  const profileId = cleanText(el.profileId.value) || 'marketing_default';
+  const validation = validateAnalyticsRunInputs({ showSummary: true });
+  if (!validation.ok) {
+    status('Input validation failed. Fix highlighted fields and try again.');
+    setButtonBusy(el.runButton, false);
+    return;
+  }
+
+  const profileId = validation.values.profileId;
+  status('Submitting analytics snapshot request...');
   const preflight = await runConnectorPreflight(profileId);
   if (!preflight.ok) {
     const reasons = (preflight.blocking_reasons || []).join(' | ') || 'connector preflight failed';
@@ -219,11 +416,11 @@ async function generateRunAndRefresh() {
   }
 
   const request = {
-    start_date: el.startDate.value,
-    end_date: el.endDate.value,
-    campaign_filter: cleanText(el.campaignFilter.value),
-    ad_group_filter: cleanText(el.adGroupFilter.value),
-    seed: parseOptionalInt(el.seed.value),
+    start_date: validation.values.startDate,
+    end_date: validation.values.endDate,
+    campaign_filter: validation.values.campaignFilter,
+    ad_group_filter: validation.values.adGroupFilter,
+    seed: validation.values.seed,
     profile_id: profileId,
     include_narratives: el.includeNarratives.checked,
     budget_envelope: defaultBudgetEnvelope()
@@ -531,7 +728,7 @@ function renderExecutiveDashboard(snapshot) {
   if (!snapshot) return;
 
   el.runIdBadge.textContent = `Run: ${snapshot.run_id || 'n/a'} | Compare: ${snapshot.compare_window_runs || 1} run(s)`;
-  renderKpis(snapshot.kpis || []);
+  renderKpis(snapshot.kpis || [], snapshot);
   renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
   renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
   renderChannelMixChart(snapshot.channel_mix_series || [], snapshot.roas_target_band);
@@ -762,22 +959,93 @@ function renderHighLeverageScorecard(scorecard, gate) {
   el.highLeverageScorecardPanel.innerHTML = ratioRows.join('');
 }
 
-function renderKpis(kpis) {
+function renderKpis(kpis, snapshot = null) {
   const cards = Array.isArray(kpis) ? kpis : [];
   if (!cards.length) {
     el.kpiGrid.innerHTML = '<div class="kpi"><div class="kpi-label">No KPI data</div><div class="kpi-value">n/a</div><div class="kpi-note">Run the pipeline to populate this panel.</div></div>';
     return;
   }
-  el.kpiGrid.innerHTML = cards.map(kpi => {
+  const kpiLookup = buildKpiLookup(cards);
+  el.kpiGrid.innerHTML = cards.map((kpi, index) => {
     const delta = formatDelta(kpi.delta_percent);
     const targetDelta = formatDelta(kpi.target_delta_percent);
     const targetText = kpi.target_delta_percent == null ? '' : ` | vs target ${targetDelta}`;
+    const tooltipId = `kpi-tooltip-${index}`;
+    const explanation = buildKpiExplanation(kpi, kpiLookup, snapshot);
     return `<div class="kpi">
-      <div class="kpi-label">${escapeHtml(kpi.label)}</div>
+      <div class="kpi-head">
+        <div class="kpi-label">${escapeHtml(kpi.label)}</div>
+        <button
+          type="button"
+          class="kpi-info"
+          aria-label="How ${escapeHtml(kpi.label || 'this KPI')} is calculated"
+          aria-describedby="${tooltipId}"
+        >?</button>
+      </div>
       <div class="kpi-value">${escapeHtml(kpi.formatted_value || fmtNum(kpi.value, 2))}</div>
       <div class="kpi-note">vs baseline ${delta}${targetText}</div>
+      <div id="${tooltipId}" class="kpi-tooltip" role="tooltip">${escapeHtml(explanation)}</div>
     </div>`;
   }).join('');
+}
+
+function buildKpiLookup(kpis) {
+  const map = new Map();
+  for (const kpi of kpis) {
+    map.set(normalizeKpiKey(kpi?.label), Number(kpi?.value || 0));
+  }
+  return map;
+}
+
+function normalizeKpiKey(label) {
+  return String(label || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function findFunnelStageValue(snapshot, stageName) {
+  const stages = snapshot?.funnel_summary?.stages || [];
+  const row = stages.find(stage => String(stage.stage || '').toLowerCase() === stageName.toLowerCase());
+  return row ? Number(row.value || 0) : null;
+}
+
+function buildKpiExplanation(kpi, kpiLookup, snapshot) {
+  const label = String(kpi?.label || '').trim();
+  const key = normalizeKpiKey(label);
+  const displayed = kpi?.formatted_value || fmtNum(kpi?.value || 0, 2);
+  const spend = kpiLookup.get('spend') || 0;
+  const revenue = kpiLookup.get('revenue') || 0;
+  const conversions = kpiLookup.get('conversions') || 0;
+  const lines = [`Displayed: ${displayed}`];
+
+  if (key === 'spend') {
+    lines.unshift('Formula: Spend = sum(ad cost) across selected date range.');
+  } else if (key === 'revenue') {
+    lines.unshift('Formula: Revenue = canonical conversion value after duplicate-event controls.');
+  } else if (key === 'roas') {
+    lines.unshift('Formula: ROAS = Revenue / Spend.');
+    if (spend > 0) lines.push(`Derived from KPI tiles: ${fmtNum(revenue, 2)} / ${fmtNum(spend, 2)} = ${fmtNum(revenue / spend, 2)}x`);
+  } else if (key === 'conversions') {
+    lines.unshift('Formula: Conversions = canonical purchase count after dedupe rules.');
+  } else if (key === 'ctr') {
+    lines.unshift('Formula: CTR = Clicks / Impressions × 100.');
+    const impressions = findFunnelStageValue(snapshot, 'Impression');
+    const clicks = findFunnelStageValue(snapshot, 'Click');
+    if ((impressions || 0) > 0 && (clicks || 0) >= 0) {
+      lines.push(`From funnel stages: ${fmtInt(clicks)} / ${fmtInt(impressions)} = ${fmtNum((clicks / impressions) * 100, 2)}%`);
+    }
+  } else if (key === 'cpa') {
+    lines.unshift('Formula: CPA = Spend / Conversions.');
+    if (conversions > 0) lines.push(`Derived from KPI tiles: ${fmtNum(spend, 2)} / ${fmtNum(conversions, 2)} = ${fmtNum(spend / conversions, 2)}`);
+  } else if (key === 'aov') {
+    lines.unshift('Formula: AOV = Revenue / Conversions.');
+    if (conversions > 0) lines.push(`Derived from KPI tiles: ${fmtNum(revenue, 2)} / ${fmtNum(conversions, 2)} = ${fmtNum(revenue / conversions, 2)}`);
+  } else {
+    lines.unshift('Formula: Derived by the analytics pipeline for this profile/date window.');
+  }
+
+  lines.push('Source: current analytics artifact and executive snapshot.');
+  return lines.join('\n');
 }
 
 function renderDeltaChart(deltas) {
