@@ -21,3 +21,5 @@ Below is a directory of the files in this workspace, which will help you navigat
 ### **For Technical Users**
 
 *   **[VISION.md](VISION.md)**: This file contains the technical vision and architecture for the AI agent system. It's intended for developers and engineers who are working on building the system.
+
+*   **[data_science_bot/](data_science_bot/)**: Home workspace for the data scientist bot, including statistical decision standards, analysis templates, query packs, and collaboration protocols with implementation bots.
