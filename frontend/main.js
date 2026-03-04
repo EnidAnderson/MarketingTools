@@ -12,6 +12,8 @@ const state = {
   currentSnapshot: null,
   deltaChart: null,
   channelMixChart: null,
+  funnelSurvivalChart: null,
+  attributionDeltaChart: null,
   historyRuns: [],
   textWorkflowTemplates: [],
   textWorkflowResult: null
@@ -46,6 +48,12 @@ const el = {
   exportPacketButton: document.getElementById('exportPacketButton'),
   narrativeList: document.getElementById('narrativeList'),
   historyList: document.getElementById('historyList'),
+  revenueTruthPanel: document.getElementById('revenueTruthPanel'),
+  revenueTruthRiskChip: document.getElementById('revenueTruthRiskChip'),
+  funnelSurvivalSummary: document.getElementById('funnelSurvivalSummary'),
+  attributionDeltaSummary: document.getElementById('attributionDeltaSummary'),
+  attributionDeltaTableBody: document.getElementById('attributionDeltaTableBody'),
+  highLeverageScorecardPanel: document.getElementById('highLeverageScorecardPanel'),
   loadTextTemplatesButton: document.getElementById('loadTextTemplatesButton'),
   runTextWorkflowButton: document.getElementById('runTextWorkflowButton'),
   textCampaignSpineId: document.getElementById('textCampaignSpineId'),
@@ -524,6 +532,7 @@ function renderExecutiveDashboard(snapshot) {
 
   el.runIdBadge.textContent = `Run: ${snapshot.run_id || 'n/a'} | Compare: ${snapshot.compare_window_runs || 1} run(s)`;
   renderKpis(snapshot.kpis || []);
+  renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
   renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
   renderChannelMixChart(snapshot.channel_mix_series || [], snapshot.roas_target_band);
   renderQuality(snapshot.quality_controls || {});
@@ -536,6 +545,221 @@ function renderExecutiveDashboard(snapshot) {
   renderPublishGate(snapshot.publish_export_gate || {});
   renderDecisionFeed(snapshot.decision_feed || []);
   renderNarratives(snapshot.operator_summary?.attribution_narratives || [], snapshot.alerts || []);
+}
+
+function renderHighLeverageReports(reports, snapshot) {
+  renderRevenueTruthReport(reports?.revenue_truth || {});
+  renderFunnelSurvivalReport(reports?.funnel_survival || {});
+  renderAttributionDeltaReport(reports?.attribution_delta || {});
+  renderHighLeverageScorecard(reports?.data_quality_scorecard || {}, snapshot?.publish_export_gate || {});
+}
+
+function renderRevenueTruthReport(report) {
+  const risk = String(report?.inflation_risk || 'unknown').toLowerCase();
+  const riskClass = risk === 'high' ? 'bad' : risk === 'medium' ? 'warn' : risk === 'low' ? 'good' : 'neutral';
+  if (el.revenueTruthRiskChip) {
+    el.revenueTruthRiskChip.textContent = `risk: ${risk}`;
+    el.revenueTruthRiskChip.className = `pill risk-pill ${riskClass}`;
+  }
+  if (!el.revenueTruthPanel) return;
+
+  const canonicalRevenue = Number(report?.canonical_revenue || 0);
+  const canonicalConversions = Number(report?.canonical_conversions || 0);
+  const strictDup = Number(report?.strict_duplicate_ratio || 0);
+  const nearDup = Number(report?.near_duplicate_ratio || 0);
+  const revenueAtRisk = Number(report?.estimated_revenue_at_risk || 0);
+  const summary = cleanText(report?.summary) || 'No revenue-truth summary available for this run.';
+
+  el.revenueTruthPanel.innerHTML = `
+    <div class="report-metrics">
+      <div class="report-metric">
+        <div class="forecast-label">Canonical Revenue</div>
+        <div class="forecast-value">$${fmtNum(canonicalRevenue, 2)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Canonical Conversions</div>
+        <div class="forecast-value">${fmtInt(canonicalConversions)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Strict Duplicate Ratio</div>
+        <div class="forecast-value">${fmtNum(strictDup * 100, 2)}%</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Near Duplicate Ratio</div>
+        <div class="forecast-value">${fmtNum(nearDup * 100, 2)}%</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Estimated Revenue At Risk</div>
+        <div class="forecast-value">$${fmtNum(revenueAtRisk, 2)}</div>
+      </div>
+    </div>
+    <div class="narrative-item">${escapeHtml(summary)}</div>
+  `;
+}
+
+function renderFunnelSurvivalReport(report) {
+  const points = Array.isArray(report?.points) ? report.points : [];
+  const summary = points.length
+    ? `Bottleneck: ${report?.bottleneck_stage || 'n/a'} | Survival to final stage: ${fmtNum((points[points.length - 1]?.survival_rate || 0) * 100, 1)}%`
+    : 'No funnel survival analysis available in this run.';
+  if (el.funnelSurvivalSummary) {
+    el.funnelSurvivalSummary.textContent = summary;
+  }
+
+  const ctx = document.getElementById('funnelSurvivalChart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (!points.length) {
+    if (state.funnelSurvivalChart) {
+      state.funnelSurvivalChart.destroy();
+      state.funnelSurvivalChart = null;
+    }
+    return;
+  }
+
+  const labels = points.map(point => point.stage);
+  const survival = points.map(point => Number((point.survival_rate * 100).toFixed(2)));
+  const hazard = points.map(point => Number((point.hazard_rate * 100).toFixed(2)));
+  if (state.funnelSurvivalChart) state.funnelSurvivalChart.destroy();
+  state.funnelSurvivalChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'Survival %',
+          data: survival,
+          borderColor: 'rgba(11,143,140,1)',
+          backgroundColor: 'rgba(11,143,140,0.12)',
+          yAxisID: 'y',
+          tension: 0.25
+        },
+        {
+          type: 'bar',
+          label: 'Hazard %',
+          data: hazard,
+          borderColor: 'rgba(216,87,42,1)',
+          backgroundColor: 'rgba(216,87,42,0.55)',
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { position: 'left', min: 0, max: 100, ticks: { callback: value => `${value}%` } },
+        y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: value => `${value}%` } }
+      }
+    }
+  });
+}
+
+function renderAttributionDeltaReport(report) {
+  const rows = Array.isArray(report?.rows) ? report.rows : [];
+  const dominant = cleanText(report?.dominant_last_touch_campaign) || 'n/a';
+  const hhi = Number(report?.last_touch_concentration_hhi || 0);
+  const summaryText = cleanText(report?.summary) || 'No attribution summary available.';
+  if (el.attributionDeltaSummary) {
+    el.attributionDeltaSummary.textContent = `${summaryText} Dominant last-touch campaign: ${dominant}. HHI: ${fmtNum(hhi, 4)}.`;
+  }
+  if (el.attributionDeltaTableBody) {
+    el.attributionDeltaTableBody.innerHTML = rows.length
+      ? rows.slice(0, 8).map(row => `<tr>
+          <td>${escapeHtml(row.campaign || 'n/a')}</td>
+          <td>${fmtNum((row.first_touch_proxy_share || 0) * 100, 1)}%</td>
+          <td>${fmtNum((row.assist_share || 0) * 100, 1)}%</td>
+          <td>${fmtNum((row.last_touch_share || 0) * 100, 1)}%</td>
+          <td>${fmtNum((row.delta_first_vs_last || 0) * 100, 1)}%</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5">No attribution rows available.</td></tr>';
+  }
+
+  const ctx = document.getElementById('attributionDeltaChart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (!rows.length) {
+    if (state.attributionDeltaChart) {
+      state.attributionDeltaChart.destroy();
+      state.attributionDeltaChart = null;
+    }
+    return;
+  }
+  const top = rows.slice(0, 6);
+  const labels = top.map(row => shortLabel(row.campaign || 'n/a', 18));
+  const firstTouch = top.map(row => Number(((row.first_touch_proxy_share || 0) * 100).toFixed(2)));
+  const lastTouch = top.map(row => Number(((row.last_touch_share || 0) * 100).toFixed(2)));
+  const delta = top.map(row => Number(((row.delta_first_vs_last || 0) * 100).toFixed(2)));
+
+  if (state.attributionDeltaChart) state.attributionDeltaChart.destroy();
+  state.attributionDeltaChart = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'First Touch %',
+          data: firstTouch,
+          backgroundColor: 'rgba(47,110,165,0.65)',
+          borderColor: 'rgba(47,110,165,1)',
+          yAxisID: 'y'
+        },
+        {
+          type: 'bar',
+          label: 'Last Touch %',
+          data: lastTouch,
+          backgroundColor: 'rgba(11,143,140,0.65)',
+          borderColor: 'rgba(11,143,140,1)',
+          yAxisID: 'y'
+        },
+        {
+          type: 'line',
+          label: 'Delta (First - Last) %',
+          data: delta,
+          borderColor: 'rgba(211,63,73,1)',
+          backgroundColor: 'rgba(211,63,73,0.15)',
+          yAxisID: 'y1',
+          tension: 0.2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { position: 'left', ticks: { callback: value => `${value}%` } },
+        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => `${value}%` } }
+      }
+    }
+  });
+}
+
+function renderHighLeverageScorecard(scorecard, gate) {
+  if (!el.highLeverageScorecardPanel) return;
+  const rows = [
+    ['Quality Score', scorecard?.quality_score],
+    ['Completeness', scorecard?.completeness_ratio],
+    ['Freshness Pass', scorecard?.freshness_pass_ratio],
+    ['Reconciliation Pass', scorecard?.reconciliation_pass_ratio],
+    ['Cross-Source Pass', scorecard?.cross_source_pass_ratio],
+    ['Budget Pass', scorecard?.budget_pass_ratio]
+  ];
+  const failureCount = Number(scorecard?.high_severity_failures || 0);
+  const blockingCount = Number(scorecard?.blocking_reasons_count ?? gate?.blocking_reasons?.length ?? 0);
+  const warningCount = Number(scorecard?.warning_reasons_count ?? gate?.warning_reasons?.length ?? 0);
+  const gateStatus = cleanText(scorecard?.gate_status || gate?.gate_status) || 'unknown';
+
+  const ratioRows = rows.map(([label, value]) => {
+    const ratio = typeof value === 'number' ? value : 0;
+    const cls = ratio >= 0.99 ? 'good' : ratio >= 0.95 ? 'warn' : 'bad';
+    return `<div class="dq-row"><strong>${escapeHtml(label)}</strong>${fmtNum(ratio * 100, 1)}%<span class="dq-badge ${cls}">${cls}</span></div>`;
+  });
+
+  ratioRows.push(`<div class="dq-row"><strong>High Severity Failures</strong>${fmtInt(failureCount)}<span class="dq-badge ${failureCount === 0 ? 'good' : 'bad'}">${failureCount === 0 ? 'clear' : 'review'}</span></div>`);
+  ratioRows.push(`<div class="dq-row"><strong>Gate Status</strong>${escapeHtml(gateStatus.replaceAll('_', ' '))}<span class="dq-badge ${gateStatus === 'ready' ? 'good' : gateStatus === 'blocked' ? 'bad' : 'warn'}">${gateStatus}</span></div>`);
+  ratioRows.push(`<div class="dq-row"><strong>Blocking / Warning</strong>${fmtInt(blockingCount)} / ${fmtInt(warningCount)}<span class="dq-badge ${(blockingCount === 0 && warningCount === 0) ? 'good' : (blockingCount > 0 ? 'bad' : 'warn')}">${blockingCount > 0 ? 'blocked' : warningCount > 0 ? 'warn' : 'clean'}</span></div>`);
+
+  el.highLeverageScorecardPanel.innerHTML = ratioRows.join('');
 }
 
 function renderKpis(kpis) {
@@ -965,6 +1189,39 @@ function emptySnapshot(profileId, opts, reason) {
       budget_pass_ratio: 0,
       quality_score: 0
     },
+    high_leverage_reports: {
+      revenue_truth: {
+        canonical_revenue: 0,
+        canonical_conversions: 0,
+        strict_duplicate_ratio: 0,
+        near_duplicate_ratio: 0,
+        inflation_risk: 'unknown',
+        estimated_revenue_at_risk: 0,
+        summary: reason || 'No revenue-truth report available before first persisted run.'
+      },
+      funnel_survival: {
+        points: [],
+        bottleneck_stage: 'none'
+      },
+      attribution_delta: {
+        rows: [],
+        dominant_last_touch_campaign: null,
+        last_touch_concentration_hhi: 0,
+        summary: 'No attribution rows available before first persisted run.'
+      },
+      data_quality_scorecard: {
+        quality_score: 0,
+        completeness_ratio: 0,
+        freshness_pass_ratio: 0,
+        reconciliation_pass_ratio: 0,
+        cross_source_pass_ratio: 0,
+        budget_pass_ratio: 0,
+        high_severity_failures: 0,
+        blocking_reasons_count: 1,
+        warning_reasons_count: 0,
+        gate_status: 'blocked'
+      }
+    },
     operator_summary: {
       attribution_narratives: []
     },
@@ -1072,6 +1329,50 @@ function fallbackSnapshot(profileId, opts) {
       budget_pass_ratio: 1.0,
       quality_score: 0.988
     },
+    high_leverage_reports: {
+      revenue_truth: {
+        canonical_revenue: 2200,
+        canonical_conversions: 34,
+        strict_duplicate_ratio: 0.011,
+        near_duplicate_ratio: 0.024,
+        inflation_risk: 'low',
+        estimated_revenue_at_risk: 52.8,
+        summary: 'Canonical purchase metrics applied with low duplicate inflation risk.'
+      },
+      funnel_survival: {
+        points: [
+          { stage: 'Impression', entrants: 8000, survival_rate: 1.0, hazard_rate: 0.0 },
+          { stage: 'Click', entrants: 680, survival_rate: 0.085, hazard_rate: 0.915 },
+          { stage: 'Session', entrants: 620, survival_rate: 0.0775, hazard_rate: 0.088 },
+          { stage: 'Product View', entrants: 415, survival_rate: 0.0518, hazard_rate: 0.331 },
+          { stage: 'Add To Cart', entrants: 118, survival_rate: 0.0147, hazard_rate: 0.716 },
+          { stage: 'Checkout', entrants: 67, survival_rate: 0.0084, hazard_rate: 0.432 },
+          { stage: 'Purchase', entrants: 34, survival_rate: 0.0042, hazard_rate: 0.493 }
+        ],
+        bottleneck_stage: 'Add To Cart'
+      },
+      attribution_delta: {
+        rows: [
+          { campaign: 'New Puppy Essentials', first_touch_proxy_share: 0.61, assist_share: 0.58, last_touch_share: 0.7, delta_first_vs_last: -0.09 },
+          { campaign: 'Summer Pet Food Promo', first_touch_proxy_share: 0.39, assist_share: 0.42, last_touch_share: 0.3, delta_first_vs_last: 0.09 }
+        ],
+        dominant_last_touch_campaign: 'New Puppy Essentials',
+        last_touch_concentration_hhi: 0.58,
+        summary: 'Last-touch value is concentrated in one campaign; validate assist credit before reallocating budget.'
+      },
+      data_quality_scorecard: {
+        quality_score: 0.988,
+        completeness_ratio: 1.0,
+        freshness_pass_ratio: 0.96,
+        reconciliation_pass_ratio: 1.0,
+        cross_source_pass_ratio: 1.0,
+        budget_pass_ratio: 1.0,
+        high_severity_failures: 0,
+        blocking_reasons_count: 0,
+        warning_reasons_count: 1,
+        gate_status: 'review_required'
+      }
+    },
     operator_summary: {
       attribution_narratives: [
         { kpi: 'roas', narrative: 'ROAS remains strongest in New Puppy Essentials with clean quality signals.' }
@@ -1115,4 +1416,10 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function shortLabel(text, maxLength = 20) {
+  const raw = String(text || '');
+  if (raw.length <= maxLength) return raw;
+  return `${raw.slice(0, maxLength - 1)}...`;
 }

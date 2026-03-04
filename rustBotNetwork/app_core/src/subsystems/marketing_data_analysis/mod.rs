@@ -53,15 +53,17 @@ pub use connector_v2::{
 };
 pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
-    AnalyticsValidationReportV1, ArtifactPersistenceRefV1, BudgetActualsV1, BudgetEnvelopeV1,
-    BudgetEventV1, BudgetPolicyModeV1, BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1,
-    ConnectorConfigAttestationV1, DashboardExportAuditRecordV1, DataQualitySummaryV1, DriftFlagV1,
+    AnalyticsValidationReportV1, ArtifactPersistenceRefV1, AttributionDeltaReportV1,
+    AttributionDeltaRowV1, BudgetActualsV1, BudgetEnvelopeV1, BudgetEventV1, BudgetPolicyModeV1,
+    BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1, ConnectorConfigAttestationV1,
+    DashboardExportAuditRecordV1, DataQualityScorecardV1, DataQualitySummaryV1, DriftFlagV1,
     EvidenceItem, ExecutiveDashboardSnapshotV1, ForecastSummaryV1, FreshnessSlaPolicyV1,
-    FunnelStageV1, FunnelSummaryV1, GuidanceItem, HistoricalAnalysisV1, IngestCleaningNoteV1,
-    KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, MockAnalyticsArtifactV1,
-    MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1,
-    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1,
-    SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
+    FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1, GuidanceItem,
+    HighLeverageReportsV1, HistoricalAnalysisV1, IngestCleaningNoteV1, KpiAttributionNarrativeV1,
+    KpiDeltaV1, KpiTileV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1,
+    PersistedAnalyticsRunV1, PortfolioRowV1, QualityCheckApplicabilityV1, QualityCheckV1,
+    ReconciliationPolicyV1, ReconciliationToleranceV1, RevenueTruthReportV1, SourceCoverageV1,
+    SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
     StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};

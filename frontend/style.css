@@ -324,6 +324,30 @@ button:focus-visible {
   padding: 5px 8px;
 }
 
+.risk-pill {
+  border: 1px solid var(--line);
+}
+
+.risk-pill.good {
+  background: #e9f7ef;
+  color: #0e7a44;
+}
+
+.risk-pill.warn {
+  background: #fff7db;
+  color: #9b6b00;
+}
+
+.risk-pill.bad {
+  background: #fdecef;
+  color: #a4232c;
+}
+
+.risk-pill.neutral {
+  background: #eef4f4;
+  color: #3d5261;
+}
+
 .signal-list,
 .history-list,
 .narrative-list {
@@ -347,6 +371,30 @@ button:focus-visible {
 .data-quality-panel {
   display: grid;
   gap: 8px;
+}
+
+.report-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.report-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.report-metric {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+
+.high-leverage-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .dq-row {

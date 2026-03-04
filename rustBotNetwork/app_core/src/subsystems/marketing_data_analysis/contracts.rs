@@ -670,6 +670,91 @@ pub struct FunnelSummaryV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Survival/hazard point for each funnel stage based on stage transitions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FunnelSurvivalPointV1 {
+    pub stage: String,
+    pub entrants: f64,
+    pub survival_rate: f64,
+    pub hazard_rate: f64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Survival analysis report for funnel diagnostics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct FunnelSurvivalReportV1 {
+    pub points: Vec<FunnelSurvivalPointV1>,
+    pub bottleneck_stage: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Revenue-truth report quantifying duplicate risk and canonical KPI posture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct RevenueTruthReportV1 {
+    pub canonical_revenue: f64,
+    pub canonical_conversions: f64,
+    pub strict_duplicate_ratio: f64,
+    pub near_duplicate_ratio: f64,
+    pub inflation_risk: String,
+    pub estimated_revenue_at_risk: f64,
+    pub summary: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Attribution delta row comparing first-touch proxy, assist, and last-touch shares.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct AttributionDeltaRowV1 {
+    pub campaign: String,
+    pub first_touch_proxy_share: f64,
+    pub assist_share: f64,
+    pub last_touch_share: f64,
+    pub delta_first_vs_last: f64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Attribution delta report exposing concentration and share-disagreement by campaign.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct AttributionDeltaReportV1 {
+    pub rows: Vec<AttributionDeltaRowV1>,
+    pub dominant_last_touch_campaign: Option<String>,
+    pub last_touch_concentration_hhi: f64,
+    pub summary: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Executive quality scorecard tying ratio metrics to gate posture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct DataQualityScorecardV1 {
+    pub quality_score: f64,
+    pub completeness_ratio: f64,
+    pub freshness_pass_ratio: f64,
+    pub reconciliation_pass_ratio: f64,
+    pub cross_source_pass_ratio: f64,
+    pub budget_pass_ratio: f64,
+    pub high_severity_failures: u32,
+    pub blocking_reasons_count: u32,
+    pub warning_reasons_count: u32,
+    pub gate_status: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Consolidated high-leverage reports derived from dashboard artifact evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct HighLeverageReportsV1 {
+    pub revenue_truth: RevenueTruthReportV1,
+    pub funnel_survival: FunnelSurvivalReportV1,
+    pub attribution_delta: AttributionDeltaReportV1,
+    pub data_quality_scorecard: DataQualityScorecardV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Time point for channel mix and scale/efficiency trend charts.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ChannelMixPointV1 {
@@ -793,6 +878,8 @@ pub struct ExecutiveDashboardSnapshotV1 {
     pub quality_controls: AnalyticsQualityControlsV1,
     pub historical_analysis: HistoricalAnalysisV1,
     pub operator_summary: OperatorSummaryV1,
+    #[serde(default)]
+    pub high_leverage_reports: HighLeverageReportsV1,
     pub trust_status: String,
     pub alerts: Vec<String>,
 }

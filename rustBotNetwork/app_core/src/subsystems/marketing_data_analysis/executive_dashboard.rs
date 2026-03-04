@@ -1,8 +1,10 @@
 // provenance: decision_id=DEC-0015; change_request_id=CR-QA_FIXER-0032
 use super::contracts::{
-    ChannelMixPointV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
-    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, KpiTileV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, PublishExportGateV1, QualityCheckApplicabilityV1, StorefrontBehaviorRowV1,
+    AttributionDeltaReportV1, AttributionDeltaRowV1, ChannelMixPointV1, DataQualityScorecardV1,
+    DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1, ForecastSummaryV1,
+    FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1,
+    HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1, PublishExportGateV1,
+    QualityCheckApplicabilityV1, RevenueTruthReportV1, StorefrontBehaviorRowV1,
     StorefrontBehaviorSummaryV1,
 };
 use super::{
@@ -92,6 +94,10 @@ pub fn build_executive_dashboard_snapshot(
     } else {
         "degraded".to_string()
     };
+    let funnel_summary = build_funnel_summary(latest_metrics);
+    let publish_export_gate = build_publish_export_gate(latest);
+    let high_leverage_reports =
+        build_high_leverage_reports(latest, &funnel_summary, &publish_export_gate);
 
     Some(ExecutiveDashboardSnapshotV1 {
         schema_version: SNAPSHOT_SCHEMA_VERSION_V1.to_string(),
@@ -109,21 +115,251 @@ pub fn build_executive_dashboard_snapshot(
         ),
         channel_mix_series: build_channel_mix_series(runs),
         roas_target_band: options.target_roas,
-        funnel_summary: build_funnel_summary(latest_metrics),
+        funnel_summary,
         storefront_behavior_summary: build_storefront_summary(latest, latest_metrics),
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
         data_quality: latest.artifact.data_quality.clone(),
         budget: latest.artifact.budget.clone(),
         decision_feed: build_decision_feed(latest),
-        publish_export_gate: build_publish_export_gate(latest),
+        publish_export_gate,
         source_coverage: latest.artifact.source_coverage.clone(),
         quality_controls: latest.artifact.quality_controls.clone(),
         historical_analysis: latest.artifact.historical_analysis.clone(),
         operator_summary: latest.artifact.operator_summary.clone(),
+        high_leverage_reports,
         trust_status,
         alerts,
     })
+}
+
+fn build_high_leverage_reports(
+    run: &PersistedAnalyticsRunV1,
+    funnel_summary: &FunnelSummaryV1,
+    publish_export_gate: &PublishExportGateV1,
+) -> HighLeverageReportsV1 {
+    HighLeverageReportsV1 {
+        revenue_truth: build_revenue_truth_report(run),
+        funnel_survival: build_funnel_survival_report(funnel_summary),
+        attribution_delta: build_attribution_delta_report(run),
+        data_quality_scorecard: build_data_quality_scorecard(run, publish_export_gate),
+    }
+}
+
+fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthReportV1 {
+    let strict_duplicate_ratio = find_quality_check_ratio(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_duplicate_event_signature_rate",
+    )
+    .unwrap_or(0.0);
+    let near_duplicate_ratio = find_quality_check_ratio(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_near_duplicate_second_rate",
+    )
+    .unwrap_or(0.0);
+    let risk = if near_duplicate_ratio >= 0.10 {
+        "high"
+    } else if near_duplicate_ratio >= 0.03 {
+        "medium"
+    } else {
+        "low"
+    };
+    let canonical_revenue = finite_or_zero(run.artifact.report.total_metrics.conversions_value);
+    let canonical_conversions = finite_or_zero(run.artifact.report.total_metrics.conversions);
+    let estimated_revenue_at_risk = round4(canonical_revenue * near_duplicate_ratio.max(0.0));
+    let summary = format!(
+        "Canonical purchase metrics enforced. strict_duplicate_ratio={:.4}, near_duplicate_ratio={:.4}, inflation_risk={}",
+        strict_duplicate_ratio, near_duplicate_ratio, risk
+    );
+    RevenueTruthReportV1 {
+        canonical_revenue,
+        canonical_conversions,
+        strict_duplicate_ratio,
+        near_duplicate_ratio,
+        inflation_risk: risk.to_string(),
+        estimated_revenue_at_risk,
+        summary,
+    }
+}
+
+fn build_funnel_survival_report(funnel_summary: &FunnelSummaryV1) -> FunnelSurvivalReportV1 {
+    if funnel_summary.stages.is_empty() {
+        return FunnelSurvivalReportV1 {
+            points: Vec::new(),
+            bottleneck_stage: "none".to_string(),
+        };
+    }
+    let mut points = Vec::with_capacity(funnel_summary.stages.len());
+    let mut cumulative_survival = 1.0;
+    let mut bottleneck_stage = funnel_summary.dropoff_hotspot_stage.clone();
+    let mut max_hazard = -1.0;
+
+    for (index, stage) in funnel_summary.stages.iter().enumerate() {
+        let entrants = finite_or_zero(stage.value.max(0.0));
+        let (survival_rate, hazard_rate) = if index == 0 {
+            (1.0, 0.0)
+        } else {
+            let transition = stage
+                .conversion_from_previous
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
+            cumulative_survival *= transition;
+            let hazard = 1.0 - transition;
+            if hazard > max_hazard {
+                max_hazard = hazard;
+                bottleneck_stage = stage.stage.clone();
+            }
+            (cumulative_survival.clamp(0.0, 1.0), hazard)
+        };
+        points.push(FunnelSurvivalPointV1 {
+            stage: stage.stage.clone(),
+            entrants,
+            survival_rate: round4(survival_rate),
+            hazard_rate: round4(hazard_rate.clamp(0.0, 1.0)),
+        });
+    }
+
+    FunnelSurvivalReportV1 {
+        points,
+        bottleneck_stage,
+    }
+}
+
+fn build_attribution_delta_report(run: &PersistedAnalyticsRunV1) -> AttributionDeltaReportV1 {
+    let campaigns = &run.artifact.report.campaign_data;
+    if campaigns.is_empty() {
+        return AttributionDeltaReportV1 {
+            rows: Vec::new(),
+            dominant_last_touch_campaign: None,
+            last_touch_concentration_hhi: 0.0,
+            summary: "No campaign rows available for attribution delta analysis.".to_string(),
+        };
+    }
+    let total_impressions = campaigns
+        .iter()
+        .map(|row| row.metrics.impressions as f64)
+        .sum::<f64>();
+    let total_clicks = campaigns
+        .iter()
+        .map(|row| row.metrics.clicks as f64)
+        .sum::<f64>();
+    let total_revenue = campaigns
+        .iter()
+        .map(|row| row.metrics.conversions_value)
+        .sum::<f64>();
+
+    let mut rows = campaigns
+        .iter()
+        .map(|row| {
+            let first_touch_proxy_share = if total_impressions > 0.0 {
+                row.metrics.impressions as f64 / total_impressions
+            } else {
+                0.0
+            };
+            let assist_share = if total_clicks > 0.0 {
+                row.metrics.clicks as f64 / total_clicks
+            } else {
+                0.0
+            };
+            let last_touch_share = if total_revenue > 0.0 {
+                row.metrics.conversions_value / total_revenue
+            } else {
+                0.0
+            };
+            AttributionDeltaRowV1 {
+                campaign: row.campaign_name.clone(),
+                first_touch_proxy_share: round4(first_touch_proxy_share),
+                assist_share: round4(assist_share),
+                last_touch_share: round4(last_touch_share),
+                delta_first_vs_last: round4(first_touch_proxy_share - last_touch_share),
+            }
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|a, b| {
+        b.delta_first_vs_last
+            .abs()
+            .total_cmp(&a.delta_first_vs_last.abs())
+    });
+
+    let dominant_last_touch_campaign = rows
+        .iter()
+        .max_by(|a, b| a.last_touch_share.total_cmp(&b.last_touch_share))
+        .map(|row| row.campaign.clone());
+    let last_touch_concentration_hhi =
+        round4(rows.iter().map(|row| row.last_touch_share.powi(2)).sum());
+    let summary = if last_touch_concentration_hhi >= 0.25 {
+        format!(
+            "Last-touch revenue is concentrated (HHI={:.4}); validate channel credit assignments.",
+            last_touch_concentration_hhi
+        )
+    } else {
+        format!(
+            "Last-touch revenue concentration is moderate (HHI={:.4}).",
+            last_touch_concentration_hhi
+        )
+    };
+    AttributionDeltaReportV1 {
+        rows,
+        dominant_last_touch_campaign,
+        last_touch_concentration_hhi,
+        summary,
+    }
+}
+
+fn build_data_quality_scorecard(
+    run: &PersistedAnalyticsRunV1,
+    publish_export_gate: &PublishExportGateV1,
+) -> DataQualityScorecardV1 {
+    let quality = &run.artifact.quality_controls;
+    let high_severity_failures = quality
+        .schema_drift_checks
+        .iter()
+        .chain(quality.identity_resolution_checks.iter())
+        .chain(quality.freshness_sla_checks.iter())
+        .chain(quality.cross_source_checks.iter())
+        .chain(quality.budget_checks.iter())
+        .filter(|check| {
+            check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+                && check.severity.eq_ignore_ascii_case("high")
+        })
+        .count() as u32;
+
+    DataQualityScorecardV1 {
+        quality_score: run.artifact.data_quality.quality_score,
+        completeness_ratio: run.artifact.data_quality.completeness_ratio,
+        freshness_pass_ratio: run.artifact.data_quality.freshness_pass_ratio,
+        reconciliation_pass_ratio: run.artifact.data_quality.reconciliation_pass_ratio,
+        cross_source_pass_ratio: run.artifact.data_quality.cross_source_pass_ratio,
+        budget_pass_ratio: run.artifact.data_quality.budget_pass_ratio,
+        high_severity_failures,
+        blocking_reasons_count: publish_export_gate.blocking_reasons.len() as u32,
+        warning_reasons_count: publish_export_gate.warning_reasons.len() as u32,
+        gate_status: publish_export_gate.gate_status.clone(),
+    }
+}
+
+fn find_quality_check_ratio(
+    checks: &[super::contracts::QualityCheckV1],
+    code: &str,
+) -> Option<f64> {
+    checks
+        .iter()
+        .find(|check| check.code == code)
+        .and_then(|check| parse_ratio_from_observed(&check.observed))
+}
+
+fn parse_ratio_from_observed(observed: &str) -> Option<f64> {
+    let (_, ratio_tail) = observed.split_once("ratio=")?;
+    let value_text = ratio_tail
+        .split(',')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    value_text
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1> {
@@ -901,6 +1137,10 @@ fn finite_or_zero(value: f64) -> f64 {
     }
 }
 
+fn round4(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
+}
+
 fn average_order_value(metrics: &ReportMetrics) -> f64 {
     if metrics.conversions > 0.0 {
         metrics.conversions_value / metrics.conversions
@@ -1024,6 +1264,81 @@ mod tests {
         assert!(!snap.channel_mix_series.is_empty());
         assert!(!snap.decision_feed.is_empty());
         assert!(snap.publish_export_gate.gate_status == "ready");
+        assert!(snap
+            .high_leverage_reports
+            .revenue_truth
+            .summary
+            .contains("Canonical purchase metrics enforced"));
+        assert!(!snap.high_leverage_reports.funnel_survival.points.is_empty());
+        assert_eq!(
+            snap.high_leverage_reports
+                .data_quality_scorecard
+                .gate_status,
+            "ready"
+        );
+    }
+
+    #[test]
+    fn attribution_delta_report_orders_by_abs_delta() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.report.campaign_data = vec![
+            crate::data_models::analytics::CampaignReportRow {
+                date: "2026-02-01".to_string(),
+                campaign_id: "c1".to_string(),
+                campaign_name: "Brand Search".to_string(),
+                campaign_status: "ENABLED".to_string(),
+                metrics: crate::data_models::analytics::ReportMetrics {
+                    impressions: 2000,
+                    clicks: 150,
+                    cost: 120.0,
+                    conversions: 9.0,
+                    conversions_value: 600.0,
+                    ctr: 7.5,
+                    cpc: 0.8,
+                    cpa: 13.3333,
+                    roas: 5.0,
+                },
+            },
+            crate::data_models::analytics::CampaignReportRow {
+                date: "2026-02-01".to_string(),
+                campaign_id: "c2".to_string(),
+                campaign_name: "Prospecting".to_string(),
+                campaign_status: "ENABLED".to_string(),
+                metrics: crate::data_models::analytics::ReportMetrics {
+                    impressions: 8000,
+                    clicks: 250,
+                    cost: 180.0,
+                    conversions: 4.0,
+                    conversions_value: 120.0,
+                    ctr: 3.125,
+                    cpc: 0.72,
+                    cpa: 45.0,
+                    roas: 0.6667,
+                },
+            },
+        ];
+        let snap = build_executive_dashboard_snapshot(
+            "p1",
+            &[run.clone()],
+            SnapshotBuildOptions::default(),
+        )
+        .expect("snapshot");
+        let report = &snap.high_leverage_reports.attribution_delta;
+        assert_eq!(report.rows.len(), 2);
+        assert!(report.last_touch_concentration_hhi > 0.0);
+        assert!(report.dominant_last_touch_campaign.is_some());
+        let sum_last_touch = report
+            .rows
+            .iter()
+            .map(|row| row.last_touch_share)
+            .sum::<f64>();
+        assert!((sum_last_touch - 1.0).abs() < 0.0002);
+        if report.rows.len() > 1 {
+            assert!(
+                report.rows[0].delta_first_vs_last.abs()
+                    >= report.rows[1].delta_first_vs_last.abs()
+            );
+        }
     }
 
     #[test]
