@@ -7,7 +7,9 @@
     "dev": "live-server . --port=3000 --no-browser --no-open",
     "build": "rm -rf dist && mkdir dist && cp index.html main.js style.css text_workflow_helpers.mjs dashboard_app.mjs dashboard_renderers.mjs dashboard_view_models.mjs dist/",
     "test": "node --test tests/*.test.mjs",
-    "test:smoke": "node --test tests/dashboard_smoke.test.mjs"
+    "test:smoke": "node --test tests/dashboard_smoke.test.mjs",
+    "diagnostics:fixture": "node scripts/generate_dashboard_fixture_diagnostics.mjs",
+    "verify:ci": "npm test && npm run diagnostics:fixture"
   },
   "keywords": [],
   "author": "",
