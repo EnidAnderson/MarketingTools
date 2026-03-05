@@ -567,6 +567,16 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }) {
         blocking_reasons.push("High-severity schema-drift failure present.".to_string());
     }
+    if quality.schema_drift_checks.iter().any(|check| {
+        check.code == "ga4_custom_purchase_ndp_schema_integrity"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        warning_reasons.push(
+            "Custom purchase event `purchase_ndp` failed schema integrity (missing transaction_id/value); event remains excluded from truth KPIs."
+                .to_string(),
+        );
+    }
 
     if !quality.freshness_sla_checks.iter().all(|check| {
         check.applicability == QualityCheckApplicabilityV1::NotApplicable
@@ -1449,6 +1459,29 @@ mod tests {
             .warning_reasons
             .iter()
             .any(|reason| { reason.contains("Cross-source reconciliation is not applicable") }));
+    }
+
+    #[test]
+    fn publish_gate_warns_when_custom_purchase_schema_integrity_fails() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.push(
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_schema_integrity".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=10, with_transaction_id=0, with_value=0".to_string(),
+                expected: "all purchase_ndp rows include transaction_id and value".to_string(),
+            },
+        );
+        let gate = build_publish_export_gate(&run);
+        assert!(gate.publish_ready);
+        assert_eq!(gate.gate_status, "review_required");
+        assert!(gate
+            .warning_reasons
+            .iter()
+            .any(|reason| reason.contains("purchase_ndp")));
     }
 
     #[test]

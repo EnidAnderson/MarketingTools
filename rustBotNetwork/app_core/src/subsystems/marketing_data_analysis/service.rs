@@ -981,6 +981,31 @@ fn is_ga4_custom_purchase_event(event_name: &str) -> bool {
     event_name.trim().eq_ignore_ascii_case("purchase_ndp")
 }
 
+fn ga4_custom_purchase_value(event: &Ga4EventRawV1) -> Option<f64> {
+    ga4_dimension(event, "value")
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value >= 0.0)
+}
+
+fn ga4_custom_purchase_schema_stats(ga4_events: &[Ga4EventRawV1]) -> (usize, usize, usize) {
+    let custom_purchase_events = ga4_events
+        .iter()
+        .filter(|event| is_ga4_custom_purchase_event(&event.event_name))
+        .collect::<Vec<_>>();
+    let total_rows = custom_purchase_events.len();
+    let rows_with_transaction_id = custom_purchase_events
+        .iter()
+        .filter(|event| ga4_transaction_id(event).is_some())
+        .count();
+    let rows_with_value = custom_purchase_events
+        .iter()
+        .filter(|event| {
+            ga4_purchase_revenue(event).is_some() || ga4_custom_purchase_value(event).is_some()
+        })
+        .count();
+    (total_rows, rows_with_transaction_id, rows_with_value)
+}
+
 fn is_ga4_click_event(event_name: &str) -> bool {
     let name = event_name.to_ascii_lowercase();
     name.contains("click") || name.contains("select") || name.contains("cta") || name == "outbound"
@@ -1796,6 +1821,18 @@ fn build_quality_controls(
         ga4_duplicate_signature_stats(ga4_events);
     let (ga4_near_duplicate_rows, ga4_near_duplicate_groups, ga4_near_duplicate_ratio) =
         ga4_near_duplicate_second_stats(ga4_events);
+    let (
+        ga4_custom_purchase_rows,
+        ga4_custom_purchase_rows_with_tx,
+        ga4_custom_purchase_rows_with_value,
+    ) = ga4_custom_purchase_schema_stats(ga4_events);
+    let ga4_custom_purchase_applies =
+        ga4_applicability == QualityCheckApplicabilityV1::Applies && ga4_custom_purchase_rows > 0;
+    let ga4_custom_purchase_applicability = if ga4_custom_purchase_applies {
+        QualityCheckApplicabilityV1::Applies
+    } else {
+        QualityCheckApplicabilityV1::NotApplicable
+    };
     let mut schema_drift_checks = schema_drift_checks;
     schema_drift_checks.push(QualityCheckV1 {
         applicability: ga4_applicability.clone(),
@@ -1826,6 +1863,37 @@ fn build_quality_controls(
             ga4_near_duplicate_ratio
         ),
         expected: "near-duplicate ratio <= 0.05".to_string(),
+    });
+    let purchase_ndp_rows_in_report = report
+        .keyword_data
+        .iter()
+        .filter(|row| is_ga4_custom_purchase_event(&row.keyword_text))
+        .count();
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_applicability.clone(),
+        code: "ga4_custom_purchase_ndp_excluded_from_truth_kpis".to_string(),
+        passed: ga4_applicability == QualityCheckApplicabilityV1::NotApplicable
+            || purchase_ndp_rows_in_report == 0,
+        severity: "high".to_string(),
+        observed: format!("purchase_ndp_rows_in_report={purchase_ndp_rows_in_report}"),
+        expected: "purchase_ndp must not appear in KPI rollups/report tables".to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_custom_purchase_applicability,
+        code: "ga4_custom_purchase_ndp_schema_integrity".to_string(),
+        passed: !ga4_custom_purchase_applies
+            || (ga4_custom_purchase_rows_with_tx == ga4_custom_purchase_rows
+                && ga4_custom_purchase_rows_with_value == ga4_custom_purchase_rows),
+        severity: "medium".to_string(),
+        observed: format!(
+            "purchase_ndp_rows={}, with_transaction_id={}, with_value={}",
+            ga4_custom_purchase_rows,
+            ga4_custom_purchase_rows_with_tx,
+            ga4_custom_purchase_rows_with_value
+        ),
+        expected:
+            "all purchase_ndp rows include transaction_id and value; otherwise keep excluded from truth KPIs"
+                .to_string(),
     });
     let reconciliation_code = "identity_campaign_rollup_reconciliation";
     let reconciliation_tol = reconciliation_policy.tolerance_for(reconciliation_code);
@@ -2696,53 +2764,61 @@ mod tests {
         let mut purchase_ndp_dup_dims = purchase_ndp_dims.clone();
         purchase_ndp_dup_dims.insert("batch_event_index".to_string(), "2".to_string());
 
+        let events = vec![
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_ndp_dims,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_ndp_dup_dims,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_dims,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_dup_dims,
+                metrics: BTreeMap::new(),
+            },
+        ];
+
+        let (custom_rows, custom_rows_with_tx, custom_rows_with_value) =
+            ga4_custom_purchase_schema_stats(&events);
+        assert_eq!(custom_rows, 2);
+        assert_eq!(custom_rows_with_tx, 0);
+        assert_eq!(custom_rows_with_value, 0);
+
         let report = ga4_events_to_report(
-            &[
-                Ga4EventRawV1 {
-                    event_name: "purchase_ndp".to_string(),
-                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
-                    user_pseudo_id: "user-1".to_string(),
-                    session_id: Some("session-1".to_string()),
-                    campaign: Some("Spring".to_string()),
-                    device_category: Some("mobile".to_string()),
-                    source_medium: Some("google / cpc".to_string()),
-                    dimensions: purchase_ndp_dims,
-                    metrics: BTreeMap::new(),
-                },
-                Ga4EventRawV1 {
-                    event_name: "purchase_ndp".to_string(),
-                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
-                    user_pseudo_id: "user-1".to_string(),
-                    session_id: Some("session-1".to_string()),
-                    campaign: Some("Spring".to_string()),
-                    device_category: Some("mobile".to_string()),
-                    source_medium: Some("google / cpc".to_string()),
-                    dimensions: purchase_ndp_dup_dims,
-                    metrics: BTreeMap::new(),
-                },
-                Ga4EventRawV1 {
-                    event_name: "purchase".to_string(),
-                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
-                    user_pseudo_id: "user-1".to_string(),
-                    session_id: Some("session-1".to_string()),
-                    campaign: Some("Spring".to_string()),
-                    device_category: Some("mobile".to_string()),
-                    source_medium: Some("google / cpc".to_string()),
-                    dimensions: purchase_dims,
-                    metrics: BTreeMap::new(),
-                },
-                Ga4EventRawV1 {
-                    event_name: "purchase".to_string(),
-                    event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
-                    user_pseudo_id: "user-1".to_string(),
-                    session_id: Some("session-1".to_string()),
-                    campaign: Some("Spring".to_string()),
-                    device_category: Some("mobile".to_string()),
-                    source_medium: Some("google / cpc".to_string()),
-                    dimensions: purchase_dup_dims,
-                    metrics: BTreeMap::new(),
-                },
-            ],
+            &events,
             &request,
             NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
             NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
@@ -3290,6 +3366,162 @@ mod tests {
             wix.unavailable_reason.as_deref(),
             Some("disabled_by_ga4_unified_topology")
         );
+    }
+
+    struct Ga4ObservedCustomPurchaseConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2
+        for Ga4ObservedCustomPurchaseConnector
+    {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "ga4_observed_custom_purchase_connector".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "ga4_observed_custom_purchase_connector".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            let mut purchase_dimensions = BTreeMap::new();
+            purchase_dimensions.insert("transaction_id".to_string(), "tx-1".to_string());
+            purchase_dimensions.insert("purchase_revenue".to_string(), "57.25".to_string());
+
+            let mut purchase_ndp_dimensions = BTreeMap::new();
+            purchase_ndp_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+
+            Ok(vec![
+                Ga4EventRawV1 {
+                    event_name: "purchase_ndp".to_string(),
+                    event_timestamp_utc: "2026-01-01T12:00:00Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_ndp_dimensions,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase".to_string(),
+                    event_timestamp_utc: "2026-01-01T13:00:00Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_dimensions,
+                    metrics: BTreeMap::new(),
+                },
+            ])
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn ga4_custom_purchase_schema_integrity_check_is_emitted() {
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = super::super::analytics_config::AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(Ga4ObservedCustomPurchaseConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(44),
+            profile_id: "staging-ga4-custom-purchase".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let artifact = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("run should succeed while marking custom purchase schema warning");
+
+        let exclusion_check = artifact
+            .quality_controls
+            .schema_drift_checks
+            .iter()
+            .find(|check| check.code == "ga4_custom_purchase_ndp_excluded_from_truth_kpis")
+            .expect("custom purchase exclusion check");
+        assert!(exclusion_check.passed);
+        assert_eq!(exclusion_check.severity, "high");
+
+        let schema_check = artifact
+            .quality_controls
+            .schema_drift_checks
+            .iter()
+            .find(|check| check.code == "ga4_custom_purchase_ndp_schema_integrity")
+            .expect("custom purchase schema integrity check");
+        assert_eq!(
+            schema_check.applicability,
+            QualityCheckApplicabilityV1::Applies
+        );
+        assert!(!schema_check.passed);
+        assert_eq!(schema_check.severity, "medium");
     }
 
     #[test]
