@@ -7,6 +7,7 @@ import {
   resolveRoutePolicyPreset,
   runTextWorkflowJobLifecycle
 } from './text_workflow_helpers.mjs';
+import { renderDashboardDecisionSurfaces } from './dashboard_app.mjs';
 
 const state = {
   currentSnapshot: null,
@@ -985,101 +986,18 @@ function renderExecutiveDashboard(snapshot) {
   renderFunnelTable(snapshot.funnel_summary?.stages || []);
   renderStorefrontTable(snapshot.storefront_behavior_summary || {});
   renderForecast(snapshot.forecast_summary || {});
-  renderPublishGate(snapshot.publish_export_gate || {});
-  renderDecisionFeed(snapshot.decision_feed || []);
+  state.dashboardDiagnostics = renderDashboardDecisionSurfaces({
+    elements: el,
+    snapshot,
+    targetWindow: window
+  });
   renderNarratives(snapshot.operator_summary?.attribution_narratives || [], snapshot.alerts || []);
 }
 
 function renderHighLeverageReports(reports, snapshot) {
-  renderRevenueTruthReport(reports?.revenue_truth || {});
   renderFunnelSurvivalReport(reports?.funnel_survival || {});
   renderAttributionDeltaReport(reports?.attribution_delta || {});
   renderHighLeverageScorecard(reports?.data_quality_scorecard || {}, snapshot?.publish_export_gate || {});
-}
-
-function renderRevenueTruthReport(report) {
-  const risk = String(report?.inflation_risk || 'unknown').toLowerCase();
-  const riskClass = risk === 'high' ? 'bad' : risk === 'medium' ? 'warn' : risk === 'low' ? 'good' : 'neutral';
-  const guardStatus = String(report?.truth_guard_status || 'unknown').toLowerCase();
-  const guardClass = guardStatus === 'guarded_review_required'
-    ? 'warn'
-    : guardStatus === 'guarded_clean' || guardStatus === 'canonical_only'
-      ? 'good'
-      : 'neutral';
-  const guardLabel = guardStatus === 'guarded_review_required'
-    ? 'guard: review required'
-    : guardStatus === 'guarded_clean'
-      ? 'guard: stable'
-      : guardStatus === 'canonical_only'
-        ? 'guard: canonical only'
-        : 'guard: unknown';
-  if (el.revenueTruthGuardChip) {
-    el.revenueTruthGuardChip.textContent = guardLabel;
-    el.revenueTruthGuardChip.className = `pill risk-pill ${guardClass}`;
-  }
-  if (el.revenueTruthRiskChip) {
-    el.revenueTruthRiskChip.textContent = `risk: ${risk}`;
-    el.revenueTruthRiskChip.className = `pill risk-pill ${riskClass}`;
-  }
-  if (!el.revenueTruthPanel) return;
-
-  const canonicalRevenue = Number(report?.canonical_revenue || 0);
-  const canonicalConversions = Number(report?.canonical_conversions || 0);
-  const strictDup = Number(report?.strict_duplicate_ratio || 0);
-  const nearDup = Number(report?.near_duplicate_ratio || 0);
-  const customRows = Number(report?.custom_purchase_rows || 0);
-  const customOverlapRows = Number(report?.custom_purchase_overlap_rows || 0);
-  const customOrphanRows = Number(report?.custom_purchase_orphan_rows || 0);
-  const customOverlapRatio = Number(report?.custom_purchase_overlap_ratio || 0);
-  const customOrphanRatio = Number(report?.custom_purchase_orphan_ratio || 0);
-  const revenueAtRisk = Number(report?.estimated_revenue_at_risk || 0);
-  const summary = cleanText(report?.summary) || 'No revenue-truth summary available for this run.';
-
-  el.revenueTruthPanel.innerHTML = `
-    <div class="report-metrics">
-      <div class="report-metric">
-        <div class="forecast-label">Canonical Revenue</div>
-        <div class="forecast-value">$${fmtNum(canonicalRevenue, 2)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Canonical Conversions</div>
-        <div class="forecast-value">${fmtInt(canonicalConversions)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Strict Duplicate Ratio</div>
-        <div class="forecast-value">${fmtNum(strictDup * 100, 2)}%</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Near Duplicate Ratio</div>
-        <div class="forecast-value">${fmtNum(nearDup * 100, 2)}%</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Estimated Revenue At Risk</div>
-        <div class="forecast-value">$${fmtNum(revenueAtRisk, 2)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Custom Purchase Rows</div>
-        <div class="forecast-value">${fmtInt(customRows)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Canonical Match Rows</div>
-        <div class="forecast-value">${fmtInt(customOverlapRows)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Orphan Rows</div>
-        <div class="forecast-value">${fmtInt(customOrphanRows)}</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Custom Overlap Ratio</div>
-        <div class="forecast-value">${fmtNum(customOverlapRatio * 100, 2)}%</div>
-      </div>
-      <div class="report-metric">
-        <div class="forecast-label">Custom Orphan Ratio</div>
-        <div class="forecast-value">${fmtNum(customOrphanRatio * 100, 2)}%</div>
-      </div>
-    </div>
-    <div class="narrative-item">${escapeHtml(summary)}</div>
-  `;
 }
 
 function renderFunnelSurvivalReport(report) {
@@ -1640,53 +1558,6 @@ function renderForecast(forecast) {
       <div class="forecast-label">vs monthly target pace</div>
     </div>
   `;
-}
-
-function renderPublishGate(gate) {
-  const statusValue = gate.gate_status || 'ready';
-  const blocking = gate.blocking_reasons || [];
-  const warnings = gate.warning_reasons || [];
-  const publishReady = gate.publish_ready !== false;
-  const exportReady = gate.export_ready !== false;
-
-  if (el.exportPacketButton) {
-    el.exportPacketButton.disabled = !exportReady;
-    el.exportPacketButton.title = exportReady
-      ? 'Export gate is open for this snapshot.'
-      : `Blocked: ${blocking.join(' | ') || 'publish/export gate failed'}`;
-  }
-
-  el.publishGatePanel.innerHTML = `
-    <div class="gate-card">
-      <h3>Gate Status</h3>
-      <div class="gate-status ${escapeHtml(statusValue)}">${escapeHtml(statusValue.replace('_', ' '))}</div>
-      <p>Publish ready: <strong>${publishReady ? 'yes' : 'no'}</strong></p>
-      <p>Export ready: <strong>${exportReady ? 'yes' : 'no'}</strong></p>
-    </div>
-    <div class="gate-card">
-      <h3>Blocking Reasons</h3>
-      <p>${blocking.length ? escapeHtml(blocking.join(' | ')) : 'None'}</p>
-    </div>
-    <div class="gate-card">
-      <h3>Warnings</h3>
-      <p>${warnings.length ? escapeHtml(warnings.join(' | ')) : 'None'}</p>
-    </div>
-  `;
-}
-
-function renderDecisionFeed(cards) {
-  if (!cards.length) {
-    el.decisionFeedList.innerHTML = '<div class="decision-card low"><h3>No active decision cards</h3><p>Pipeline is stable in this window.</p></div>';
-    return;
-  }
-  el.decisionFeedList.innerHTML = cards.slice(0, 8).map(card => `
-    <div class="decision-card ${escapeHtml(card.priority || 'low')}">
-      <div class="decision-meta">${escapeHtml(card.priority || 'low')} | ${escapeHtml(card.status || 'monitor')}</div>
-      <h3>${escapeHtml(card.title || card.card_id || 'Decision')}</h3>
-      <p>${escapeHtml(card.summary || '')}</p>
-      <p><strong>Action:</strong> ${escapeHtml(card.recommended_action || 'Monitor')}</p>
-    </div>
-  `).join('');
 }
 
 function renderNarratives(narratives, alerts) {
