@@ -422,6 +422,13 @@ button:focus-visible {
   gap: 12px;
 }
 
+.pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .pill {
   font-size: 11px;
   color: #fff;

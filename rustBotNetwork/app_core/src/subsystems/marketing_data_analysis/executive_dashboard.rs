@@ -172,15 +172,76 @@ fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthRepo
     let canonical_revenue = finite_or_zero(run.artifact.report.total_metrics.conversions_value);
     let canonical_conversions = finite_or_zero(run.artifact.report.total_metrics.conversions);
     let estimated_revenue_at_risk = round4(canonical_revenue * near_duplicate_ratio.max(0.0));
+    let custom_purchase_rows = find_quality_check_u64(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_overlap_rate",
+        "purchase_ndp_rows",
+    )
+    .unwrap_or(0);
+    let custom_purchase_overlap_rows = find_quality_check_u64(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_overlap_rate",
+        "rows_with_canonical_purchase",
+    )
+    .unwrap_or(0);
+    let custom_purchase_orphan_rows = find_quality_check_u64(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_orphan_rate",
+        "orphan_rows",
+    )
+    .unwrap_or(0);
+    let custom_purchase_overlap_ratio = find_quality_check_f64(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_overlap_rate",
+        "overlap_ratio",
+    )
+    .unwrap_or(0.0);
+    let custom_purchase_orphan_ratio = find_quality_check_f64(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_orphan_rate",
+        "orphan_ratio",
+    )
+    .unwrap_or(0.0);
+    let custom_schema_failed = has_failed_quality_check(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_schema_integrity",
+    );
+    let custom_overlap_failed = has_failed_quality_check(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_overlap_rate",
+    );
+    let custom_orphan_failed = has_failed_quality_check(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_custom_purchase_ndp_orphan_rate",
+    );
+    let truth_guard_status = if custom_purchase_rows == 0 {
+        "canonical_only"
+    } else if custom_schema_failed || custom_overlap_failed || custom_orphan_failed {
+        "guarded_review_required"
+    } else {
+        "guarded_clean"
+    };
     let summary = format!(
-        "Canonical purchase metrics enforced. strict_duplicate_ratio={:.4}, near_duplicate_ratio={:.4}, inflation_risk={}",
-        strict_duplicate_ratio, near_duplicate_ratio, risk
+        "Canonical purchase metrics enforced. strict_duplicate_ratio={:.4}, near_duplicate_ratio={:.4}, custom_purchase_rows={}, overlap_ratio={:.4}, orphan_ratio={:.4}, truth_guard_status={}, inflation_risk={}",
+        strict_duplicate_ratio,
+        near_duplicate_ratio,
+        custom_purchase_rows,
+        custom_purchase_overlap_ratio,
+        custom_purchase_orphan_ratio,
+        truth_guard_status,
+        risk
     );
     RevenueTruthReportV1 {
         canonical_revenue,
         canonical_conversions,
         strict_duplicate_ratio,
         near_duplicate_ratio,
+        custom_purchase_rows,
+        custom_purchase_overlap_rows,
+        custom_purchase_orphan_rows,
+        custom_purchase_overlap_ratio,
+        custom_purchase_orphan_ratio,
+        truth_guard_status: truth_guard_status.to_string(),
         inflation_risk: risk.to_string(),
         estimated_revenue_at_risk,
         summary,
@@ -348,23 +409,57 @@ fn find_quality_check_ratio(
     checks: &[super::contracts::QualityCheckV1],
     code: &str,
 ) -> Option<f64> {
+    find_quality_check_f64(checks, code, "ratio")
+}
+
+fn find_quality_check_f64(
+    checks: &[super::contracts::QualityCheckV1],
+    code: &str,
+    key: &str,
+) -> Option<f64> {
     checks
         .iter()
         .find(|check| check.code == code)
-        .and_then(|check| parse_ratio_from_observed(&check.observed))
+        .and_then(|check| parse_observed_metric_f64(&check.observed, key))
 }
 
-fn parse_ratio_from_observed(observed: &str) -> Option<f64> {
-    let (_, ratio_tail) = observed.split_once("ratio=")?;
-    let value_text = ratio_tail
-        .split(',')
-        .next()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?;
-    value_text
+fn find_quality_check_u64(
+    checks: &[super::contracts::QualityCheckV1],
+    code: &str,
+    key: &str,
+) -> Option<u64> {
+    checks
+        .iter()
+        .find(|check| check.code == code)
+        .and_then(|check| parse_observed_metric_u64(&check.observed, key))
+}
+
+fn has_failed_quality_check(checks: &[super::contracts::QualityCheckV1], code: &str) -> bool {
+    checks.iter().any(|check| {
+        check.code == code
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    })
+}
+
+fn parse_observed_metric_value<'a>(observed: &'a str, key: &str) -> Option<&'a str> {
+    observed.split(',').find_map(|segment| {
+        let (segment_key, segment_value) = segment.trim().split_once('=')?;
+        (segment_key.trim() == key).then_some(segment_value.trim())
+    })
+}
+
+fn parse_observed_metric_f64(observed: &str, key: &str) -> Option<f64> {
+    parse_observed_metric_value(observed, key)?
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite())
+}
+
+fn parse_observed_metric_u64(observed: &str, key: &str) -> Option<u64> {
+    parse_observed_metric_value(observed, key)?
+        .parse::<u64>()
+        .ok()
 }
 
 fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1> {
@@ -375,7 +470,11 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
     let failed_schema = quality
         .schema_drift_checks
         .iter()
-        .filter(|check| !check.passed)
+        .filter(|check| {
+            check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+                && check.severity.eq_ignore_ascii_case("high")
+        })
         .count();
     if failed_schema > 0 {
         cards.push(DecisionFeedCardV1 {
@@ -389,6 +488,77 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec![
                 "quality_controls.schema_drift_checks".to_string(),
                 format!("run_id={}", run.metadata.run_id),
+            ],
+        });
+    }
+    if let Some(check) = quality.schema_drift_checks.iter().find(|check| {
+        check.code == "ga4_custom_purchase_ndp_schema_integrity"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "custom-purchase-schema".to_string(),
+            priority: "medium".to_string(),
+            status: "review_required".to_string(),
+            title: "Custom purchase stream lacks truth fields".to_string(),
+            summary: format!(
+                "`purchase_ndp` is missing transaction/value fields ({}). It remains excluded from truth KPIs.",
+                check.observed
+            ),
+            recommended_action:
+                "Fix or retire the custom purchase event; keep relying on canonical `purchase` for revenue truth."
+                    .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks.ga4_custom_purchase_ndp_schema_integrity"
+                    .to_string(),
+            ],
+        });
+    }
+    if let Some(check) = quality.schema_drift_checks.iter().find(|check| {
+        check.code == "ga4_custom_purchase_ndp_overlap_rate"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "custom-purchase-overlap".to_string(),
+            priority: "medium".to_string(),
+            status: "review_required".to_string(),
+            title: "Duplicate custom purchase stream still active".to_string(),
+            summary: format!(
+                "`purchase_ndp` overlaps canonical `purchase` events ({}). Revenue KPIs stay guarded, but duplicate instrumentation remains live.",
+                check.observed
+            ),
+            recommended_action:
+                "Disable redundant `purchase_ndp` emission or quarantine it from all downstream exports."
+                    .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks.ga4_custom_purchase_ndp_overlap_rate"
+                    .to_string(),
+                "high_leverage_reports.revenue_truth".to_string(),
+            ],
+        });
+    }
+    if let Some(check) = quality.schema_drift_checks.iter().find(|check| {
+        check.code == "ga4_custom_purchase_ndp_orphan_rate"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "custom-purchase-orphans".to_string(),
+            priority: "high".to_string(),
+            status: "investigate".to_string(),
+            title: "Custom purchase orphan rows detected".to_string(),
+            summary: format!(
+                "`purchase_ndp` emitted rows without nearby canonical purchases ({}). Revenue completeness may be understated for some checkouts.",
+                check.observed
+            ),
+            recommended_action:
+                "Audit checkout tagging and confirm canonical `purchase` fires on the same sessions before acting on completeness-sensitive revenue decisions."
+                    .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks.ga4_custom_purchase_ndp_orphan_rate"
+                    .to_string(),
+                "high_leverage_reports.revenue_truth".to_string(),
             ],
         });
     }
@@ -574,6 +744,26 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
     }) {
         warning_reasons.push(
             "Custom purchase event `purchase_ndp` failed schema integrity (missing transaction_id/value); event remains excluded from truth KPIs."
+                .to_string(),
+        );
+    }
+    if quality.schema_drift_checks.iter().any(|check| {
+        check.code == "ga4_custom_purchase_ndp_overlap_rate"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        warning_reasons.push(
+            "Custom purchase event `purchase_ndp` still overlaps canonical `purchase` events; duplicate stream remains active but excluded from truth KPIs."
+                .to_string(),
+        );
+    }
+    if quality.schema_drift_checks.iter().any(|check| {
+        check.code == "ga4_custom_purchase_ndp_orphan_rate"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        warning_reasons.push(
+            "Custom purchase event `purchase_ndp` has orphan rows without nearby canonical purchases; investigate possible checkout undercount."
                 .to_string(),
         );
     }
@@ -1383,6 +1573,38 @@ mod tests {
     }
 
     #[test]
+    fn revenue_truth_report_carries_custom_purchase_guard_metrics() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_overlap_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase overlap ratio <= 0.20".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_orphan_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase orphan ratio <= 0.05".to_string(),
+            },
+        ]);
+        let report = build_revenue_truth_report(&run);
+        assert_eq!(report.custom_purchase_rows, 6);
+        assert_eq!(report.custom_purchase_overlap_rows, 5);
+        assert_eq!(report.custom_purchase_orphan_rows, 1);
+        assert!((report.custom_purchase_overlap_ratio - 0.8333).abs() < 0.0001);
+        assert!((report.custom_purchase_orphan_ratio - 0.1667).abs() < 0.0001);
+        assert_eq!(report.truth_guard_status, "guarded_review_required");
+    }
+
+    #[test]
     fn publish_gate_blocks_on_high_severity_schema_failure() {
         let mut run = build_run("run-2", "p1", 200.0, 6.5);
         run.artifact.quality_controls.schema_drift_checks.push(
@@ -1482,6 +1704,77 @@ mod tests {
             .warning_reasons
             .iter()
             .any(|reason| reason.contains("purchase_ndp")));
+    }
+
+    #[test]
+    fn publish_gate_warns_when_custom_purchase_overlap_and_orphans_fail() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_overlap_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase overlap ratio <= 0.20".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_orphan_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase orphan ratio <= 0.05".to_string(),
+            },
+        ]);
+        let gate = build_publish_export_gate(&run);
+        assert!(gate.publish_ready);
+        assert_eq!(gate.gate_status, "review_required");
+        assert!(gate
+            .warning_reasons
+            .iter()
+            .any(|reason| reason.contains("overlaps canonical")));
+        assert!(gate
+            .warning_reasons
+            .iter()
+            .any(|reason| reason.contains("orphan rows")));
+    }
+
+    #[test]
+    fn decision_feed_surfaces_custom_purchase_duplicate_and_orphan_cards() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_overlap_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase overlap ratio <= 0.20".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_custom_purchase_ndp_orphan_rate".to_string(),
+                passed: false,
+                severity: "medium".to_string(),
+                observed: "purchase_ndp_rows=6, rows_with_canonical_purchase=5, orphan_rows=1, overlap_ratio=0.8333, orphan_ratio=0.1667".to_string(),
+                expected: "custom purchase orphan ratio <= 0.05".to_string(),
+            },
+        ]);
+        let cards = build_decision_feed(&run);
+        assert!(cards
+            .iter()
+            .any(|card| card.card_id == "custom-purchase-overlap"));
+        assert!(cards
+            .iter()
+            .any(|card| card.card_id == "custom-purchase-orphans"));
+        assert!(!cards
+            .iter()
+            .any(|card| card.card_id == "schema-drift" && card.status == "blocked"));
     }
 
     #[test]

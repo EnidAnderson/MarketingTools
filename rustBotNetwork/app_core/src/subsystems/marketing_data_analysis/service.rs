@@ -346,6 +346,26 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             &source_coverage,
             provided_observation_sources.as_ref(),
         );
+        if let Some(check) = quality_controls.schema_drift_checks.iter().find(|check| {
+            check.code == "ga4_custom_purchase_ndp_overlap_rate"
+                && check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+        }) {
+            uncertainty_notes.push(format!(
+                "Custom purchase stream `purchase_ndp` overlaps canonical `purchase` events; duplicate instrumentation remains active ({}) but is excluded from truth KPIs.",
+                check.observed
+            ));
+        }
+        if let Some(check) = quality_controls.schema_drift_checks.iter().find(|check| {
+            check.code == "ga4_custom_purchase_ndp_orphan_rate"
+                && check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+        }) {
+            uncertainty_notes.push(format!(
+                "Custom purchase stream `purchase_ndp` emitted rows without nearby canonical purchases ({}); investigate potential checkout undercount before treating revenue as complete.",
+                check.observed
+            ));
+        }
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
 
@@ -1004,6 +1024,68 @@ fn ga4_custom_purchase_schema_stats(ga4_events: &[Ga4EventRawV1]) -> (usize, usi
         })
         .count();
     (total_rows, rows_with_transaction_id, rows_with_value)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct Ga4CustomPurchaseMatchStats {
+    total_rows: usize,
+    rows_with_canonical_purchase: usize,
+    orphan_rows: usize,
+    overlap_ratio: f64,
+    orphan_ratio: f64,
+}
+
+fn ga4_custom_purchase_match_stats(
+    ga4_events: &[Ga4EventRawV1],
+    tolerance_seconds: i64,
+) -> Ga4CustomPurchaseMatchStats {
+    let mut canonical_purchase_seconds: BTreeMap<(String, String), Vec<i64>> = BTreeMap::new();
+    for event in ga4_events {
+        if !is_ga4_canonical_purchase_event(&event.event_name) {
+            continue;
+        }
+        let Some(event_second) = ga4_event_epoch_seconds(event) else {
+            continue;
+        };
+        let user = event.user_pseudo_id.trim().to_string();
+        let session = ga4_session_key(event);
+        canonical_purchase_seconds
+            .entry((user, session))
+            .or_default()
+            .push(event_second);
+    }
+    for seconds in canonical_purchase_seconds.values_mut() {
+        seconds.sort_unstable();
+    }
+
+    let mut stats = Ga4CustomPurchaseMatchStats::default();
+    for event in ga4_events {
+        if !is_ga4_custom_purchase_event(&event.event_name) {
+            continue;
+        }
+        stats.total_rows += 1;
+        let Some(event_second) = ga4_event_epoch_seconds(event) else {
+            stats.orphan_rows += 1;
+            continue;
+        };
+        if has_canonical_purchase_within_window(
+            &canonical_purchase_seconds,
+            event.user_pseudo_id.trim(),
+            &ga4_session_key(event),
+            event_second,
+            tolerance_seconds,
+        ) {
+            stats.rows_with_canonical_purchase += 1;
+        } else {
+            stats.orphan_rows += 1;
+        }
+    }
+
+    if stats.total_rows > 0 {
+        stats.overlap_ratio = stats.rows_with_canonical_purchase as f64 / stats.total_rows as f64;
+        stats.orphan_ratio = stats.orphan_rows as f64 / stats.total_rows as f64;
+    }
+    stats
 }
 
 fn is_ga4_click_event(event_name: &str) -> bool {
@@ -1826,6 +1908,7 @@ fn build_quality_controls(
         ga4_custom_purchase_rows_with_tx,
         ga4_custom_purchase_rows_with_value,
     ) = ga4_custom_purchase_schema_stats(ga4_events);
+    let ga4_custom_purchase_match_stats = ga4_custom_purchase_match_stats(ga4_events, 30);
     let ga4_custom_purchase_applies =
         ga4_applicability == QualityCheckApplicabilityV1::Applies && ga4_custom_purchase_rows > 0;
     let ga4_custom_purchase_applicability = if ga4_custom_purchase_applies {
@@ -1879,7 +1962,7 @@ fn build_quality_controls(
         expected: "purchase_ndp must not appear in KPI rollups/report tables".to_string(),
     });
     schema_drift_checks.push(QualityCheckV1 {
-        applicability: ga4_custom_purchase_applicability,
+        applicability: ga4_custom_purchase_applicability.clone(),
         code: "ga4_custom_purchase_ndp_schema_integrity".to_string(),
         passed: !ga4_custom_purchase_applies
             || (ga4_custom_purchase_rows_with_tx == ga4_custom_purchase_rows
@@ -1893,6 +1976,40 @@ fn build_quality_controls(
         ),
         expected:
             "all purchase_ndp rows include transaction_id and value; otherwise keep excluded from truth KPIs"
+                .to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_custom_purchase_applicability.clone(),
+        code: "ga4_custom_purchase_ndp_overlap_rate".to_string(),
+        passed: !ga4_custom_purchase_applies || ga4_custom_purchase_match_stats.overlap_ratio <= 0.20,
+        severity: "medium".to_string(),
+        observed: format!(
+            "purchase_ndp_rows={}, rows_with_canonical_purchase={}, orphan_rows={}, overlap_ratio={:.4}, orphan_ratio={:.4}",
+            ga4_custom_purchase_match_stats.total_rows,
+            ga4_custom_purchase_match_stats.rows_with_canonical_purchase,
+            ga4_custom_purchase_match_stats.orphan_rows,
+            ga4_custom_purchase_match_stats.overlap_ratio,
+            ga4_custom_purchase_match_stats.orphan_ratio
+        ),
+        expected:
+            "custom purchase overlap ratio <= 0.20 after duplicate-stream cleanup; keep excluded from truth KPIs"
+                .to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_custom_purchase_applicability,
+        code: "ga4_custom_purchase_ndp_orphan_rate".to_string(),
+        passed: !ga4_custom_purchase_applies || ga4_custom_purchase_match_stats.orphan_ratio <= 0.05,
+        severity: "medium".to_string(),
+        observed: format!(
+            "purchase_ndp_rows={}, rows_with_canonical_purchase={}, orphan_rows={}, overlap_ratio={:.4}, orphan_ratio={:.4}",
+            ga4_custom_purchase_match_stats.total_rows,
+            ga4_custom_purchase_match_stats.rows_with_canonical_purchase,
+            ga4_custom_purchase_match_stats.orphan_rows,
+            ga4_custom_purchase_match_stats.overlap_ratio,
+            ga4_custom_purchase_match_stats.orphan_ratio
+        ),
+        expected:
+            "custom purchase orphan ratio <= 0.05; otherwise investigate missing canonical purchase coverage"
                 .to_string(),
     });
     let reconciliation_code = "identity_campaign_rollup_reconciliation";
@@ -2728,6 +2845,75 @@ mod tests {
     }
 
     #[test]
+    fn ga4_custom_purchase_match_stats_detect_overlap_and_orphans() {
+        let mut canonical_dimensions = BTreeMap::new();
+        canonical_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1772500001000000".to_string(),
+        );
+        canonical_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+        canonical_dimensions.insert("transaction_id".to_string(), "tx-123".to_string());
+        canonical_dimensions.insert("purchase_revenue".to_string(), "57.25".to_string());
+
+        let mut matching_custom_dimensions = BTreeMap::new();
+        matching_custom_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1772500003000000".to_string(),
+        );
+        matching_custom_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+
+        let mut orphan_custom_dimensions = BTreeMap::new();
+        orphan_custom_dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            "1772503600000000".to_string(),
+        );
+        orphan_custom_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+
+        let events = vec![
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: canonical_dimensions,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:03Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: matching_custom_dimensions,
+                metrics: BTreeMap::new(),
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase_ndp".to_string(),
+                event_timestamp_utc: "2026-03-01T13:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: orphan_custom_dimensions,
+                metrics: BTreeMap::new(),
+            },
+        ];
+
+        let stats = ga4_custom_purchase_match_stats(&events, 30);
+        assert_eq!(stats.total_rows, 2);
+        assert_eq!(stats.rows_with_canonical_purchase, 1);
+        assert_eq!(stats.orphan_rows, 1);
+        assert!((stats.overlap_ratio - 0.5).abs() < 0.0001);
+        assert!((stats.orphan_ratio - 0.5).abs() < 0.0001);
+    }
+
+    #[test]
     fn ga4_report_uses_canonical_purchase_and_ignores_purchase_ndp_duplicates() {
         let request = MockAnalyticsRequestV1 {
             start_date: "2026-03-01".to_string(),
@@ -3469,6 +3655,122 @@ mod tests {
         }
     }
 
+    struct Ga4ObservedCustomPurchaseDuplicateConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2
+        for Ga4ObservedCustomPurchaseDuplicateConnector
+    {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "ga4_observed_custom_purchase_duplicate_connector".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "ga4_observed_custom_purchase_duplicate_connector".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            let mut purchase_dimensions = BTreeMap::new();
+            purchase_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+            purchase_dimensions.insert("transaction_id".to_string(), "tx-1".to_string());
+            purchase_dimensions.insert("purchase_revenue".to_string(), "57.25".to_string());
+
+            let mut matched_custom_dimensions = BTreeMap::new();
+            matched_custom_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+
+            let mut orphan_custom_dimensions = BTreeMap::new();
+            orphan_custom_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+
+            Ok(vec![
+                Ga4EventRawV1 {
+                    event_name: "purchase_ndp".to_string(),
+                    event_timestamp_utc: "2026-01-01T12:00:10Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: matched_custom_dimensions,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase_ndp".to_string(),
+                    event_timestamp_utc: "2026-01-01T13:00:00Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: orphan_custom_dimensions,
+                    metrics: BTreeMap::new(),
+                },
+                Ga4EventRawV1 {
+                    event_name: "purchase".to_string(),
+                    event_timestamp_utc: "2026-01-01T12:00:00Z".to_string(),
+                    user_pseudo_id: "user-1".to_string(),
+                    session_id: Some("session-1".to_string()),
+                    campaign: Some("Spring Launch".to_string()),
+                    device_category: Some("mobile".to_string()),
+                    source_medium: Some("google / cpc".to_string()),
+                    dimensions: purchase_dimensions,
+                    metrics: BTreeMap::new(),
+                },
+            ])
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
     #[tokio::test]
     async fn ga4_custom_purchase_schema_integrity_check_is_emitted() {
         let mut cfg =
@@ -3522,6 +3824,75 @@ mod tests {
         );
         assert!(!schema_check.passed);
         assert_eq!(schema_check.severity, "medium");
+    }
+
+    #[tokio::test]
+    async fn ga4_custom_purchase_overlap_and_orphan_checks_are_emitted() {
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = super::super::analytics_config::AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(Ga4ObservedCustomPurchaseDuplicateConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(55),
+            profile_id: "staging-ga4-custom-purchase-duplicate".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let artifact = svc
+            .run_mock_analysis(req)
+            .await
+            .expect("run should succeed while emitting duplicate-stream diagnostics");
+
+        let overlap_check = artifact
+            .quality_controls
+            .schema_drift_checks
+            .iter()
+            .find(|check| check.code == "ga4_custom_purchase_ndp_overlap_rate")
+            .expect("custom purchase overlap check");
+        assert_eq!(
+            overlap_check.applicability,
+            QualityCheckApplicabilityV1::Applies
+        );
+        assert!(!overlap_check.passed);
+        assert!(overlap_check
+            .observed
+            .contains("rows_with_canonical_purchase=1"));
+
+        let orphan_check = artifact
+            .quality_controls
+            .schema_drift_checks
+            .iter()
+            .find(|check| check.code == "ga4_custom_purchase_ndp_orphan_rate")
+            .expect("custom purchase orphan check");
+        assert_eq!(
+            orphan_check.applicability,
+            QualityCheckApplicabilityV1::Applies
+        );
+        assert!(!orphan_check.passed);
+        assert!(orphan_check.observed.contains("orphan_rows=1"));
+        assert!(artifact
+            .uncertainty_notes
+            .iter()
+            .any(|note| note.contains("duplicate instrumentation remains active")));
+        assert!(artifact
+            .uncertainty_notes
+            .iter()
+            .any(|note| note.contains("potential checkout undercount")));
     }
 
     #[test]

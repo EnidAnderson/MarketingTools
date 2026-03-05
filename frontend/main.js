@@ -70,6 +70,7 @@ const el = {
   narrativeList: document.getElementById('narrativeList'),
   historyList: document.getElementById('historyList'),
   revenueTruthPanel: document.getElementById('revenueTruthPanel'),
+  revenueTruthGuardChip: document.getElementById('revenueTruthGuardChip'),
   revenueTruthRiskChip: document.getElementById('revenueTruthRiskChip'),
   funnelSurvivalSummary: document.getElementById('funnelSurvivalSummary'),
   attributionDeltaSummary: document.getElementById('attributionDeltaSummary'),
@@ -999,6 +1000,23 @@ function renderHighLeverageReports(reports, snapshot) {
 function renderRevenueTruthReport(report) {
   const risk = String(report?.inflation_risk || 'unknown').toLowerCase();
   const riskClass = risk === 'high' ? 'bad' : risk === 'medium' ? 'warn' : risk === 'low' ? 'good' : 'neutral';
+  const guardStatus = String(report?.truth_guard_status || 'unknown').toLowerCase();
+  const guardClass = guardStatus === 'guarded_review_required'
+    ? 'warn'
+    : guardStatus === 'guarded_clean' || guardStatus === 'canonical_only'
+      ? 'good'
+      : 'neutral';
+  const guardLabel = guardStatus === 'guarded_review_required'
+    ? 'guard: review required'
+    : guardStatus === 'guarded_clean'
+      ? 'guard: stable'
+      : guardStatus === 'canonical_only'
+        ? 'guard: canonical only'
+        : 'guard: unknown';
+  if (el.revenueTruthGuardChip) {
+    el.revenueTruthGuardChip.textContent = guardLabel;
+    el.revenueTruthGuardChip.className = `pill risk-pill ${guardClass}`;
+  }
   if (el.revenueTruthRiskChip) {
     el.revenueTruthRiskChip.textContent = `risk: ${risk}`;
     el.revenueTruthRiskChip.className = `pill risk-pill ${riskClass}`;
@@ -1009,6 +1027,11 @@ function renderRevenueTruthReport(report) {
   const canonicalConversions = Number(report?.canonical_conversions || 0);
   const strictDup = Number(report?.strict_duplicate_ratio || 0);
   const nearDup = Number(report?.near_duplicate_ratio || 0);
+  const customRows = Number(report?.custom_purchase_rows || 0);
+  const customOverlapRows = Number(report?.custom_purchase_overlap_rows || 0);
+  const customOrphanRows = Number(report?.custom_purchase_orphan_rows || 0);
+  const customOverlapRatio = Number(report?.custom_purchase_overlap_ratio || 0);
+  const customOrphanRatio = Number(report?.custom_purchase_orphan_ratio || 0);
   const revenueAtRisk = Number(report?.estimated_revenue_at_risk || 0);
   const summary = cleanText(report?.summary) || 'No revenue-truth summary available for this run.';
 
@@ -1033,6 +1056,26 @@ function renderRevenueTruthReport(report) {
       <div class="report-metric">
         <div class="forecast-label">Estimated Revenue At Risk</div>
         <div class="forecast-value">$${fmtNum(revenueAtRisk, 2)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Custom Purchase Rows</div>
+        <div class="forecast-value">${fmtInt(customRows)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Canonical Match Rows</div>
+        <div class="forecast-value">${fmtInt(customOverlapRows)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Orphan Rows</div>
+        <div class="forecast-value">${fmtInt(customOrphanRows)}</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Custom Overlap Ratio</div>
+        <div class="forecast-value">${fmtNum(customOverlapRatio * 100, 2)}%</div>
+      </div>
+      <div class="report-metric">
+        <div class="forecast-label">Custom Orphan Ratio</div>
+        <div class="forecast-value">${fmtNum(customOrphanRatio * 100, 2)}%</div>
       </div>
     </div>
     <div class="narrative-item">${escapeHtml(summary)}</div>
@@ -1771,6 +1814,12 @@ function emptySnapshot(profileId, opts, reason) {
         canonical_conversions: 0,
         strict_duplicate_ratio: 0,
         near_duplicate_ratio: 0,
+        custom_purchase_rows: 0,
+        custom_purchase_overlap_rows: 0,
+        custom_purchase_orphan_rows: 0,
+        custom_purchase_overlap_ratio: 0,
+        custom_purchase_orphan_ratio: 0,
+        truth_guard_status: 'canonical_only',
         inflation_risk: 'unknown',
         estimated_revenue_at_risk: 0,
         summary: reason || 'No revenue-truth report available before first persisted run.'
@@ -1920,9 +1969,15 @@ function fallbackSnapshot(profileId, opts) {
         canonical_conversions: 34,
         strict_duplicate_ratio: 0.011,
         near_duplicate_ratio: 0.024,
+        custom_purchase_rows: 6,
+        custom_purchase_overlap_rows: 5,
+        custom_purchase_orphan_rows: 1,
+        custom_purchase_overlap_ratio: 0.8333,
+        custom_purchase_orphan_ratio: 0.1667,
+        truth_guard_status: 'guarded_review_required',
         inflation_risk: 'low',
         estimated_revenue_at_risk: 52.8,
-        summary: 'Canonical purchase metrics applied with low duplicate inflation risk.'
+        summary: 'Canonical purchase metrics enforced. Duplicate custom purchase rows remain excluded from truth KPIs, but one orphan row still needs investigation.'
       },
       funnel_survival: {
         points: [

@@ -699,6 +699,18 @@ pub struct RevenueTruthReportV1 {
     pub canonical_conversions: f64,
     pub strict_duplicate_ratio: f64,
     pub near_duplicate_ratio: f64,
+    #[serde(default)]
+    pub custom_purchase_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_overlap_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_orphan_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_overlap_ratio: f64,
+    #[serde(default)]
+    pub custom_purchase_orphan_ratio: f64,
+    #[serde(default)]
+    pub truth_guard_status: String,
     pub inflation_risk: String,
     pub estimated_revenue_at_risk: f64,
     pub summary: String,
