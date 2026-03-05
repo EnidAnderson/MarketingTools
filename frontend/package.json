@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "live-server . --port=3000 --no-browser --no-open",
     "build": "rm -rf dist && mkdir dist && cp index.html main.js style.css text_workflow_helpers.mjs dashboard_app.mjs dashboard_renderers.mjs dashboard_view_models.mjs dist/",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:smoke": "node --test tests/dashboard_smoke.test.mjs"
   },
   "keywords": [],
   "author": "",

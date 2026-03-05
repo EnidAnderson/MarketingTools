@@ -106,6 +106,10 @@ test('dashboard decision surfaces render stable DOM contracts and diagnostics', 
   const diagnostics = renderDashboardDecisionSurfaces({
     elements,
     targetWindow: windowStub,
+    extraDiagnostics: {
+      kpis: { cardCount: 7 },
+      charts: { delta: { pointCount: 4 } }
+    },
     snapshot: {
       profile_id: 'marketing_default',
       run_id: 'run-2026-03-05-001',
@@ -159,6 +163,8 @@ test('dashboard decision surfaces render stable DOM contracts and diagnostics', 
 
   assert.equal(diagnostics.runId, 'run-2026-03-05-001');
   assert.equal(diagnostics.publishGate.gateStatus, 'review_required');
+  assert.equal(diagnostics.kpis.cardCount, 7);
+  assert.equal(diagnostics.charts.delta.pointCount, 4);
   assert.equal(windowStub.__DASHBOARD_DIAGNOSTICS__.decisionFeed.cardCount, 2);
   assert.equal(windowStub.document.body.dataset.dashboardRunId, 'run-2026-03-05-001');
   assert.equal(windowStub.document.body.dataset.dashboardGateStatus, 'review_required');

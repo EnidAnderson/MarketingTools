@@ -139,3 +139,62 @@ export function renderDecisionFeedSurface(elements, viewModel) {
     cardCount: viewModel.cards.length
   });
 }
+
+export function renderKpiSurface(elements, viewModel) {
+  if (!elements.kpiGrid) return;
+
+  elements.kpiGrid.innerHTML = viewModel.cards
+    .map((card) => {
+      if (!card.tooltipId) {
+        return `<div class="kpi" data-kpi-key="${escapeHtml(card.key)}">
+          <div class="kpi-label">${escapeHtml(card.label)}</div>
+          <div class="kpi-value">${escapeHtml(card.displayValue)}</div>
+          <div class="kpi-note">${escapeHtml(card.note)}</div>
+        </div>`;
+      }
+
+      return `<div class="kpi" data-kpi-key="${escapeHtml(card.key)}" data-confidence-label="${escapeHtml(card.confidenceLabel || 'unknown')}">
+        <div class="kpi-head">
+          <div class="kpi-label">${escapeHtml(card.label)}</div>
+          <button
+            type="button"
+            class="kpi-info"
+            data-field="info-button"
+            aria-label="How ${escapeHtml(card.label || 'this KPI')} is calculated"
+            aria-describedby="${escapeHtml(card.tooltipId)}"
+          >?</button>
+        </div>
+        <div class="kpi-value">${escapeHtml(card.displayValue)}</div>
+        <div class="kpi-note">${escapeHtml(card.note)}</div>
+        <div id="${escapeHtml(card.tooltipId)}" class="kpi-tooltip" data-field="tooltip" role="tooltip">${escapeHtml(card.tooltipText || '')}</div>
+      </div>`;
+    })
+    .join('');
+
+  setDataAttributes(elements.kpiGrid, {
+    panel: viewModel.panelId,
+    kpiCount: viewModel.cards.length
+  });
+}
+
+export function renderChartSurfaceMetadata(element, diagnostics) {
+  if (!element || !diagnostics) return;
+  setDataAttributes(element, {
+    chartKey: diagnostics.chartKey || 'unknown',
+    pointCount: diagnostics.pointCount || 0,
+    datasetCount: diagnostics.datasetCount || 0
+  });
+}
+
+export function renderChartSummarySurface(element, { chartKey, summaryText, diagnostics }) {
+  if (element && typeof summaryText === 'string') {
+    element.textContent = summaryText;
+  }
+  if (element && diagnostics) {
+    setDataAttributes(element, {
+      chartKey: chartKey || diagnostics.chartKey || 'unknown',
+      pointCount: diagnostics.pointCount || 0,
+      datasetCount: diagnostics.datasetCount || 0
+    });
+  }
+}

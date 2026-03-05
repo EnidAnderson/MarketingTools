@@ -12,7 +12,8 @@ import {
 export function renderDashboardDecisionSurfaces({
   elements,
   snapshot,
-  targetWindow = globalThis.window
+  targetWindow = globalThis.window,
+  extraDiagnostics = {}
 }) {
   const revenueTruth = buildRevenueTruthViewModel(
     snapshot?.high_leverage_reports?.revenue_truth || {}
@@ -32,7 +33,8 @@ export function renderDashboardDecisionSurfaces({
     trustStatus: snapshot?.trust_status || 'unknown',
     revenueTruth: revenueTruth.diagnostics,
     publishGate: publishGate.diagnostics,
-    decisionFeed: decisionFeed.diagnostics
+    decisionFeed: decisionFeed.diagnostics,
+    ...extraDiagnostics
   };
   publishDashboardDiagnostics(targetWindow, diagnostics);
   return diagnostics;

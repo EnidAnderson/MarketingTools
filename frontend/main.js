@@ -8,6 +8,17 @@ import {
   runTextWorkflowJobLifecycle
 } from './text_workflow_helpers.mjs';
 import { renderDashboardDecisionSurfaces } from './dashboard_app.mjs';
+import {
+  buildChannelMixChartModel,
+  buildDailyRevenueChartModel,
+  buildDeltaChartModel,
+  buildKpiViewModel
+} from './dashboard_view_models.mjs';
+import {
+  renderChartSurfaceMetadata,
+  renderChartSummarySurface,
+  renderKpiSurface
+} from './dashboard_renderers.mjs';
 
 const state = {
   currentSnapshot: null,
@@ -57,6 +68,9 @@ const el = {
   refreshStamp: document.getElementById('refreshStamp'),
   jobStatus: document.getElementById('jobStatus'),
   kpiGrid: document.getElementById('kpiGrid'),
+  deltaChart: document.getElementById('deltaChart'),
+  channelMixChart: document.getElementById('channelMixChart'),
+  dailyRevenueChart: document.getElementById('dailyRevenueChart'),
   runIdBadge: document.getElementById('runIdBadge'),
   qualityList: document.getElementById('qualityList'),
   dataQualityPanel: document.getElementById('dataQualityPanel'),
@@ -974,11 +988,14 @@ function renderExecutiveDashboard(snapshot) {
   if (!snapshot) return;
 
   el.runIdBadge.textContent = `Run: ${snapshot.run_id || 'n/a'} | Compare: ${snapshot.compare_window_runs || 1} run(s)`;
-  renderKpis(snapshot.kpis || [], snapshot);
+  const kpiModel = renderKpis(snapshot.kpis || [], snapshot);
   renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
-  renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
-  renderChannelMixChart(snapshot.channel_mix_series || [], snapshot.roas_target_band);
-  renderDailyRevenueChart(snapshot.daily_revenue_series || []);
+  const deltaChartModel = renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
+  const channelMixChartModel = renderChannelMixChart(
+    snapshot.channel_mix_series || [],
+    snapshot.roas_target_band
+  );
+  const dailyRevenueChartModel = renderDailyRevenueChart(snapshot.daily_revenue_series || []);
   renderQuality(snapshot.quality_controls || {});
   renderDataQuality(snapshot.data_quality || {});
   renderDrift(snapshot.historical_analysis || {});
@@ -989,7 +1006,15 @@ function renderExecutiveDashboard(snapshot) {
   state.dashboardDiagnostics = renderDashboardDecisionSurfaces({
     elements: el,
     snapshot,
-    targetWindow: window
+    targetWindow: window,
+    extraDiagnostics: {
+      kpis: kpiModel?.diagnostics || null,
+      charts: {
+        delta: deltaChartModel?.diagnostics || null,
+        channelMix: channelMixChartModel?.diagnostics || null,
+        dailyRevenue: dailyRevenueChartModel?.diagnostics || null
+      }
+    }
   });
   renderNarratives(snapshot.operator_summary?.attribution_narratives || [], snapshot.alerts || []);
 }
@@ -1166,253 +1191,67 @@ function renderHighLeverageScorecard(scorecard, gate) {
 }
 
 function renderKpis(kpis, snapshot = null) {
-  const cards = Array.isArray(kpis) ? kpis : [];
-  if (!cards.length) {
-    el.kpiGrid.innerHTML = '<div class="kpi"><div class="kpi-label">No KPI data</div><div class="kpi-value">n/a</div><div class="kpi-note">Run the pipeline to populate this panel.</div></div>';
-    return;
-  }
-  const kpiLookup = buildKpiLookup(cards);
-  el.kpiGrid.innerHTML = cards.map((kpi, index) => {
-    const delta = formatDelta(kpi.delta_percent);
-    const targetDelta = formatDelta(kpi.target_delta_percent);
-    const targetText = kpi.target_delta_percent == null ? '' : ` | vs target ${targetDelta}`;
-    const tooltipId = `kpi-tooltip-${index}`;
-    const explanation = buildKpiExplanation(kpi, kpiLookup, snapshot);
-    return `<div class="kpi">
-      <div class="kpi-head">
-        <div class="kpi-label">${escapeHtml(kpi.label)}</div>
-        <button
-          type="button"
-          class="kpi-info"
-          aria-label="How ${escapeHtml(kpi.label || 'this KPI')} is calculated"
-          aria-describedby="${tooltipId}"
-        >?</button>
-      </div>
-      <div class="kpi-value">${escapeHtml(kpi.formatted_value || fmtNum(kpi.value, 2))}</div>
-      <div class="kpi-note">vs baseline ${delta}${targetText}</div>
-      <div id="${tooltipId}" class="kpi-tooltip" role="tooltip">${escapeHtml(explanation)}</div>
-    </div>`;
-  }).join('');
-}
-
-function buildKpiLookup(kpis) {
-  const map = new Map();
-  for (const kpi of kpis) {
-    map.set(normalizeKpiKey(kpi?.label), Number(kpi?.value || 0));
-  }
-  return map;
-}
-
-function normalizeKpiKey(label) {
-  return String(label || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-}
-
-function findFunnelStageValue(snapshot, stageName) {
-  const stages = snapshot?.funnel_summary?.stages || [];
-  const row = stages.find(stage => String(stage.stage || '').toLowerCase() === stageName.toLowerCase());
-  return row ? Number(row.value || 0) : null;
-}
-
-function buildKpiExplanation(kpi, kpiLookup, snapshot) {
-  const label = String(kpi?.label || '').trim();
-  const key = normalizeKpiKey(label);
-  const displayed = kpi?.formatted_value || fmtNum(kpi?.value || 0, 2);
-  const spend = kpiLookup.get('spend') || 0;
-  const revenue = kpiLookup.get('revenue') || 0;
-  const conversions = kpiLookup.get('conversions') || 0;
-  const lines = [`Displayed: ${displayed}`];
-
-  if (key === 'spend') {
-    lines.unshift('Formula: Spend = sum(ad cost) across selected date range.');
-  } else if (key === 'revenue') {
-    lines.unshift('Formula: Revenue = canonical conversion value after duplicate-event controls.');
-  } else if (key === 'roas') {
-    lines.unshift('Formula: ROAS = Revenue / Spend.');
-    if (spend > 0) lines.push(`Derived from KPI tiles: ${fmtNum(revenue, 2)} / ${fmtNum(spend, 2)} = ${fmtNum(revenue / spend, 2)}x`);
-  } else if (key === 'conversions') {
-    lines.unshift('Formula: Conversions = canonical purchase count after dedupe rules.');
-  } else if (key === 'ctr') {
-    lines.unshift('Formula: CTR = Clicks / Impressions × 100.');
-    const impressions = findFunnelStageValue(snapshot, 'Impression');
-    const clicks = findFunnelStageValue(snapshot, 'Click');
-    if ((impressions || 0) > 0 && (clicks || 0) >= 0) {
-      lines.push(`From funnel stages: ${fmtInt(clicks)} / ${fmtInt(impressions)} = ${fmtNum((clicks / impressions) * 100, 2)}%`);
-    }
-  } else if (key === 'cpa') {
-    lines.unshift('Formula: CPA = Spend / Conversions.');
-    if (conversions > 0) lines.push(`Derived from KPI tiles: ${fmtNum(spend, 2)} / ${fmtNum(conversions, 2)} = ${fmtNum(spend / conversions, 2)}`);
-  } else if (key === 'aov') {
-    lines.unshift('Formula: AOV = Revenue / Conversions.');
-    if (conversions > 0) lines.push(`Derived from KPI tiles: ${fmtNum(revenue, 2)} / ${fmtNum(conversions, 2)} = ${fmtNum(revenue / conversions, 2)}`);
-  } else {
-    lines.unshift('Formula: Derived by the analytics pipeline for this profile/date window.');
-  }
-
-  lines.push('Source: current analytics artifact and executive snapshot.');
-  return lines.join('\n');
+  const viewModel = buildKpiViewModel(kpis, snapshot);
+  renderKpiSurface(el, viewModel);
+  return viewModel;
 }
 
 function renderDeltaChart(deltas) {
-  const ctx = document.getElementById('deltaChart');
-  if (!ctx || typeof Chart === 'undefined') return;
+  const ctx = el.deltaChart;
+  const chartModel = buildDeltaChartModel(deltas);
+  renderChartSurfaceMetadata(ctx, chartModel.diagnostics);
 
-  const points = deltas.filter(d => typeof d.delta_percent === 'number').slice(0, 8);
-  const labels = points.map(d => d.metric_key);
-  const values = points.map(d => Number((d.delta_percent * 100).toFixed(2)));
+  if (!ctx || typeof Chart === 'undefined') return chartModel;
+  if (!chartModel.config) {
+    if (state.deltaChart) {
+      state.deltaChart.destroy();
+      state.deltaChart = null;
+    }
+    return chartModel;
+  }
 
   if (state.deltaChart) state.deltaChart.destroy();
-  state.deltaChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Delta % vs baseline',
-        data: values,
-        backgroundColor: values.map(v => v >= 0 ? 'rgba(11,143,140,0.7)' : 'rgba(211,63,73,0.7)'),
-        borderColor: values.map(v => v >= 0 ? 'rgba(11,143,140,1)' : 'rgba(211,63,73,1)'),
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: { y: { ticks: { callback: value => `${value}%` } } },
-      plugins: { legend: { display: false } }
-    }
-  });
+  state.deltaChart = new Chart(ctx, chartModel.config);
+  return chartModel;
 }
 
 function renderChannelMixChart(points, roasTarget) {
-  const ctx = document.getElementById('channelMixChart');
-  if (!ctx || typeof Chart === 'undefined') return;
+  const ctx = el.channelMixChart;
+  const chartModel = buildChannelMixChartModel(points, roasTarget);
+  renderChartSurfaceMetadata(ctx, chartModel.diagnostics);
 
-  const rows = Array.isArray(points) ? points : [];
-  if (!rows.length) {
+  if (!ctx || typeof Chart === 'undefined') return chartModel;
+  if (!chartModel.config) {
     if (state.channelMixChart) {
       state.channelMixChart.destroy();
       state.channelMixChart = null;
     }
-    return;
-  }
-  const labels = rows.map(p => p.period_label);
-
-  const datasets = [
-    {
-      label: 'Spend',
-      data: rows.map(p => p.spend),
-      borderColor: 'rgba(216,87,42,1)',
-      backgroundColor: 'rgba(216,87,42,0.12)',
-      yAxisID: 'y',
-      tension: 0.3
-    },
-    {
-      label: 'Revenue',
-      data: rows.map(p => p.revenue),
-      borderColor: 'rgba(11,143,140,1)',
-      backgroundColor: 'rgba(11,143,140,0.12)',
-      yAxisID: 'y',
-      tension: 0.3
-    },
-    {
-      label: 'ROAS',
-      data: rows.map(p => p.roas),
-      borderColor: 'rgba(31,42,53,1)',
-      backgroundColor: 'rgba(31,42,53,0.1)',
-      yAxisID: 'y1',
-      tension: 0.3
-    }
-  ];
-
-  if (typeof roasTarget === 'number') {
-    datasets.push({
-      label: 'ROAS Target',
-      data: labels.map(() => roasTarget),
-      borderColor: 'rgba(224,166,0,1)',
-      borderDash: [6, 4],
-      yAxisID: 'y1',
-      pointRadius: 0,
-      tension: 0
-    });
+    return chartModel;
   }
 
   if (state.channelMixChart) state.channelMixChart.destroy();
-  state.channelMixChart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        y: { position: 'left', title: { display: true, text: 'Spend / Revenue' } },
-        y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'ROAS' } }
-      }
-    }
-  });
+  state.channelMixChart = new Chart(ctx, chartModel.config);
+  return chartModel;
 }
 
 function renderDailyRevenueChart(points) {
-  const ctx = document.getElementById('dailyRevenueChart');
-  const rows = Array.isArray(points) ? points : [];
-  if (el.dailyRevenueSummary) {
-    if (!rows.length) {
-      el.dailyRevenueSummary.textContent = 'No daily revenue series available in this run yet.';
-    } else {
-      const totalRevenue = rows.reduce((sum, row) => sum + Number(row.revenue || 0), 0);
-      const activeDays = rows.filter(row => Number(row.revenue || 0) > 0).length;
-      el.dailyRevenueSummary.textContent = `Total in selected window: $${fmtNum(totalRevenue, 2)} across ${rows.length} day(s); ${activeDays} day(s) recorded non-zero revenue.`;
-    }
-  }
-  if (!ctx || typeof Chart === 'undefined') return;
+  const ctx = el.dailyRevenueChart;
+  const chartModel = buildDailyRevenueChartModel(points);
+  renderChartSummarySurface(el.dailyRevenueSummary, chartModel);
+  renderChartSurfaceMetadata(ctx, chartModel.diagnostics);
 
-  if (!rows.length) {
+  if (!ctx || typeof Chart === 'undefined') return chartModel;
+  if (!chartModel.config) {
     if (state.dailyRevenueChart) {
       state.dailyRevenueChart.destroy();
       state.dailyRevenueChart = null;
     }
-    return;
+    return chartModel;
   }
 
-  const labels = rows.map(row => row.date || 'n/a');
-  const revenue = rows.map(row => Number((row.revenue || 0).toFixed(2)));
-  const conversions = rows.map(row => Number((row.conversions || 0).toFixed(2)));
-
   if (state.dailyRevenueChart) state.dailyRevenueChart.destroy();
-  state.dailyRevenueChart = new Chart(ctx, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: 'line',
-          label: 'Revenue ($)',
-          data: revenue,
-          borderColor: 'rgba(11,143,140,1)',
-          backgroundColor: 'rgba(11,143,140,0.12)',
-          yAxisID: 'y',
-          tension: 0.25
-        },
-        {
-          type: 'bar',
-          label: 'Conversions',
-          data: conversions,
-          borderColor: 'rgba(47,110,165,1)',
-          backgroundColor: 'rgba(47,110,165,0.55)',
-          yAxisID: 'y1'
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        y: { position: 'left', title: { display: true, text: 'Revenue ($)' } },
-        y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Conversions' } }
-      }
-    }
-  });
+  state.dailyRevenueChart = new Chart(ctx, chartModel.config);
+  return chartModel;
 }
 
 function renderQuality(quality) {
@@ -1896,12 +1735,6 @@ function fallbackSnapshot(profileId, opts) {
 function cleanText(value) {
   const v = String(value || '').trim();
   return v.length ? v : null;
-}
-
-function formatDelta(value) {
-  if (typeof value !== 'number') return 'n/a';
-  const pct = value * 100;
-  return `${pct >= 0 ? '+' : ''}${fmtNum(pct, 1)}%`;
 }
 
 function sleep(ms) {
