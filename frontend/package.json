@@ -14,7 +14,10 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "live-server": "^1.2.2",
-    "chart.js": "^4.4.1"
+    "chart.js": "^4.4.1",
+    "live-server": "^1.2.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
   }
 }

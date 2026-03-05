@@ -120,6 +120,46 @@ export const executiveFixtureSnapshot = {
       custom_purchase_orphan_ratio: 0.1667,
       summary:
         'Canonical purchase metrics enforced. Duplicate custom purchase rows remain excluded.'
+    },
+    funnel_survival: {
+      points: [
+        { stage: 'Impression', entrants: 45200, survival_rate: 1.0, hazard_rate: 0.0 },
+        { stage: 'Click', entrants: 3796, survival_rate: 0.084, hazard_rate: 0.916 },
+        { stage: 'Session', entrants: 3389, survival_rate: 0.075, hazard_rate: 0.107 },
+        { stage: 'Product View', entrants: 1713, survival_rate: 0.038, hazard_rate: 0.495 },
+        { stage: 'Add To Cart', entrants: 441, survival_rate: 0.01, hazard_rate: 0.743 },
+        { stage: 'Checkout', entrants: 193, survival_rate: 0.004, hazard_rate: 0.562 },
+        { stage: 'Purchase', entrants: 71, survival_rate: 0.002, hazard_rate: 0.632 }
+      ],
+      bottleneck_stage: 'Add To Cart'
+    },
+    attribution_delta: {
+      rows: [
+        {
+          campaign: 'Puppy Starter Bundle',
+          first_touch_proxy_share: 0.43,
+          assist_share: 0.41,
+          last_touch_share: 0.47,
+          delta_first_vs_last: -0.04
+        },
+        {
+          campaign: 'Sensitive Stomach Retarget',
+          first_touch_proxy_share: 0.35,
+          assist_share: 0.36,
+          last_touch_share: 0.31,
+          delta_first_vs_last: 0.04
+        },
+        {
+          campaign: 'Subscription Winback',
+          first_touch_proxy_share: 0.22,
+          assist_share: 0.23,
+          last_touch_share: 0.22,
+          delta_first_vs_last: 0
+        }
+      ],
+      dominant_last_touch_campaign: 'Puppy Starter Bundle',
+      last_touch_concentration_hhi: 0.364,
+      summary: 'Last-touch revenue concentration is moderate.'
     }
   },
   publish_export_gate: {

@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildAttributionDeltaModel,
   buildChannelMixChartModel,
   buildDailyRevenueChartModel,
   buildDeltaChartModel,
+  buildFunnelSurvivalModel,
   buildKpiViewModel
 } from '../dashboard_view_models.mjs';
 import {
+  renderAttributionDeltaTableSurface,
   renderChartSummarySurface,
   renderChartSurfaceMetadata,
   renderKpiSurface
@@ -64,10 +67,30 @@ test('chart models produce deterministic configs and diagnostics', () => {
   );
 });
 
+test('high-leverage report models produce deterministic summaries and table rows', () => {
+  const funnelModel = buildFunnelSurvivalModel(
+    executiveFixtureSnapshot.high_leverage_reports.funnel_survival
+  );
+  const attributionModel = buildAttributionDeltaModel(
+    executiveFixtureSnapshot.high_leverage_reports.attribution_delta
+  );
+
+  assert.equal(funnelModel.diagnostics.pointCount, 7);
+  assert.equal(funnelModel.diagnostics.bottleneckStage, 'Add To Cart');
+  assert.match(funnelModel.summaryText, /Bottleneck: Add To Cart/);
+
+  assert.equal(attributionModel.diagnostics.rowCount, 3);
+  assert.equal(attributionModel.diagnostics.dominantCampaign, 'Puppy Starter Bundle');
+  assert.equal(attributionModel.rows[0].campaign, 'Puppy Starter Bundle');
+  assert.equal(attributionModel.rows[0].lastTouchDisplay, '47.0%');
+  assert.match(attributionModel.summaryText, /HHI: 0\.3640\./);
+});
+
 test('render helpers emit stable DOM contracts for KPIs and chart metadata', () => {
   const kpiGrid = createElementStub();
   const dailyRevenueSummary = createElementStub();
   const deltaCanvas = createElementStub();
+  const attributionTableBody = createElementStub();
   const viewModel = buildKpiViewModel(executiveFixtureSnapshot.kpis, executiveFixtureSnapshot);
   const dailyRevenueModel = buildDailyRevenueChartModel(
     executiveFixtureSnapshot.daily_revenue_series
@@ -75,10 +98,14 @@ test('render helpers emit stable DOM contracts for KPIs and chart metadata', () 
   const deltaModel = buildDeltaChartModel(
     executiveFixtureSnapshot.historical_analysis.period_over_period_deltas
   );
+  const attributionModel = buildAttributionDeltaModel(
+    executiveFixtureSnapshot.high_leverage_reports.attribution_delta
+  );
 
   renderKpiSurface({ kpiGrid }, viewModel);
   renderChartSummarySurface(dailyRevenueSummary, dailyRevenueModel);
   renderChartSurfaceMetadata(deltaCanvas, deltaModel.diagnostics);
+  renderAttributionDeltaTableSurface(attributionTableBody, attributionModel);
 
   assert.equal(kpiGrid.dataset.kpiCount, '7');
   assert.match(kpiGrid.innerHTML, /data-kpi-key="roas"/);
@@ -90,4 +117,6 @@ test('render helpers emit stable DOM contracts for KPIs and chart metadata', () 
   assert.equal(deltaCanvas.dataset.chartKey, 'delta');
   assert.equal(deltaCanvas.dataset.pointCount, '4');
   assert.equal(deltaCanvas.dataset.datasetCount, '1');
+  assert.equal(attributionTableBody.dataset.rowCount, '3');
+  assert.match(attributionTableBody.innerHTML, /Puppy Starter Bundle/);
 });

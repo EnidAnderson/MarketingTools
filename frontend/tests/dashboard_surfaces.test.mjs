@@ -30,11 +30,16 @@ function createElements() {
 
 function createWindowStub() {
   const events = [];
+  const payloadElement = { textContent: '', dataset: {} };
   return {
     __events: events,
+    __payloadElement: payloadElement,
     document: {
       body: {
         dataset: {}
+      },
+      getElementById(id) {
+        return id === 'dashboardDiagnosticsPayload' ? payloadElement : null;
       }
     },
     CustomEvent: class {
@@ -166,6 +171,8 @@ test('dashboard decision surfaces render stable DOM contracts and diagnostics', 
   assert.equal(diagnostics.kpis.cardCount, 7);
   assert.equal(diagnostics.charts.delta.pointCount, 4);
   assert.equal(windowStub.__DASHBOARD_DIAGNOSTICS__.decisionFeed.cardCount, 2);
+  assert.equal(windowStub.__DASHBOARD_DIAGNOSTICS_JSON__.includes('run-2026-03-05-001'), true);
+  assert.match(windowStub.__payloadElement.textContent, /"runId": "run-2026-03-05-001"/);
   assert.equal(windowStub.document.body.dataset.dashboardRunId, 'run-2026-03-05-001');
   assert.equal(windowStub.document.body.dataset.dashboardGateStatus, 'review_required');
   assert.match(elements.revenueTruthPanel.innerHTML, /data-metric-key="custom_purchase_rows"/);

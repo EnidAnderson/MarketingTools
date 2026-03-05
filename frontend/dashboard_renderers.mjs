@@ -198,3 +198,26 @@ export function renderChartSummarySurface(element, { chartKey, summaryText, diag
     });
   }
 }
+
+export function renderAttributionDeltaTableSurface(element, viewModel) {
+  if (!element) return;
+  element.innerHTML = viewModel.rows.length
+    ? viewModel.rows
+        .map(
+          (row) => `<tr>
+          <td>${escapeHtml(row.campaign)}</td>
+          <td>${escapeHtml(row.firstTouchDisplay)}</td>
+          <td>${escapeHtml(row.assistDisplay)}</td>
+          <td>${escapeHtml(row.lastTouchDisplay)}</td>
+          <td>${escapeHtml(row.deltaDisplay)}</td>
+        </tr>`
+        )
+        .join('')
+    : '<tr><td colspan="5">No attribution rows available.</td></tr>';
+
+  setDataAttributes(element, {
+    chartKey: viewModel.chartKey || 'attribution-delta',
+    rowCount: viewModel.rows.length,
+    dominantCampaign: viewModel.diagnostics?.dominantCampaign || 'n/a'
+  });
+}

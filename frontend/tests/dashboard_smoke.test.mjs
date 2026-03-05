@@ -75,6 +75,15 @@ test('dashboard smoke renders diagnostics, KPI formulas, and chart metadata', { 
   assert.equal(diagnostics.charts.delta.pointCount, 4);
   assert.equal(diagnostics.charts.channelMix.datasetCount, 4);
   assert.equal(diagnostics.charts.dailyRevenue.totalRevenue, 4861.42);
+  assert.equal(diagnostics.highLeverageReports.funnelSurvival.pointCount, 7);
+  assert.equal(diagnostics.highLeverageReports.attributionDelta.rowCount, 3);
+
+  const payloadText = await page
+    .locator('#dashboardDiagnosticsPayload')
+    .evaluate((node) => node.textContent);
+  const payload = JSON.parse(payloadText);
+  assert.equal(payload.runId, executiveFixtureSnapshot.run_id);
+  assert.equal(payload.highLeverageReports.attributionDelta.dominantCampaign, 'Puppy Starter Bundle');
 
   const roasInfo = page.locator('[data-kpi-key="roas"] [data-field="info-button"]');
   await roasInfo.hover();

@@ -44,6 +44,11 @@ function guardLabel(status) {
   return 'guard: unknown';
 }
 
+function shortLabel(text, maxLength = 20) {
+  const value = cleanText(text) || 'n/a';
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}...`;
+}
+
 export function buildRevenueTruthViewModel(report = {}) {
   const risk = cleanText(report.inflation_risk).toLowerCase() || 'unknown';
   const truthGuardStatus = cleanText(report.truth_guard_status).toLowerCase() || 'unknown';
@@ -549,6 +554,167 @@ export function buildDailyRevenueChartModel(points) {
       datasetCount: rows.length ? 2 : 0,
       totalRevenue: Number(totalRevenue.toFixed(2)),
       activeDays
+    }
+  };
+}
+
+export function buildFunnelSurvivalModel(report = {}) {
+  const points = Array.isArray(report?.points) ? report.points : [];
+  const labels = points.map((point) => cleanText(point.stage) || 'stage');
+  const survival = points.map((point) =>
+    Number(((point.survival_rate || 0) * 100).toFixed(2))
+  );
+  const hazard = points.map((point) =>
+    Number(((point.hazard_rate || 0) * 100).toFixed(2))
+  );
+  const finalSurvival = points.length ? survival[survival.length - 1] : 0;
+
+  return {
+    chartKey: 'funnel-survival',
+    summaryText: points.length
+      ? `Bottleneck: ${cleanText(report?.bottleneck_stage) || 'n/a'} | Survival to final stage: ${fmtNum(finalSurvival, 1)}%`
+      : 'No funnel survival analysis available in this run.',
+    config: !points.length
+      ? null
+      : {
+          data: {
+            labels,
+            datasets: [
+              {
+                type: 'line',
+                label: 'Survival %',
+                data: survival,
+                borderColor: 'rgba(11,143,140,1)',
+                backgroundColor: 'rgba(11,143,140,0.12)',
+                yAxisID: 'y',
+                tension: 0.25
+              },
+              {
+                type: 'bar',
+                label: 'Hazard %',
+                data: hazard,
+                borderColor: 'rgba(216,87,42,1)',
+                backgroundColor: 'rgba(216,87,42,0.55)',
+                yAxisID: 'y1'
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: {
+                position: 'left',
+                min: 0,
+                max: 100,
+                ticks: { callback: (value) => `${value}%` }
+              },
+              y1: {
+                position: 'right',
+                min: 0,
+                max: 100,
+                grid: { drawOnChartArea: false },
+                ticks: { callback: (value) => `${value}%` }
+              }
+            }
+          }
+        },
+    diagnostics: {
+      chartKey: 'funnel-survival',
+      pointCount: points.length,
+      datasetCount: points.length ? 2 : 0,
+      labels,
+      bottleneckStage: cleanText(report?.bottleneck_stage) || 'n/a'
+    }
+  };
+}
+
+export function buildAttributionDeltaModel(report = {}) {
+  const rows = Array.isArray(report?.rows) ? report.rows : [];
+  const dominantCampaign = cleanText(report?.dominant_last_touch_campaign) || 'n/a';
+  const concentrationHhi = Number(report?.last_touch_concentration_hhi || 0);
+  const summaryStem =
+    cleanText(report?.summary) || 'No attribution summary available.';
+  const topRows = rows.slice(0, 6);
+  const labels = topRows.map((row) => shortLabel(row.campaign || 'n/a', 18));
+  const firstTouch = topRows.map((row) =>
+    Number(((row.first_touch_proxy_share || 0) * 100).toFixed(2))
+  );
+  const lastTouch = topRows.map((row) =>
+    Number(((row.last_touch_share || 0) * 100).toFixed(2))
+  );
+  const delta = topRows.map((row) =>
+    Number(((row.delta_first_vs_last || 0) * 100).toFixed(2))
+  );
+
+  return {
+    chartKey: 'attribution-delta',
+    summaryText: `${summaryStem} Dominant last-touch campaign: ${dominantCampaign}. HHI: ${fmtNum(
+      concentrationHhi,
+      4
+    )}.`,
+    rows: rows.slice(0, 8).map((row) => ({
+      campaign: cleanText(row.campaign) || 'n/a',
+      firstTouchDisplay: `${fmtNum((row.first_touch_proxy_share || 0) * 100, 1)}%`,
+      assistDisplay: `${fmtNum((row.assist_share || 0) * 100, 1)}%`,
+      lastTouchDisplay: `${fmtNum((row.last_touch_share || 0) * 100, 1)}%`,
+      deltaDisplay: `${fmtNum((row.delta_first_vs_last || 0) * 100, 1)}%`
+    })),
+    config: !rows.length
+      ? null
+      : {
+          data: {
+            labels,
+            datasets: [
+              {
+                type: 'bar',
+                label: 'First Touch %',
+                data: firstTouch,
+                backgroundColor: 'rgba(47,110,165,0.65)',
+                borderColor: 'rgba(47,110,165,1)',
+                yAxisID: 'y'
+              },
+              {
+                type: 'bar',
+                label: 'Last Touch %',
+                data: lastTouch,
+                backgroundColor: 'rgba(11,143,140,0.65)',
+                borderColor: 'rgba(11,143,140,1)',
+                yAxisID: 'y'
+              },
+              {
+                type: 'line',
+                label: 'Delta (First - Last) %',
+                data: delta,
+                borderColor: 'rgba(211,63,73,1)',
+                backgroundColor: 'rgba(211,63,73,0.15)',
+                yAxisID: 'y1',
+                tension: 0.2
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: { position: 'left', ticks: { callback: (value) => `${value}%` } },
+              y1: {
+                position: 'right',
+                grid: { drawOnChartArea: false },
+                ticks: { callback: (value) => `${value}%` }
+              }
+            }
+          }
+        },
+    diagnostics: {
+      chartKey: 'attribution-delta',
+      pointCount: topRows.length,
+      datasetCount: rows.length ? 3 : 0,
+      rowCount: rows.length,
+      dominantCampaign,
+      concentrationHhi: Number(concentrationHhi.toFixed(4))
     }
   };
 }

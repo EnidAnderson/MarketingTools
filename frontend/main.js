@@ -9,12 +9,15 @@ import {
 } from './text_workflow_helpers.mjs';
 import { renderDashboardDecisionSurfaces } from './dashboard_app.mjs';
 import {
+  buildAttributionDeltaModel,
   buildChannelMixChartModel,
   buildDailyRevenueChartModel,
   buildDeltaChartModel,
+  buildFunnelSurvivalModel,
   buildKpiViewModel
 } from './dashboard_view_models.mjs';
 import {
+  renderAttributionDeltaTableSurface,
   renderChartSurfaceMetadata,
   renderChartSummarySurface,
   renderKpiSurface
@@ -71,6 +74,8 @@ const el = {
   deltaChart: document.getElementById('deltaChart'),
   channelMixChart: document.getElementById('channelMixChart'),
   dailyRevenueChart: document.getElementById('dailyRevenueChart'),
+  funnelSurvivalChart: document.getElementById('funnelSurvivalChart'),
+  attributionDeltaChart: document.getElementById('attributionDeltaChart'),
   runIdBadge: document.getElementById('runIdBadge'),
   qualityList: document.getElementById('qualityList'),
   dataQualityPanel: document.getElementById('dataQualityPanel'),
@@ -989,7 +994,7 @@ function renderExecutiveDashboard(snapshot) {
 
   el.runIdBadge.textContent = `Run: ${snapshot.run_id || 'n/a'} | Compare: ${snapshot.compare_window_runs || 1} run(s)`;
   const kpiModel = renderKpis(snapshot.kpis || [], snapshot);
-  renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
+  const highLeverageModels = renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);
   const deltaChartModel = renderDeltaChart(snapshot.historical_analysis?.period_over_period_deltas || []);
   const channelMixChartModel = renderChannelMixChart(
     snapshot.channel_mix_series || [],
@@ -1013,153 +1018,62 @@ function renderExecutiveDashboard(snapshot) {
         delta: deltaChartModel?.diagnostics || null,
         channelMix: channelMixChartModel?.diagnostics || null,
         dailyRevenue: dailyRevenueChartModel?.diagnostics || null
-      }
+      },
+      highLeverageReports: highLeverageModels || null
     }
   });
   renderNarratives(snapshot.operator_summary?.attribution_narratives || [], snapshot.alerts || []);
 }
 
 function renderHighLeverageReports(reports, snapshot) {
-  renderFunnelSurvivalReport(reports?.funnel_survival || {});
-  renderAttributionDeltaReport(reports?.attribution_delta || {});
+  const funnelSurvivalModel = renderFunnelSurvivalReport(reports?.funnel_survival || {});
+  const attributionDeltaModel = renderAttributionDeltaReport(reports?.attribution_delta || {});
   renderHighLeverageScorecard(reports?.data_quality_scorecard || {}, snapshot?.publish_export_gate || {});
+  return {
+    funnelSurvival: funnelSurvivalModel?.diagnostics || null,
+    attributionDelta: attributionDeltaModel?.diagnostics || null
+  };
 }
 
 function renderFunnelSurvivalReport(report) {
-  const points = Array.isArray(report?.points) ? report.points : [];
-  const summary = points.length
-    ? `Bottleneck: ${report?.bottleneck_stage || 'n/a'} | Survival to final stage: ${fmtNum((points[points.length - 1]?.survival_rate || 0) * 100, 1)}%`
-    : 'No funnel survival analysis available in this run.';
-  if (el.funnelSurvivalSummary) {
-    el.funnelSurvivalSummary.textContent = summary;
-  }
+  const chartModel = buildFunnelSurvivalModel(report);
+  renderChartSummarySurface(el.funnelSurvivalSummary, chartModel);
+  renderChartSurfaceMetadata(el.funnelSurvivalChart, chartModel.diagnostics);
 
-  const ctx = document.getElementById('funnelSurvivalChart');
-  if (!ctx || typeof Chart === 'undefined') return;
-  if (!points.length) {
+  const ctx = el.funnelSurvivalChart;
+  if (!ctx || typeof Chart === 'undefined') return chartModel;
+  if (!chartModel.config) {
     if (state.funnelSurvivalChart) {
       state.funnelSurvivalChart.destroy();
       state.funnelSurvivalChart = null;
     }
-    return;
+    return chartModel;
   }
 
-  const labels = points.map(point => point.stage);
-  const survival = points.map(point => Number((point.survival_rate * 100).toFixed(2)));
-  const hazard = points.map(point => Number((point.hazard_rate * 100).toFixed(2)));
   if (state.funnelSurvivalChart) state.funnelSurvivalChart.destroy();
-  state.funnelSurvivalChart = new Chart(ctx, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: 'line',
-          label: 'Survival %',
-          data: survival,
-          borderColor: 'rgba(11,143,140,1)',
-          backgroundColor: 'rgba(11,143,140,0.12)',
-          yAxisID: 'y',
-          tension: 0.25
-        },
-        {
-          type: 'bar',
-          label: 'Hazard %',
-          data: hazard,
-          borderColor: 'rgba(216,87,42,1)',
-          backgroundColor: 'rgba(216,87,42,0.55)',
-          yAxisID: 'y1'
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        y: { position: 'left', min: 0, max: 100, ticks: { callback: value => `${value}%` } },
-        y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: value => `${value}%` } }
-      }
-    }
-  });
+  state.funnelSurvivalChart = new Chart(ctx, chartModel.config);
+  return chartModel;
 }
 
 function renderAttributionDeltaReport(report) {
-  const rows = Array.isArray(report?.rows) ? report.rows : [];
-  const dominant = cleanText(report?.dominant_last_touch_campaign) || 'n/a';
-  const hhi = Number(report?.last_touch_concentration_hhi || 0);
-  const summaryText = cleanText(report?.summary) || 'No attribution summary available.';
-  if (el.attributionDeltaSummary) {
-    el.attributionDeltaSummary.textContent = `${summaryText} Dominant last-touch campaign: ${dominant}. HHI: ${fmtNum(hhi, 4)}.`;
-  }
-  if (el.attributionDeltaTableBody) {
-    el.attributionDeltaTableBody.innerHTML = rows.length
-      ? rows.slice(0, 8).map(row => `<tr>
-          <td>${escapeHtml(row.campaign || 'n/a')}</td>
-          <td>${fmtNum((row.first_touch_proxy_share || 0) * 100, 1)}%</td>
-          <td>${fmtNum((row.assist_share || 0) * 100, 1)}%</td>
-          <td>${fmtNum((row.last_touch_share || 0) * 100, 1)}%</td>
-          <td>${fmtNum((row.delta_first_vs_last || 0) * 100, 1)}%</td>
-        </tr>`).join('')
-      : '<tr><td colspan="5">No attribution rows available.</td></tr>';
-  }
+  const chartModel = buildAttributionDeltaModel(report);
+  renderChartSummarySurface(el.attributionDeltaSummary, chartModel);
+  renderAttributionDeltaTableSurface(el.attributionDeltaTableBody, chartModel);
+  renderChartSurfaceMetadata(el.attributionDeltaChart, chartModel.diagnostics);
 
-  const ctx = document.getElementById('attributionDeltaChart');
-  if (!ctx || typeof Chart === 'undefined') return;
-  if (!rows.length) {
+  const ctx = el.attributionDeltaChart;
+  if (!ctx || typeof Chart === 'undefined') return chartModel;
+  if (!chartModel.config) {
     if (state.attributionDeltaChart) {
       state.attributionDeltaChart.destroy();
       state.attributionDeltaChart = null;
     }
-    return;
+    return chartModel;
   }
-  const top = rows.slice(0, 6);
-  const labels = top.map(row => shortLabel(row.campaign || 'n/a', 18));
-  const firstTouch = top.map(row => Number(((row.first_touch_proxy_share || 0) * 100).toFixed(2)));
-  const lastTouch = top.map(row => Number(((row.last_touch_share || 0) * 100).toFixed(2)));
-  const delta = top.map(row => Number(((row.delta_first_vs_last || 0) * 100).toFixed(2)));
 
   if (state.attributionDeltaChart) state.attributionDeltaChart.destroy();
-  state.attributionDeltaChart = new Chart(ctx, {
-    data: {
-      labels,
-      datasets: [
-        {
-          type: 'bar',
-          label: 'First Touch %',
-          data: firstTouch,
-          backgroundColor: 'rgba(47,110,165,0.65)',
-          borderColor: 'rgba(47,110,165,1)',
-          yAxisID: 'y'
-        },
-        {
-          type: 'bar',
-          label: 'Last Touch %',
-          data: lastTouch,
-          backgroundColor: 'rgba(11,143,140,0.65)',
-          borderColor: 'rgba(11,143,140,1)',
-          yAxisID: 'y'
-        },
-        {
-          type: 'line',
-          label: 'Delta (First - Last) %',
-          data: delta,
-          borderColor: 'rgba(211,63,73,1)',
-          backgroundColor: 'rgba(211,63,73,0.15)',
-          yAxisID: 'y1',
-          tension: 0.2
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      scales: {
-        y: { position: 'left', ticks: { callback: value => `${value}%` } },
-        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => `${value}%` } }
-      }
-    }
-  });
+  state.attributionDeltaChart = new Chart(ctx, chartModel.config);
+  return chartModel;
 }
 
 function renderHighLeverageScorecard(scorecard, gate) {
@@ -1760,10 +1674,4 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-}
-
-function shortLabel(text, maxLength = 20) {
-  const raw = String(text || '');
-  if (raw.length <= maxLength) return raw;
-  return `${raw.slice(0, maxLength - 1)}...`;
 }

@@ -43,12 +43,22 @@ export function renderDashboardDecisionSurfaces({
 export function publishDashboardDiagnostics(targetWindow, diagnostics) {
   if (!targetWindow || !diagnostics) return diagnostics;
   targetWindow.__DASHBOARD_DIAGNOSTICS__ = diagnostics;
+  targetWindow.__DASHBOARD_DIAGNOSTICS_JSON__ = JSON.stringify(diagnostics, null, 2);
 
   const body = targetWindow.document?.body;
   if (body?.dataset) {
     body.dataset.dashboardRunId = diagnostics.runId;
     body.dataset.dashboardGateStatus = diagnostics.publishGate.gateStatus;
     body.dataset.dashboardTrustStatus = diagnostics.trustStatus;
+  }
+
+  const payloadElement = targetWindow.document?.getElementById?.('dashboardDiagnosticsPayload');
+  if (payloadElement) {
+    payloadElement.textContent = targetWindow.__DASHBOARD_DIAGNOSTICS_JSON__;
+    if (payloadElement.dataset) {
+      payloadElement.dataset.schemaVersion = diagnostics.schemaVersion || 'unknown';
+      payloadElement.dataset.runId = diagnostics.runId || 'n/a';
+    }
   }
 
   if (typeof targetWindow.dispatchEvent === 'function') {
