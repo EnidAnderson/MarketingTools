@@ -1,1 +1,4 @@
 request_id,created_at_utc,requester,priority,component,summary,scientific_rationale,acceptance_test_ref,status
+CR-DSBOT-0001,2026-03-05T00:12:01Z,data_science_bot,high,analytics_pipeline,Block purchase_ndp from truth KPIs and add schema warning gate,Prevents false revenue/conversion inference,SCIENCE_RUN_2026-03-04.md,open
+CR-DSBOT-0002,2026-03-05T00:12:01Z,data_science_bot,high,frontend_dashboard,Add device funnel uncertainty and significance overlays,Prevents over-trust in noisy segment deltas,SCIENCE_RUN_2026-03-04.md,open
+CR-DSBOT-0003,2026-03-05T00:12:01Z,data_science_bot,medium,analytics_pipeline,Add channel concentration (HHI) and cohort denominator gates,Improves decision robustness under sparse data,SCIENCE_RUN_2026-03-04.md,open
