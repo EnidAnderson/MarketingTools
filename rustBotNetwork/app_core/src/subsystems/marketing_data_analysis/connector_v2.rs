@@ -1077,6 +1077,10 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 (SELECT CAST(ep.value.int_value AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_id' LIMIT 1) AS ga_session_id, \
                 (SELECT CAST(COALESCE(ep.value.int_value, SAFE_CAST(ep.value.string_value AS INT64)) AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_number' LIMIT 1) AS ga_session_number, \
                 (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key = 'page_location' LIMIT 1) AS page_location, \
+                (SELECT COALESCE(ep.value.string_value, CAST(ep.value.int_value AS STRING)) FROM UNNEST(event_params) ep WHERE ep.key IN ('experiment_id', 'landing_experiment_id', 'exp_id') ORDER BY CASE ep.key WHEN 'experiment_id' THEN 0 WHEN 'landing_experiment_id' THEN 1 WHEN 'exp_id' THEN 2 ELSE 99 END LIMIT 1) AS experiment_id, \
+                (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key IN ('experiment_name', 'landing_experiment_name', 'exp_name') ORDER BY CASE ep.key WHEN 'experiment_name' THEN 0 WHEN 'landing_experiment_name' THEN 1 WHEN 'exp_name' THEN 2 ELSE 99 END LIMIT 1) AS experiment_name, \
+                (SELECT COALESCE(ep.value.string_value, CAST(ep.value.int_value AS STRING)) FROM UNNEST(event_params) ep WHERE ep.key IN ('variant_id', 'landing_variant_id', 'experiment_variant_id', 'variant') ORDER BY CASE ep.key WHEN 'variant_id' THEN 0 WHEN 'landing_variant_id' THEN 1 WHEN 'experiment_variant_id' THEN 2 WHEN 'variant' THEN 3 ELSE 99 END LIMIT 1) AS variant_id, \
+                (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key IN ('variant_name', 'landing_variant_name', 'experiment_variant_name') ORDER BY CASE ep.key WHEN 'variant_name' THEN 0 WHEN 'landing_variant_name' THEN 1 WHEN 'experiment_variant_name' THEN 2 ELSE 99 END LIMIT 1) AS variant_name, \
                 (SELECT COALESCE(ep.value.string_value, CAST(ep.value.int_value AS STRING)) FROM UNNEST(event_params) ep WHERE ep.key = 'session_engaged' LIMIT 1) AS session_engaged, \
                 (SELECT CAST(COALESCE(ep.value.int_value, SAFE_CAST(ep.value.string_value AS INT64)) AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'engagement_time_msec' LIMIT 1) AS engagement_time_msec, \
                 ecommerce.transaction_id AS transaction_id, \
@@ -1178,6 +1182,22 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .remove("page_location")
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
+            let experiment_id = row
+                .remove("experiment_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let experiment_name = row
+                .remove("experiment_name")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let variant_id = row
+                .remove("variant_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let variant_name = row
+                .remove("variant_name")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
             let session_engaged = row
                 .remove("session_engaged")
                 .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "True"));
@@ -1253,6 +1273,10 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 traffic_source_source: source,
                 traffic_source_medium: medium,
                 page_location,
+                experiment_id,
+                experiment_name,
+                variant_id,
+                variant_name,
                 session_engaged,
                 engagement_time_msec,
                 transaction_id,
@@ -1396,6 +1420,10 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 traffic_source_source: None,
                 traffic_source_medium: None,
                 page_location: None,
+                experiment_id: None,
+                experiment_name: None,
+                variant_id: None,
+                variant_name: None,
                 session_engaged: None,
                 engagement_time_msec: None,
                 transaction_id: None,
@@ -1918,8 +1946,14 @@ pub fn generate_simulated_ga4_events(
             traffic_source_source: Some("google".to_string()),
             traffic_source_medium: Some("cpc".to_string()),
             page_location: Some(
-                "https://naturesdietpet.com/simply-raw-freeze-dried-raw-meals".to_string(),
+                format!(
+                    "https://naturesdietpet.com/simply-raw-freeze-dried-raw-meals?experiment_id=lp_paid_offer_test&variant_id=control"
+                ),
             ),
+            experiment_id: Some("lp_paid_offer_test".to_string()),
+            experiment_name: Some("Landing Page Paid Offer Test".to_string()),
+            variant_id: Some("control".to_string()),
+            variant_name: Some("Simply Raw Control".to_string()),
             session_engaged: Some(true),
             engagement_time_msec: Some(1200),
             transaction_id: None,

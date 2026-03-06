@@ -7,7 +7,8 @@ use super::contracts::{
     QualityCheckApplicabilityV1, RevenueTruthReportV1, StorefrontBehaviorSummaryV1,
 };
 use super::ga4_sessions::{
-    build_funnel_summary_from_sessions_v1, build_storefront_behavior_summary_from_sessions_v1,
+    build_experiment_analytics_summary_from_sessions_v1, build_funnel_summary_from_sessions_v1,
+    build_storefront_behavior_summary_from_sessions_v1,
 };
 use super::{
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
@@ -150,7 +151,14 @@ fn build_high_leverage_reports(
         funnel_survival: build_funnel_survival_report(funnel_summary),
         attribution_delta: build_attribution_delta_report(run),
         data_quality_scorecard: build_data_quality_scorecard(run, publish_export_gate),
+        experiment_analytics: build_experiment_analytics_report(run),
     }
+}
+
+fn build_experiment_analytics_report(
+    run: &PersistedAnalyticsRunV1,
+) -> super::contracts::ExperimentAnalyticsSummaryV1 {
+    build_experiment_analytics_summary_from_sessions_v1(&run.artifact.ga4_session_rollups)
 }
 
 fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthReportV1 {
@@ -468,6 +476,7 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
     let mut cards = Vec::new();
     let quality = &run.artifact.quality_controls;
     let historical = &run.artifact.historical_analysis;
+    let experiment_analytics = build_experiment_analytics_report(run);
 
     let failed_schema = quality
         .schema_drift_checks
@@ -703,6 +712,39 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
                     .to_string(),
             evidence_refs: vec!["source_coverage".to_string()],
         });
+    }
+    if experiment_analytics
+        .assignment_coverage
+        .total_observed_sessions
+        > 0
+    {
+        if experiment_analytics.assignment_coverage.assigned_sessions == 0 {
+            cards.push(DecisionFeedCardV1 {
+                card_id: "experiment-assignment-missing".to_string(),
+                priority: "medium".to_string(),
+                status: "instrument_first".to_string(),
+                title: "Experiment assignment missing from observed sessions".to_string(),
+                summary: experiment_analytics.assignment_coverage.summary.clone(),
+                recommended_action:
+                    "Add explicit experiment_id and variant_id to the GA4 event stream before using landing challengers as decision-grade facts."
+                        .to_string(),
+                evidence_refs: vec!["high_leverage_reports.experiment_analytics".to_string()],
+            });
+        } else if experiment_analytics.assignment_coverage.partial_sessions > 0
+            || experiment_analytics.assignment_coverage.ambiguous_sessions > 0
+        {
+            cards.push(DecisionFeedCardV1 {
+                card_id: "experiment-assignment-incomplete".to_string(),
+                priority: "medium".to_string(),
+                status: "review_required".to_string(),
+                title: "Experiment assignment coverage is incomplete".to_string(),
+                summary: experiment_analytics.assignment_coverage.summary.clone(),
+                recommended_action:
+                    "Use assigned sessions only for variant funnels, and keep ambiguous or partial sessions out of content-pipeline claims."
+                        .to_string(),
+                evidence_refs: vec!["high_leverage_reports.experiment_analytics".to_string()],
+            });
+        }
     }
 
     if cards.is_empty() {
@@ -1373,6 +1415,7 @@ mod tests {
                         landing_page_group: "offer_landing".to_string(),
                     },
                 ),
+                experiment_context: Default::default(),
                 visitor_type:
                     crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
                 engaged_session: true,
@@ -1414,6 +1457,7 @@ mod tests {
                         landing_page_group: "home".to_string(),
                     },
                 ),
+                experiment_context: Default::default(),
                 visitor_type:
                     crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::Returning,
                 engaged_session: true,
@@ -1667,6 +1711,7 @@ mod tests {
                         landing_page_group: "offer_landing".to_string(),
                     },
                 ),
+                experiment_context: Default::default(),
                 visitor_type:
                     crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
                 engaged_session: true,
@@ -1810,6 +1855,57 @@ mod tests {
         assert!(!cards
             .iter()
             .any(|card| card.card_id == "schema-drift" && card.status == "blocked"));
+    }
+
+    #[test]
+    fn decision_feed_surfaces_experiment_assignment_gap() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.ga4_session_rollups = vec![
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: "assigned-1".to_string(),
+                experiment_context: crate::subsystems::marketing_data_analysis::contracts::SessionExperimentContextV1 {
+                    experiment_id: Some("exp-a".to_string()),
+                    variant_id: Some("control".to_string()),
+                    assignment_source: Some(
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentSourceV1::Ga4EventParam,
+                    ),
+                    assignment_confidence:
+                        crate::subsystems::marketing_data_analysis::contracts::AssignmentConfidenceV1::High,
+                    assignment_status:
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentStatusV1::Assigned,
+                    assignment_observed_at_utc: Some("2026-02-01T10:00:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                    ..Default::default()
+                },
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                ..Default::default()
+            },
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: "partial-1".to_string(),
+                experiment_context: crate::subsystems::marketing_data_analysis::contracts::SessionExperimentContextV1 {
+                    experiment_id: Some("exp-a".to_string()),
+                    assignment_source: Some(
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentSourceV1::UrlQuery,
+                    ),
+                    assignment_confidence:
+                        crate::subsystems::marketing_data_analysis::contracts::AssignmentConfidenceV1::Low,
+                    assignment_status:
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentStatusV1::Partial,
+                    assignment_observed_at_utc: Some("2026-02-01T10:01:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                    ..Default::default()
+                },
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                ..Default::default()
+            },
+        ];
+
+        let cards = build_decision_feed(&run);
+        assert!(cards
+            .iter()
+            .any(|card| card.card_id == "experiment-assignment-incomplete"));
     }
 
     #[test]

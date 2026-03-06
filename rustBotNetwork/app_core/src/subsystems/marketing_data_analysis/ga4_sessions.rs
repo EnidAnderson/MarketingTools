@@ -1,11 +1,14 @@
 use super::contracts::{
-    FunnelStageV1, FunnelSummaryV1, Ga4SessionRollupV1, LandingContextV1, StorefrontBehaviorRowV1,
+    AssignmentConfidenceV1, ExperimentAnalyticsSummaryV1, ExperimentAssignmentCoverageReportV1,
+    ExperimentAssignmentSourceV1, ExperimentAssignmentStatusV1, ExperimentFunnelRowV1,
+    ExperimentGuardrailSliceV1, FunnelStageV1, FunnelSummaryV1, Ga4SessionRollupV1,
+    LandingContextV1, SessionExperimentContextV1, StorefrontBehaviorRowV1,
     StorefrontBehaviorSummaryV1, VisitorTypeV1,
 };
 use super::ingest::Ga4EventRawV1;
 use chrono::{DateTime, SecondsFormat, Utc};
 use std::collections::{BTreeMap, BTreeSet};
-use url::Url;
+use url::{form_urlencoded, Url};
 
 const LANDING_TAXONOMY_VERSION_V2: &str = "nd_landing_taxonomy.v2";
 
@@ -18,6 +21,7 @@ struct SessionAccumulator {
     landing_path: Option<String>,
     landing_host: Option<String>,
     landing_path_micros: Option<i64>,
+    experiment_context: SessionExperimentContextV1,
     visitor_type: VisitorTypeV1,
     engaged_session: bool,
     engagement_time_msec: u64,
@@ -52,6 +56,31 @@ struct StorefrontAccumulator {
     purchase_sessions: u64,
     revenue_usd: f64,
     transaction_count: u64,
+}
+
+#[derive(Debug, Default)]
+struct ExperimentFunnelAccumulator {
+    experiment_id: String,
+    experiment_name: Option<String>,
+    variant_id: String,
+    variant_name: Option<String>,
+    sessions: u64,
+    engaged_sessions: u64,
+    product_view_sessions: u64,
+    add_to_cart_sessions: u64,
+    checkout_sessions: u64,
+    purchase_sessions: u64,
+    revenue_usd: f64,
+}
+
+#[derive(Debug, Default)]
+struct ExperimentGuardrailAccumulator {
+    dimension_key: String,
+    dimension_value: String,
+    total_sessions: u64,
+    assigned_sessions: u64,
+    partial_sessions: u64,
+    ambiguous_sessions: u64,
 }
 
 /// # NDOC
@@ -207,6 +236,9 @@ pub fn rollup_ga4_sessions_v1(events: &[Ga4EventRawV1]) -> Vec<Ga4SessionRollupV
             &mut accumulator.campaign,
             clean_option(event.campaign.as_deref()),
         );
+        if let Some(candidate) = experiment_assignment_candidate(event, timestamp_micros) {
+            merge_experiment_context(&mut accumulator.experiment_context, candidate);
+        }
 
         if matches!(accumulator.visitor_type, VisitorTypeV1::Unknown) {
             accumulator.visitor_type = derive_visitor_type(event.ga_session_number);
@@ -284,6 +316,7 @@ pub fn rollup_ga4_sessions_v1(events: &[Ga4EventRawV1]) -> Vec<Ga4SessionRollupV
                 landing_path: accumulator.landing_path,
                 landing_host: accumulator.landing_host,
                 landing_context,
+                experiment_context: accumulator.experiment_context,
                 visitor_type: accumulator.visitor_type,
                 engaged_session: accumulator.engaged_session
                     || accumulator.engagement_time_msec > 0
@@ -484,11 +517,504 @@ pub fn build_storefront_behavior_summary_from_sessions_v1(
     }
 }
 
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::ga4_sessions`
+/// purpose: Summarize experiment assignment coverage and variant funnels from observed sessions.
+pub fn build_experiment_analytics_summary_from_sessions_v1(
+    session_rollups: &[Ga4SessionRollupV1],
+) -> ExperimentAnalyticsSummaryV1 {
+    let total_observed_sessions = session_rollups.len() as u64;
+    if total_observed_sessions == 0 {
+        return ExperimentAnalyticsSummaryV1 {
+            assignment_coverage: ExperimentAssignmentCoverageReportV1 {
+                denominator_scope: "all_observed_sessions".to_string(),
+                summary: "No observed sessions available for experiment assignment analysis."
+                    .to_string(),
+                ..Default::default()
+            },
+            funnel_rows: Vec::new(),
+            guardrail_slices: Vec::new(),
+        };
+    }
+
+    let mut assigned_sessions = 0u64;
+    let mut partial_sessions = 0u64;
+    let mut ambiguous_sessions = 0u64;
+    let mut unassigned_sessions = 0u64;
+    let mut funnel_by_variant: BTreeMap<(String, String), ExperimentFunnelAccumulator> =
+        BTreeMap::new();
+    let mut guardrails: BTreeMap<(String, String), ExperimentGuardrailAccumulator> =
+        BTreeMap::new();
+
+    for session in session_rollups {
+        match session.experiment_context.assignment_status {
+            ExperimentAssignmentStatusV1::Assigned => assigned_sessions += 1,
+            ExperimentAssignmentStatusV1::Partial => partial_sessions += 1,
+            ExperimentAssignmentStatusV1::Ambiguous => ambiguous_sessions += 1,
+            ExperimentAssignmentStatusV1::Unassigned => unassigned_sessions += 1,
+        }
+
+        register_guardrail_slice(
+            &mut guardrails,
+            "device_category",
+            session.device_category.as_deref(),
+            &session.experiment_context,
+        );
+        register_guardrail_slice(
+            &mut guardrails,
+            "platform",
+            session.platform.as_deref(),
+            &session.experiment_context,
+        );
+        register_guardrail_slice(
+            &mut guardrails,
+            "country",
+            session.country.as_deref(),
+            &session.experiment_context,
+        );
+        register_guardrail_slice(
+            &mut guardrails,
+            "source_medium",
+            session.source_medium.as_deref(),
+            &session.experiment_context,
+        );
+
+        if !is_assigned_experiment_context(&session.experiment_context) {
+            continue;
+        }
+        let experiment_id = session
+            .experiment_context
+            .experiment_id
+            .clone()
+            .unwrap_or_default();
+        let variant_id = session
+            .experiment_context
+            .variant_id
+            .clone()
+            .unwrap_or_default();
+        let entry = funnel_by_variant
+            .entry((experiment_id.clone(), variant_id.clone()))
+            .or_insert_with(|| ExperimentFunnelAccumulator {
+                experiment_id,
+                experiment_name: session.experiment_context.experiment_name.clone(),
+                variant_id,
+                variant_name: session.experiment_context.variant_name.clone(),
+                ..Default::default()
+            });
+        if entry.experiment_name.is_none() {
+            entry.experiment_name = session.experiment_context.experiment_name.clone();
+        }
+        if entry.variant_name.is_none() {
+            entry.variant_name = session.experiment_context.variant_name.clone();
+        }
+        entry.sessions += 1;
+        if session.engaged_session {
+            entry.engaged_sessions += 1;
+        }
+        if session.view_item_count > 0 {
+            entry.product_view_sessions += 1;
+        }
+        if session.add_to_cart_count > 0 {
+            entry.add_to_cart_sessions += 1;
+        }
+        if session.begin_checkout_count > 0 {
+            entry.checkout_sessions += 1;
+        }
+        if session.purchase_count > 0 || session.revenue_usd > 0.0 {
+            entry.purchase_sessions += 1;
+        }
+        entry.revenue_usd += session.revenue_usd.max(0.0);
+    }
+
+    let coverage_ratio = ratio_string(assigned_sessions, total_observed_sessions);
+    let mut coverage_notes = Vec::new();
+    if ambiguous_sessions > 0 {
+        coverage_notes.push(format!(
+            "ambiguous_sessions={} require explicit experiment instrumentation before variant claims",
+            ambiguous_sessions
+        ));
+    }
+    if partial_sessions > 0 {
+        coverage_notes.push(format!(
+            "partial_sessions={} are excluded from variant funnels because experiment_id or variant_id is missing",
+            partial_sessions
+        ));
+    }
+    if assigned_sessions == 0 {
+        coverage_notes.push(
+            "No fully assigned sessions observed; experiment insights remain instrument_first."
+                .to_string(),
+        );
+    }
+
+    let mut funnel_rows = funnel_by_variant
+        .into_values()
+        .map(|row| ExperimentFunnelRowV1 {
+            experiment_id: row.experiment_id,
+            experiment_name: row.experiment_name,
+            variant_id: row.variant_id,
+            variant_name: row.variant_name,
+            sessions: row.sessions,
+            engaged_sessions: row.engaged_sessions,
+            product_view_sessions: row.product_view_sessions,
+            add_to_cart_sessions: row.add_to_cart_sessions,
+            checkout_sessions: row.checkout_sessions,
+            purchase_sessions: row.purchase_sessions,
+            revenue_usd: round4(row.revenue_usd),
+            denominator_scope: "assigned_sessions_only".to_string(),
+        })
+        .collect::<Vec<_>>();
+    funnel_rows.sort_by(|left, right| {
+        right
+            .sessions
+            .cmp(&left.sessions)
+            .then_with(|| right.revenue_usd.total_cmp(&left.revenue_usd))
+            .then_with(|| left.experiment_id.cmp(&right.experiment_id))
+            .then_with(|| left.variant_id.cmp(&right.variant_id))
+    });
+
+    let mut guardrail_slices = guardrails
+        .into_values()
+        .map(|slice| ExperimentGuardrailSliceV1 {
+            dimension_key: slice.dimension_key,
+            dimension_value: slice.dimension_value,
+            total_sessions: slice.total_sessions,
+            assigned_sessions: slice.assigned_sessions,
+            partial_sessions: slice.partial_sessions,
+            ambiguous_sessions: slice.ambiguous_sessions,
+            coverage_ratio: ratio_string(slice.assigned_sessions, slice.total_sessions),
+        })
+        .collect::<Vec<_>>();
+    guardrail_slices.sort_by(|left, right| {
+        right
+            .total_sessions
+            .cmp(&left.total_sessions)
+            .then_with(|| left.dimension_key.cmp(&right.dimension_key))
+            .then_with(|| left.dimension_value.cmp(&right.dimension_value))
+    });
+    guardrail_slices.truncate(16);
+
+    ExperimentAnalyticsSummaryV1 {
+        assignment_coverage: ExperimentAssignmentCoverageReportV1 {
+            total_observed_sessions,
+            assigned_sessions,
+            partial_sessions,
+            ambiguous_sessions,
+            unassigned_sessions,
+            assignment_coverage_ratio: coverage_ratio,
+            denominator_scope: "all_observed_sessions".to_string(),
+            summary: format!(
+                "assigned={}, partial={}, ambiguous={}, unassigned={} across {} observed sessions",
+                assigned_sessions,
+                partial_sessions,
+                ambiguous_sessions,
+                unassigned_sessions,
+                total_observed_sessions
+            ),
+            notes: coverage_notes,
+        },
+        funnel_rows,
+        guardrail_slices,
+    }
+}
+
 fn stage(name: &str, value: f64, conversion_from_previous: Option<f64>) -> FunnelStageV1 {
     FunnelStageV1 {
         stage: name.to_string(),
         value,
         conversion_from_previous,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExperimentAssignmentCandidate {
+    experiment_id: Option<String>,
+    experiment_name: Option<String>,
+    variant_id: Option<String>,
+    variant_name: Option<String>,
+    source: ExperimentAssignmentSourceV1,
+    confidence: AssignmentConfidenceV1,
+    status: ExperimentAssignmentStatusV1,
+    observed_at_utc: String,
+    notes: Vec<String>,
+}
+
+fn experiment_assignment_candidate(
+    event: &Ga4EventRawV1,
+    timestamp_micros: i64,
+) -> Option<ExperimentAssignmentCandidate> {
+    explicit_experiment_assignment_candidate(event, timestamp_micros)
+        .or_else(|| url_query_experiment_assignment_candidate(event, timestamp_micros))
+}
+
+fn explicit_experiment_assignment_candidate(
+    event: &Ga4EventRawV1,
+    timestamp_micros: i64,
+) -> Option<ExperimentAssignmentCandidate> {
+    let experiment_id = clean_option(event.experiment_id.as_deref()).or_else(|| {
+        event_param_string(event, &["experiment_id", "landing_experiment_id", "exp_id"])
+    });
+    let experiment_name = clean_option(event.experiment_name.as_deref()).or_else(|| {
+        event_param_string(
+            event,
+            &["experiment_name", "landing_experiment_name", "exp_name"],
+        )
+    });
+    let variant_id = clean_option(event.variant_id.as_deref()).or_else(|| {
+        event_param_string(
+            event,
+            &[
+                "variant_id",
+                "landing_variant_id",
+                "experiment_variant_id",
+                "variant",
+            ],
+        )
+    });
+    let variant_name = clean_option(event.variant_name.as_deref()).or_else(|| {
+        event_param_string(
+            event,
+            &[
+                "variant_name",
+                "landing_variant_name",
+                "experiment_variant_name",
+            ],
+        )
+    });
+    build_experiment_candidate(
+        experiment_id,
+        experiment_name,
+        variant_id,
+        variant_name,
+        ExperimentAssignmentSourceV1::Ga4EventParam,
+        micros_to_rfc3339(timestamp_micros),
+    )
+}
+
+fn url_query_experiment_assignment_candidate(
+    event: &Ga4EventRawV1,
+    timestamp_micros: i64,
+) -> Option<ExperimentAssignmentCandidate> {
+    let page_location = page_location(event)?;
+    let params = parse_query_params(&page_location);
+    if params.is_empty() {
+        return None;
+    }
+    build_experiment_candidate(
+        query_param(
+            &params,
+            &["experiment_id", "exp_id", "landing_experiment_id"],
+        ),
+        query_param(
+            &params,
+            &["experiment_name", "exp_name", "landing_experiment_name"],
+        ),
+        query_param(
+            &params,
+            &[
+                "variant_id",
+                "variant",
+                "landing_variant_id",
+                "experiment_variant_id",
+            ],
+        ),
+        query_param(
+            &params,
+            &[
+                "variant_name",
+                "landing_variant_name",
+                "experiment_variant_name",
+            ],
+        ),
+        ExperimentAssignmentSourceV1::UrlQuery,
+        micros_to_rfc3339(timestamp_micros),
+    )
+}
+
+fn build_experiment_candidate(
+    experiment_id: Option<String>,
+    experiment_name: Option<String>,
+    variant_id: Option<String>,
+    variant_name: Option<String>,
+    source: ExperimentAssignmentSourceV1,
+    observed_at_utc: String,
+) -> Option<ExperimentAssignmentCandidate> {
+    let has_any_signal = experiment_id.is_some()
+        || experiment_name.is_some()
+        || variant_id.is_some()
+        || variant_name.is_some();
+    if !has_any_signal {
+        return None;
+    }
+    let status = if experiment_id.is_some() && variant_id.is_some() {
+        ExperimentAssignmentStatusV1::Assigned
+    } else {
+        ExperimentAssignmentStatusV1::Partial
+    };
+    let confidence = match (&source, &status) {
+        (ExperimentAssignmentSourceV1::Ga4EventParam, ExperimentAssignmentStatusV1::Assigned) => {
+            AssignmentConfidenceV1::High
+        }
+        (ExperimentAssignmentSourceV1::UrlQuery, ExperimentAssignmentStatusV1::Assigned) => {
+            AssignmentConfidenceV1::Medium
+        }
+        (ExperimentAssignmentSourceV1::Ga4EventParam, ExperimentAssignmentStatusV1::Partial) => {
+            AssignmentConfidenceV1::Low
+        }
+        (ExperimentAssignmentSourceV1::UrlQuery, ExperimentAssignmentStatusV1::Partial) => {
+            AssignmentConfidenceV1::Low
+        }
+        _ => AssignmentConfidenceV1::Unassigned,
+    };
+    Some(ExperimentAssignmentCandidate {
+        experiment_id,
+        experiment_name,
+        variant_id,
+        variant_name,
+        source,
+        confidence,
+        status,
+        observed_at_utc,
+        notes: Vec::new(),
+    })
+}
+
+fn merge_experiment_context(
+    context: &mut SessionExperimentContextV1,
+    candidate: ExperimentAssignmentCandidate,
+) {
+    if matches!(
+        context.assignment_status,
+        ExperimentAssignmentStatusV1::Ambiguous
+    ) {
+        return;
+    }
+    if matches!(
+        context.assignment_status,
+        ExperimentAssignmentStatusV1::Unassigned
+    ) {
+        *context = SessionExperimentContextV1 {
+            experiment_id: candidate.experiment_id,
+            experiment_name: candidate.experiment_name,
+            variant_id: candidate.variant_id,
+            variant_name: candidate.variant_name,
+            assignment_source: Some(candidate.source),
+            assignment_confidence: candidate.confidence,
+            assignment_status: candidate.status,
+            assignment_observed_at_utc: Some(candidate.observed_at_utc),
+            assignment_notes: candidate.notes,
+        };
+        return;
+    }
+
+    if experiment_context_conflicts(context, &candidate) {
+        let mut notes = context.assignment_notes.clone();
+        notes.push(format!(
+            "conflicting_assignment_detected existing_experiment_id={} existing_variant_id={} candidate_experiment_id={} candidate_variant_id={}",
+            context.experiment_id.as_deref().unwrap_or("none"),
+            context.variant_id.as_deref().unwrap_or("none"),
+            candidate.experiment_id.as_deref().unwrap_or("none"),
+            candidate.variant_id.as_deref().unwrap_or("none"),
+        ));
+        context.experiment_id = None;
+        context.experiment_name = None;
+        context.variant_id = None;
+        context.variant_name = None;
+        context.assignment_source = None;
+        context.assignment_confidence = AssignmentConfidenceV1::Ambiguous;
+        context.assignment_status = ExperimentAssignmentStatusV1::Ambiguous;
+        context.assignment_notes = notes;
+        return;
+    }
+
+    if context.experiment_id.is_none() {
+        context.experiment_id = candidate.experiment_id;
+    }
+    if context.experiment_name.is_none() {
+        context.experiment_name = candidate.experiment_name;
+    }
+    if context.variant_id.is_none() {
+        context.variant_id = candidate.variant_id;
+    }
+    if context.variant_name.is_none() {
+        context.variant_name = candidate.variant_name;
+    }
+    if context.assignment_source.is_none() {
+        context.assignment_source = Some(candidate.source);
+    }
+    if matches!(
+        context.assignment_status,
+        ExperimentAssignmentStatusV1::Partial
+    ) && context.experiment_id.is_some()
+        && context.variant_id.is_some()
+    {
+        context.assignment_status = ExperimentAssignmentStatusV1::Assigned;
+        context.assignment_confidence = match context.assignment_source {
+            Some(ExperimentAssignmentSourceV1::Ga4EventParam) => AssignmentConfidenceV1::High,
+            Some(ExperimentAssignmentSourceV1::UrlQuery) => AssignmentConfidenceV1::Medium,
+            Some(ExperimentAssignmentSourceV1::Backend) => AssignmentConfidenceV1::High,
+            Some(ExperimentAssignmentSourceV1::DataLayer) => AssignmentConfidenceV1::High,
+            _ => AssignmentConfidenceV1::Low,
+        };
+    }
+}
+
+fn experiment_context_conflicts(
+    context: &SessionExperimentContextV1,
+    candidate: &ExperimentAssignmentCandidate,
+) -> bool {
+    has_conflicting_value(
+        context.experiment_id.as_deref(),
+        candidate.experiment_id.as_deref(),
+    ) || has_conflicting_value(
+        context.variant_id.as_deref(),
+        candidate.variant_id.as_deref(),
+    )
+}
+
+fn has_conflicting_value(current: Option<&str>, candidate: Option<&str>) -> bool {
+    matches!((current, candidate), (Some(left), Some(right)) if left != right)
+}
+
+fn is_assigned_experiment_context(context: &SessionExperimentContextV1) -> bool {
+    matches!(
+        context.assignment_status,
+        ExperimentAssignmentStatusV1::Assigned
+    ) && context.experiment_id.is_some()
+        && context.variant_id.is_some()
+}
+
+fn register_guardrail_slice(
+    guardrails: &mut BTreeMap<(String, String), ExperimentGuardrailAccumulator>,
+    dimension_key: &str,
+    raw_value: Option<&str>,
+    context: &SessionExperimentContextV1,
+) {
+    let dimension_value = raw_value
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+    let entry = guardrails
+        .entry((dimension_key.to_string(), dimension_value.to_string()))
+        .or_insert_with(|| ExperimentGuardrailAccumulator {
+            dimension_key: dimension_key.to_string(),
+            dimension_value: dimension_value.to_string(),
+            ..Default::default()
+        });
+    entry.total_sessions += 1;
+    match context.assignment_status {
+        ExperimentAssignmentStatusV1::Assigned => entry.assigned_sessions += 1,
+        ExperimentAssignmentStatusV1::Partial => entry.partial_sessions += 1,
+        ExperimentAssignmentStatusV1::Ambiguous => entry.ambiguous_sessions += 1,
+        ExperimentAssignmentStatusV1::Unassigned => {}
+    }
+}
+
+fn ratio_string(numerator: u64, denominator: u64) -> String {
+    if denominator == 0 {
+        "0.0000".to_string()
+    } else {
+        format!("{:.4}", numerator as f64 / denominator as f64)
     }
 }
 
@@ -601,6 +1127,47 @@ fn page_location(event: &Ga4EventRawV1) -> Option<String> {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
     })
+}
+
+fn event_param_string(event: &Ga4EventRawV1, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        event
+            .dimensions
+            .get(*key)
+            .map(|value| value.as_str())
+            .and_then(|value| clean_option(Some(value)))
+    })
+}
+
+fn parse_query_params(page_location: &str) -> BTreeMap<String, String> {
+    let trimmed = page_location.trim();
+    let query = if trimmed.starts_with('/') {
+        trimmed
+            .split_once('?')
+            .map(|(_, query)| query.to_string())
+            .unwrap_or_default()
+    } else {
+        Url::parse(trimmed)
+            .ok()
+            .and_then(|url| url.query().map(|query| query.to_string()))
+            .unwrap_or_default()
+    };
+    if query.is_empty() {
+        return BTreeMap::new();
+    }
+    form_urlencoded::parse(query.as_bytes())
+        .filter_map(|(key, value)| {
+            let key = key.trim().to_ascii_lowercase();
+            let value = value.trim().to_string();
+            (!key.is_empty() && !value.is_empty()).then_some((key, value))
+        })
+        .collect()
+}
+
+fn query_param(params: &BTreeMap<String, String>, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| params.get(&key.to_ascii_lowercase()).cloned())
+        .and_then(|value| clean_option(Some(value.as_str())))
 }
 
 fn extract_host_from_page_location(page_location: &str) -> Option<String> {
@@ -794,6 +1361,140 @@ mod tests {
         assert_eq!(rollups[0].purchase_count, 1);
         assert!((rollups[0].revenue_usd - 64.25).abs() < 0.0001);
         assert_eq!(rollups[1].visitor_type, VisitorTypeV1::Returning);
+    }
+
+    #[test]
+    fn resolves_experiment_assignment_from_explicit_event_params_before_url_query() {
+        let mut page_view = event("page_view", "2026-03-02T12:00:00Z", "user-1", 333);
+        page_view.page_location = Some(
+            "https://naturesdietpet.com/simply-raw-freeze-dried-raw-meals?experiment_id=url_test&variant_id=url_control".to_string(),
+        );
+        page_view.experiment_id = Some("lp_paid_offer_test".to_string());
+        page_view.experiment_name = Some("Landing Offer Test".to_string());
+        page_view.variant_id = Some("challenger_bundle".to_string());
+        page_view.variant_name = Some("Bundle Challenger".to_string());
+
+        let rollups = rollup_ga4_sessions_v1(&[page_view]);
+        assert_eq!(rollups.len(), 1);
+        let context = &rollups[0].experiment_context;
+        assert_eq!(
+            context.assignment_status,
+            ExperimentAssignmentStatusV1::Assigned
+        );
+        assert_eq!(
+            context.assignment_source,
+            Some(ExperimentAssignmentSourceV1::Ga4EventParam)
+        );
+        assert_eq!(context.assignment_confidence, AssignmentConfidenceV1::High);
+        assert_eq!(context.experiment_id.as_deref(), Some("lp_paid_offer_test"));
+        assert_eq!(context.variant_id.as_deref(), Some("challenger_bundle"));
+    }
+
+    #[test]
+    fn marks_conflicting_experiment_assignments_as_ambiguous() {
+        let mut page_view = event("page_view", "2026-03-02T12:00:00Z", "user-2", 444);
+        page_view.page_location = Some(
+            "https://naturesdietpet.com/simply-raw-freeze-dried-raw-meals?experiment_id=lp_paid_offer_test&variant_id=control".to_string(),
+        );
+
+        let mut purchase = event("purchase", "2026-03-02T12:00:20Z", "user-2", 444);
+        purchase.experiment_id = Some("lp_paid_offer_test".to_string());
+        purchase.variant_id = Some("challenger_bundle".to_string());
+
+        let rollups = rollup_ga4_sessions_v1(&[page_view, purchase]);
+        assert_eq!(rollups.len(), 1);
+        let context = &rollups[0].experiment_context;
+        assert_eq!(
+            context.assignment_status,
+            ExperimentAssignmentStatusV1::Ambiguous
+        );
+        assert_eq!(
+            context.assignment_confidence,
+            AssignmentConfidenceV1::Ambiguous
+        );
+        assert!(context.experiment_id.is_none());
+        assert!(context.variant_id.is_none());
+        assert!(context
+            .assignment_notes
+            .iter()
+            .any(|note| note.contains("conflicting_assignment_detected")));
+    }
+
+    #[test]
+    fn builds_experiment_analytics_summary_from_sessions() {
+        let summary = build_experiment_analytics_summary_from_sessions_v1(&[
+            Ga4SessionRollupV1 {
+                session_key: "assigned-1".to_string(),
+                experiment_context: SessionExperimentContextV1 {
+                    experiment_id: Some("exp-a".to_string()),
+                    experiment_name: Some("Landing Test A".to_string()),
+                    variant_id: Some("control".to_string()),
+                    variant_name: Some("Control".to_string()),
+                    assignment_source: Some(ExperimentAssignmentSourceV1::Ga4EventParam),
+                    assignment_confidence: AssignmentConfidenceV1::High,
+                    assignment_status: ExperimentAssignmentStatusV1::Assigned,
+                    assignment_observed_at_utc: Some("2026-03-02T12:00:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                },
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                engaged_session: true,
+                view_item_count: 1,
+                add_to_cart_count: 1,
+                begin_checkout_count: 1,
+                purchase_count: 1,
+                revenue_usd: 90.0,
+                ..Default::default()
+            },
+            Ga4SessionRollupV1 {
+                session_key: "partial-1".to_string(),
+                experiment_context: SessionExperimentContextV1 {
+                    experiment_id: Some("exp-a".to_string()),
+                    assignment_source: Some(ExperimentAssignmentSourceV1::UrlQuery),
+                    assignment_confidence: AssignmentConfidenceV1::Low,
+                    assignment_status: ExperimentAssignmentStatusV1::Partial,
+                    assignment_observed_at_utc: Some("2026-03-02T12:10:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                    ..Default::default()
+                },
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                ..Default::default()
+            },
+            Ga4SessionRollupV1 {
+                session_key: "ambiguous-1".to_string(),
+                experiment_context: SessionExperimentContextV1 {
+                    assignment_confidence: AssignmentConfidenceV1::Ambiguous,
+                    assignment_status: ExperimentAssignmentStatusV1::Ambiguous,
+                    assignment_notes: vec!["conflicting_assignment_detected".to_string()],
+                    ..Default::default()
+                },
+                device_category: Some("desktop".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                ..Default::default()
+            },
+            Ga4SessionRollupV1 {
+                session_key: "unassigned-1".to_string(),
+                device_category: Some("desktop".to_string()),
+                source_medium: Some("google / organic".to_string()),
+                ..Default::default()
+            },
+        ]);
+        assert_eq!(summary.assignment_coverage.total_observed_sessions, 4);
+        assert_eq!(summary.assignment_coverage.assigned_sessions, 1);
+        assert_eq!(summary.assignment_coverage.partial_sessions, 1);
+        assert_eq!(summary.assignment_coverage.ambiguous_sessions, 1);
+        assert_eq!(summary.assignment_coverage.unassigned_sessions, 1);
+        assert_eq!(
+            summary.assignment_coverage.assignment_coverage_ratio,
+            "0.2500"
+        );
+        assert_eq!(summary.funnel_rows.len(), 1);
+        assert_eq!(summary.funnel_rows[0].experiment_id, "exp-a");
+        assert_eq!(summary.funnel_rows[0].variant_id, "control");
+        assert_eq!(summary.funnel_rows[0].sessions, 1);
+        assert_eq!(summary.funnel_rows[0].purchase_sessions, 1);
+        assert!(!summary.guardrail_slices.is_empty());
     }
 
     #[test]

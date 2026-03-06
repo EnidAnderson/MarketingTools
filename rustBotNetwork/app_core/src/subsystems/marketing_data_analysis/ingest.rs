@@ -139,6 +139,14 @@ pub struct Ga4EventRawV1 {
     #[serde(default)]
     pub page_location: Option<String>,
     #[serde(default)]
+    pub experiment_id: Option<String>,
+    #[serde(default)]
+    pub experiment_name: Option<String>,
+    #[serde(default)]
+    pub variant_id: Option<String>,
+    #[serde(default)]
+    pub variant_name: Option<String>,
+    #[serde(default)]
     pub session_engaged: Option<bool>,
     #[serde(default)]
     pub engagement_time_msec: Option<i64>,

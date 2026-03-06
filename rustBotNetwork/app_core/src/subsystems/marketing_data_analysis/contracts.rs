@@ -567,6 +567,75 @@ pub enum VisitorTypeV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Origin of experiment assignment evidence for a session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentAssignmentSourceV1 {
+    Ga4EventParam,
+    UrlQuery,
+    Backend,
+    DataLayer,
+    #[default]
+    Unknown,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Confidence label for one session's experiment assignment.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AssignmentConfidenceV1 {
+    High,
+    Medium,
+    Low,
+    Ambiguous,
+    #[default]
+    Unassigned,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Assignment state for one session relative to experiment metadata coverage.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentAssignmentStatusV1 {
+    Assigned,
+    Partial,
+    Ambiguous,
+    #[default]
+    Unassigned,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Session-stable experiment assignment context resolved from the earliest credible signal.
+/// invariants:
+///   - `assignment_status=assigned` requires both `experiment_id` and `variant_id`.
+///   - `assignment_status=ambiguous` must never be used for variant performance claims.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SessionExperimentContextV1 {
+    #[serde(default)]
+    pub experiment_id: Option<String>,
+    #[serde(default)]
+    pub experiment_name: Option<String>,
+    #[serde(default)]
+    pub variant_id: Option<String>,
+    #[serde(default)]
+    pub variant_name: Option<String>,
+    #[serde(default)]
+    pub assignment_source: Option<ExperimentAssignmentSourceV1>,
+    #[serde(default)]
+    pub assignment_confidence: AssignmentConfidenceV1,
+    #[serde(default)]
+    pub assignment_status: ExperimentAssignmentStatusV1,
+    #[serde(default)]
+    pub assignment_observed_at_utc: Option<String>,
+    #[serde(default)]
+    pub assignment_notes: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Rollup of GA4 event data to session semantics for funnels and landing analysis.
 /// invariants:
 ///   - `session_key` is stable and unique within one artifact.
@@ -585,6 +654,8 @@ pub struct Ga4SessionRollupV1 {
     pub landing_host: Option<String>,
     #[serde(default)]
     pub landing_context: Option<LandingContextV1>,
+    #[serde(default)]
+    pub experiment_context: SessionExperimentContextV1,
     #[serde(default)]
     pub visitor_type: VisitorTypeV1,
     pub engaged_session: bool,
@@ -831,6 +902,70 @@ pub struct DataQualityScorecardV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Coverage posture for experiment assignment metadata across observed sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExperimentAssignmentCoverageReportV1 {
+    pub total_observed_sessions: u64,
+    pub assigned_sessions: u64,
+    pub partial_sessions: u64,
+    pub ambiguous_sessions: u64,
+    pub unassigned_sessions: u64,
+    pub assignment_coverage_ratio: String,
+    pub denominator_scope: String,
+    pub summary: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Variant-level funnel metrics computed only from assigned sessions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ExperimentFunnelRowV1 {
+    pub experiment_id: String,
+    #[serde(default)]
+    pub experiment_name: Option<String>,
+    pub variant_id: String,
+    #[serde(default)]
+    pub variant_name: Option<String>,
+    pub sessions: u64,
+    pub engaged_sessions: u64,
+    pub product_view_sessions: u64,
+    pub add_to_cart_sessions: u64,
+    pub checkout_sessions: u64,
+    pub purchase_sessions: u64,
+    pub revenue_usd: f64,
+    pub denominator_scope: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Guardrail slice showing where experiment assignment coverage is weak or biased.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExperimentGuardrailSliceV1 {
+    pub dimension_key: String,
+    pub dimension_value: String,
+    pub total_sessions: u64,
+    pub assigned_sessions: u64,
+    pub partial_sessions: u64,
+    pub ambiguous_sessions: u64,
+    pub coverage_ratio: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Experiment analytics summary derived from session-level assignment evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ExperimentAnalyticsSummaryV1 {
+    pub assignment_coverage: ExperimentAssignmentCoverageReportV1,
+    #[serde(default)]
+    pub funnel_rows: Vec<ExperimentFunnelRowV1>,
+    #[serde(default)]
+    pub guardrail_slices: Vec<ExperimentGuardrailSliceV1>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Consolidated high-leverage reports derived from dashboard artifact evidence.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct HighLeverageReportsV1 {
@@ -838,6 +973,8 @@ pub struct HighLeverageReportsV1 {
     pub funnel_survival: FunnelSurvivalReportV1,
     pub attribution_delta: AttributionDeltaReportV1,
     pub data_quality_scorecard: DataQualityScorecardV1,
+    #[serde(default)]
+    pub experiment_analytics: ExperimentAnalyticsSummaryV1,
 }
 
 /// # NDOC

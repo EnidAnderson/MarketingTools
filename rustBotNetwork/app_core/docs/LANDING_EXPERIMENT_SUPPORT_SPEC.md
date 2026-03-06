@@ -53,6 +53,31 @@ The Rust analytics layer should expose experiment readiness and insight-permissi
 3. Build dashboard and content-pipeline surfaces from typed insight cards.
 4. Only after that, allow the campaign orchestration layer to request landing-page challenger generation automatically.
 
+## Assignment Resolution Contract
+
+1. Assignment is resolved once per session and remains session-stable.
+2. Resolution is first-touch-biased:
+   - earliest credible assignment signal wins
+   - later compatible signals may enrich names but must not rewrite IDs
+3. Source precedence is explicit:
+   - `ga4_event_param`
+   - `url_query`
+   - `backend`
+   - `data_layer`
+4. Conflicting assignment IDs within one session must downgrade the session to `ambiguous`.
+5. Sessions missing either `experiment_id` or `variant_id` remain `partial`, not assigned.
+6. Landing-family inference alone is not sufficient for experiment assignment.
+
+## Denominator Discipline
+
+Every experiment-facing report must declare its denominator scope explicitly:
+
+- `all_observed_sessions`
+- `assigned_sessions_only`
+- `assigned_and_eligible_sessions_only`
+
+Variant lift claims and content-pipeline facts may only use assigned-session denominators. Partial, ambiguous, and unassigned sessions may appear in coverage diagnostics, but never in decision-grade variant lift summaries.
+
 ## Immediate Product Behavior
 
 - The system may say:
