@@ -609,6 +609,7 @@ mod tests {
                 cleaning_note_count: 0,
             }],
             source_coverage: Vec::new(),
+            ga4_session_rollups: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -690,6 +691,7 @@ mod tests {
                 cleaning_note_count: 0,
             }],
             source_coverage: Vec::new(),
+            ga4_session_rollups: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -774,6 +776,7 @@ mod tests {
                 cleaning_note_count: 0,
             }],
             source_coverage: Vec::new(),
+            ga4_session_rollups: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -859,6 +862,7 @@ mod tests {
                     cleaning_note_count: 0,
                 }],
                 source_coverage: Vec::new(),
+                ga4_session_rollups: Vec::new(),
                 ingest_cleaning_notes: Vec::new(),
                 validation: AnalyticsValidationReportV1 {
                     is_valid: true,
@@ -945,6 +949,7 @@ mod tests {
                     cleaning_note_count: 0,
                 }],
                 source_coverage: Vec::new(),
+                ga4_session_rollups: Vec::new(),
                 ingest_cleaning_notes: Vec::new(),
                 validation: AnalyticsValidationReportV1 {
                     is_valid: true,

@@ -15,6 +15,7 @@ pub mod contracts;
 pub mod executive_dashboard;
 pub mod experiment_governance;
 pub mod export_audit;
+pub mod ga4_sessions;
 pub mod ingest;
 pub mod longitudinal;
 pub mod persistence;
@@ -60,14 +61,15 @@ pub use contracts::{
     DailyRevenuePointV1, DashboardExportAuditRecordV1, DataQualityScorecardV1,
     DataQualitySummaryV1, DriftFlagV1, EvidenceItem, ExecutiveDashboardSnapshotV1,
     ExperimentReadinessCardV1, ForecastSummaryV1, FreshnessSlaPolicyV1, FunnelStageV1,
-    FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1, GuidanceItem,
-    HighLeverageReportsV1, HistoricalAnalysisV1, IngestCleaningNoteV1, InsightPermissionCardV1,
-    InsightPermissionStateV1, InsightSampleContextV1, KpiAttributionNarrativeV1, KpiDeltaV1,
-    KpiTileV1, LandingContextV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
-    OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1, QualityCheckApplicabilityV1,
-    QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1, RevenueTruthReportV1,
-    SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
-    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
+    FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1, Ga4SessionRollupV1,
+    GuidanceItem, HighLeverageReportsV1, HistoricalAnalysisV1, IngestCleaningNoteV1,
+    InsightPermissionCardV1, InsightPermissionStateV1, InsightSampleContextV1,
+    KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, LandingContextV1, MockAnalyticsArtifactV1,
+    MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1,
+    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1,
+    RevenueTruthReportV1, SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1,
+    SourceWindowObservationV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ValidationCheck, VisitorTypeV1,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use experiment_governance::{
@@ -75,6 +77,10 @@ pub use experiment_governance::{
     ExperimentClaimKindV1, LandingExperimentAssessmentInputV1,
 };
 pub use export_audit::DashboardExportAuditStore;
+pub use ga4_sessions::{
+    build_funnel_summary_from_sessions_v1, build_storefront_behavior_summary_from_sessions_v1,
+    classify_landing_context_v2, extract_path_from_page_location, rollup_ga4_sessions_v1,
+};
 pub use ingest::{
     join_coverage_ratio, parse_ga4_event, parse_google_ads_row, parse_wix_order,
     window_completeness, Cleaned, CleaningNote, CleaningSeverity, Ga4EventRawV1, Ga4EventV1,

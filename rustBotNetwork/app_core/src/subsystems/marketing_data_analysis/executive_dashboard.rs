@@ -2,10 +2,12 @@
 use super::contracts::{
     AttributionDeltaReportV1, AttributionDeltaRowV1, ChannelMixPointV1, DailyRevenuePointV1,
     DataQualityScorecardV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
-    ForecastSummaryV1, FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1,
-    FunnelSurvivalReportV1, HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, PublishExportGateV1, QualityCheckApplicabilityV1, RevenueTruthReportV1,
-    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ForecastSummaryV1, FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1,
+    HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1, PublishExportGateV1,
+    QualityCheckApplicabilityV1, RevenueTruthReportV1, StorefrontBehaviorSummaryV1,
+};
+use super::ga4_sessions::{
+    build_funnel_summary_from_sessions_v1, build_storefront_behavior_summary_from_sessions_v1,
 };
 use super::{
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
@@ -94,7 +96,7 @@ pub fn build_executive_dashboard_snapshot(
     } else {
         "degraded".to_string()
     };
-    let funnel_summary = build_funnel_summary(latest_metrics);
+    let funnel_summary = build_funnel_summary(latest);
     let publish_export_gate = build_publish_export_gate(latest);
     let high_leverage_reports =
         build_high_leverage_reports(latest, &funnel_summary, &publish_export_gate);
@@ -117,7 +119,7 @@ pub fn build_executive_dashboard_snapshot(
         daily_revenue_series: build_daily_revenue_series(latest),
         roas_target_band: options.target_roas,
         funnel_summary,
-        storefront_behavior_summary: build_storefront_summary(latest, latest_metrics),
+        storefront_behavior_summary: build_storefront_summary(latest),
         portfolio_rows: build_portfolio_rows(latest),
         forecast_summary: build_forecast(latest_metrics, runs, options),
         data_quality: latest.artifact.data_quality.clone(),
@@ -1102,144 +1104,36 @@ fn build_channel_mix_series(runs: &[PersistedAnalyticsRunV1]) -> Vec<ChannelMixP
     series
 }
 
-fn build_funnel_summary(metrics: &ReportMetrics) -> FunnelSummaryV1 {
-    let stage_impressions = metrics.impressions as f64;
-    let stage_clicks = metrics.clicks as f64;
-    let stage_sessions = stage_clicks * 0.92;
-    let stage_product_view = stage_sessions * 0.67;
-    let stage_add_to_cart = stage_product_view * 0.28;
-    let stage_checkout = stage_add_to_cart * 0.57;
-    let stage_purchase = metrics.conversions.max(0.0);
-
-    let stages = vec![
-        stage("Impression", stage_impressions, None),
-        stage(
-            "Click",
-            stage_clicks,
-            Some(stage_clicks / stage_impressions.max(1.0)),
-        ),
-        stage(
-            "Session",
-            stage_sessions,
-            Some(stage_sessions / stage_clicks.max(1.0)),
-        ),
-        stage(
-            "Product View",
-            stage_product_view,
-            Some(stage_product_view / stage_sessions.max(1.0)),
-        ),
-        stage(
-            "Add To Cart",
-            stage_add_to_cart,
-            Some(stage_add_to_cart / stage_product_view.max(1.0)),
-        ),
-        stage(
-            "Checkout",
-            stage_checkout,
-            Some(stage_checkout / stage_add_to_cart.max(1.0)),
-        ),
-        stage(
-            "Purchase",
-            stage_purchase,
-            Some(stage_purchase / stage_checkout.max(1.0)),
-        ),
-    ];
-
-    let mut hotspot = "None".to_string();
-    let mut min_rate = 1.0;
-    for item in stages.iter().skip(1) {
-        if let Some(rate) = item.conversion_from_previous {
-            if rate < min_rate {
-                min_rate = rate;
-                hotspot = item.stage.clone();
-            }
-        }
-    }
-
-    FunnelSummaryV1 {
-        stages,
-        dropoff_hotspot_stage: hotspot,
-    }
+fn build_funnel_summary(run: &PersistedAnalyticsRunV1) -> FunnelSummaryV1 {
+    build_funnel_summary_from_sessions_v1(&run.artifact.ga4_session_rollups)
 }
 
-fn stage(name: &str, value: f64, conversion_from_previous: Option<f64>) -> FunnelStageV1 {
-    FunnelStageV1 {
-        stage: name.to_string(),
-        value,
-        conversion_from_previous,
+fn build_storefront_summary(run: &PersistedAnalyticsRunV1) -> StorefrontBehaviorSummaryV1 {
+    let observed =
+        build_storefront_behavior_summary_from_sessions_v1(&run.artifact.ga4_session_rollups);
+    if !observed.rows.is_empty() {
+        return observed;
     }
-}
 
-fn build_storefront_summary(
-    run: &PersistedAnalyticsRunV1,
-    metrics: &ReportMetrics,
-) -> StorefrontBehaviorSummaryV1 {
-    let wix_coverage = run
+    let ga4_observed = run
         .artifact
         .source_coverage
         .iter()
-        .find(|item| item.source_system == "wix_storefront");
-    let ga4_coverage = run
-        .artifact
-        .source_coverage
-        .iter()
-        .find(|item| item.source_system == "ga4");
-    let wix_enabled = wix_coverage.map(|item| item.enabled).unwrap_or(true);
-    let wix_observed = wix_coverage.map(|item| item.observed).unwrap_or(true);
-    let ga4_observed = ga4_coverage.map(|item| item.observed).unwrap_or(false);
-    if !wix_enabled && !ga4_observed {
+        .find(|item| item.source_system == "ga4")
+        .map(|item| item.observed)
+        .unwrap_or(false);
+    if !ga4_observed {
         return StorefrontBehaviorSummaryV1 {
             source_system: "storefront_not_available".to_string(),
             identity_confidence: "not_available".to_string(),
             rows: Vec::new(),
         };
     }
-    if wix_enabled && !wix_observed && !ga4_observed {
-        return StorefrontBehaviorSummaryV1 {
-            source_system: "wix_storefront_no_rows".to_string(),
-            identity_confidence: "not_available".to_string(),
-            rows: Vec::new(),
-        };
-    }
-
-    let sessions = (metrics.clicks as f64 * 0.92).round() as u64;
-    let add_to_cart_rate = 0.18;
-    let purchase_rate = if sessions > 0 {
-        metrics.conversions / sessions as f64
-    } else {
-        0.0
-    };
-    let aov = average_order_value(metrics);
 
     StorefrontBehaviorSummaryV1 {
-        source_system: if wix_observed {
-            "wix_storefront_observed".to_string()
-        } else {
-            "ga4_derived_storefront_proxy".to_string()
-        },
-        identity_confidence: if wix_observed {
-            "medium".to_string()
-        } else {
-            "low".to_string()
-        },
-        rows: vec![
-            StorefrontBehaviorRowV1 {
-                segment: "mobile".to_string(),
-                product_or_template: "ready-raw-hero-landing".to_string(),
-                sessions: (sessions as f64 * 0.58).round() as u64,
-                add_to_cart_rate: add_to_cart_rate + 0.02,
-                purchase_rate: purchase_rate + 0.01,
-                aov: aov * 0.97,
-            },
-            StorefrontBehaviorRowV1 {
-                segment: "desktop".to_string(),
-                product_or_template: "value-bundle-collection".to_string(),
-                sessions: (sessions as f64 * 0.42).round() as u64,
-                add_to_cart_rate: add_to_cart_rate - 0.01,
-                purchase_rate: purchase_rate + 0.015,
-                aov: aov * 1.06,
-            },
-        ],
+        source_system: "ga4_session_rollup_unavailable".to_string(),
+        identity_confidence: "low".to_string(),
+        rows: Vec::new(),
     }
 }
 
@@ -1426,6 +1320,7 @@ mod tests {
             uncertainty_notes: vec!["sim".to_string()],
             provenance: Vec::new(),
             source_coverage: Vec::new(),
+            ga4_session_rollups: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: AnalyticsValidationReportV1 {
                 is_valid: true,
@@ -1459,10 +1354,89 @@ mod tests {
 
     #[test]
     fn builds_snapshot_from_history() {
-        let runs = vec![
-            build_run("run-2", "p1", 200.0, 6.5),
-            build_run("run-1", "p1", 180.0, 5.8),
+        let mut current = build_run("run-2", "p1", 200.0, 6.5);
+        current.artifact.ga4_session_rollups = vec![
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: "user-2:202".to_string(),
+                user_pseudo_id: "user-2".to_string(),
+                ga_session_id: Some(202),
+                session_start_ts_utc: "2026-02-07T10:00:00Z".to_string(),
+                first_event_ts_utc: "2026-02-07T10:00:00Z".to_string(),
+                landing_path: Some("/simply-raw-freeze-dried-raw-meals".to_string()),
+                landing_host: Some("www.naturesdietpet.com".to_string()),
+                landing_context: Some(
+                    crate::subsystems::marketing_data_analysis::contracts::LandingContextV1 {
+                        taxonomy_version: "nd_landing_taxonomy.v2".to_string(),
+                        matched_rule_id: "offer.simply_raw".to_string(),
+                        landing_path: "/simply-raw-freeze-dried-raw-meals".to_string(),
+                        landing_family: "simply_raw_offer_lp".to_string(),
+                        landing_page_group: "offer_landing".to_string(),
+                    },
+                ),
+                visitor_type:
+                    crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
+                engaged_session: true,
+                engagement_time_msec: 1_000,
+                country: Some("US".to_string()),
+                platform: Some("WEB".to_string()),
+                device_category: Some("mobile".to_string()),
+                source: Some("google".to_string()),
+                medium: Some("cpc".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                campaign: Some("Brand Search".to_string()),
+                page_view_count: 2,
+                user_engagement_count: 1,
+                scroll_count: 1,
+                view_item_count: 1,
+                add_to_cart_count: 1,
+                begin_checkout_count: 1,
+                purchase_count: 1,
+                revenue_usd: 48.5,
+                transaction_ids: vec!["tx-run-2".to_string()],
+            },
         ];
+        let mut previous = build_run("run-1", "p1", 180.0, 5.8);
+        previous.artifact.ga4_session_rollups = vec![
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: "user-1:101".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                ga_session_id: Some(101),
+                session_start_ts_utc: "2026-02-01T09:00:00Z".to_string(),
+                first_event_ts_utc: "2026-02-01T09:00:00Z".to_string(),
+                landing_path: Some("/".to_string()),
+                landing_host: Some("www.naturesdietpet.com".to_string()),
+                landing_context: Some(
+                    crate::subsystems::marketing_data_analysis::contracts::LandingContextV1 {
+                        taxonomy_version: "nd_landing_taxonomy.v2".to_string(),
+                        matched_rule_id: "home.root".to_string(),
+                        landing_path: "/".to_string(),
+                        landing_family: "home".to_string(),
+                        landing_page_group: "home".to_string(),
+                    },
+                ),
+                visitor_type:
+                    crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::Returning,
+                engaged_session: true,
+                engagement_time_msec: 800,
+                country: Some("US".to_string()),
+                platform: Some("WEB".to_string()),
+                device_category: Some("desktop".to_string()),
+                source: Some("google".to_string()),
+                medium: Some("organic".to_string()),
+                source_medium: Some("google / organic".to_string()),
+                campaign: None,
+                page_view_count: 2,
+                user_engagement_count: 1,
+                scroll_count: 1,
+                view_item_count: 1,
+                add_to_cart_count: 0,
+                begin_checkout_count: 0,
+                purchase_count: 0,
+                revenue_usd: 0.0,
+                transaction_ids: Vec::new(),
+            },
+        ];
+        let runs = vec![current, previous];
         let snap = build_executive_dashboard_snapshot("p1", &runs, SnapshotBuildOptions::default())
             .expect("snapshot");
         assert_eq!(snap.profile_id, "p1");
@@ -1648,7 +1622,7 @@ mod tests {
     }
 
     #[test]
-    fn storefront_summary_uses_ga4_derived_proxy_when_wix_unavailable() {
+    fn storefront_summary_fails_closed_without_session_rollups() {
         let mut run = build_run("run-2", "p1", 200.0, 6.5);
         run.artifact.source_coverage = vec![
             crate::subsystems::marketing_data_analysis::contracts::SourceCoverageV1 {
@@ -1666,10 +1640,71 @@ mod tests {
                 unavailable_reason: Some("disabled_by_ga4_unified_topology".to_string()),
             },
         ];
-        let summary = build_storefront_summary(&run, &run.artifact.report.total_metrics);
-        assert_eq!(summary.source_system, "ga4_derived_storefront_proxy");
+        let summary = build_storefront_summary(&run);
+        assert_eq!(summary.source_system, "ga4_session_rollup_unavailable");
         assert_eq!(summary.identity_confidence, "low");
-        assert!(!summary.rows.is_empty());
+        assert!(summary.rows.is_empty());
+    }
+
+    #[test]
+    fn storefront_summary_uses_observed_session_rollups_when_available() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.ga4_session_rollups = vec![
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: "user-1:101".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                ga_session_id: Some(101),
+                session_start_ts_utc: "2026-02-01T10:00:00Z".to_string(),
+                first_event_ts_utc: "2026-02-01T10:00:00Z".to_string(),
+                landing_path: Some("/simply-raw-freeze-dried-raw-meals".to_string()),
+                landing_host: Some("www.naturesdietpet.com".to_string()),
+                landing_context: Some(
+                    crate::subsystems::marketing_data_analysis::contracts::LandingContextV1 {
+                        taxonomy_version: "nd_landing_taxonomy.v2".to_string(),
+                        matched_rule_id: "offer.simply_raw".to_string(),
+                        landing_path: "/simply-raw-freeze-dried-raw-meals".to_string(),
+                        landing_family: "simply_raw_offer_lp".to_string(),
+                        landing_page_group: "offer_landing".to_string(),
+                    },
+                ),
+                visitor_type:
+                    crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
+                engaged_session: true,
+                engagement_time_msec: 1_200,
+                country: Some("US".to_string()),
+                platform: Some("WEB".to_string()),
+                device_category: Some("mobile".to_string()),
+                source: Some("google".to_string()),
+                medium: Some("cpc".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                campaign: Some("Brand Search".to_string()),
+                page_view_count: 2,
+                user_engagement_count: 1,
+                scroll_count: 1,
+                view_item_count: 1,
+                add_to_cart_count: 1,
+                begin_checkout_count: 1,
+                purchase_count: 1,
+                revenue_usd: 48.5,
+                transaction_ids: vec!["tx-1".to_string()],
+            },
+        ];
+
+        let summary = build_storefront_summary(&run);
+        assert_eq!(summary.source_system, "ga4_session_rollups_observed");
+        assert_eq!(summary.identity_confidence, "high");
+        assert_eq!(summary.rows.len(), 1);
+        let row = &summary.rows[0];
+        assert_eq!(
+            row.landing_path.as_deref(),
+            Some("/simply-raw-freeze-dried-raw-meals")
+        );
+        assert_eq!(row.landing_family.as_deref(), Some("simply_raw_offer_lp"));
+        assert!((row.engaged_rate - 1.0).abs() < 0.0001);
+        assert!((row.add_to_cart_rate - 1.0).abs() < 0.0001);
+        assert!((row.checkout_rate - 1.0).abs() < 0.0001);
+        assert!((row.purchase_rate - 1.0).abs() < 0.0001);
+        assert!((row.revenue_per_session - 48.5).abs() < 0.0001);
     }
 
     #[test]

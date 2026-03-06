@@ -110,17 +110,48 @@ impl Money {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Ga4EventRawV1 {
     pub event_name: String,
     pub event_timestamp_utc: String,
+    #[serde(default)]
+    pub event_timestamp_micros: Option<i64>,
     pub user_pseudo_id: String,
+    #[serde(default)]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub ga_session_id: Option<i64>,
+    #[serde(default)]
+    pub ga_session_number: Option<i64>,
     pub campaign: Option<String>,
     #[serde(default)]
     pub device_category: Option<String>,
     #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
     pub source_medium: Option<String>,
+    #[serde(default)]
+    pub traffic_source_source: Option<String>,
+    #[serde(default)]
+    pub traffic_source_medium: Option<String>,
+    #[serde(default)]
+    pub page_location: Option<String>,
+    #[serde(default)]
+    pub session_engaged: Option<bool>,
+    #[serde(default)]
+    pub engagement_time_msec: Option<i64>,
+    #[serde(default)]
+    pub transaction_id: Option<String>,
+    #[serde(default)]
+    pub purchase_revenue: Option<f64>,
+    #[serde(default)]
+    pub purchase_revenue_in_usd: Option<f64>,
+    #[serde(default)]
+    pub event_bundle_sequence_id: Option<i64>,
+    #[serde(default)]
+    pub batch_event_index: Option<i64>,
     #[serde(default)]
     pub dimensions: BTreeMap<String, String>,
     #[serde(default)]
@@ -511,6 +542,7 @@ mod tests {
             source_medium: None,
             dimensions: BTreeMap::new(),
             metrics: BTreeMap::new(),
+            ..Default::default()
         };
         let parsed = Cleaned::<Ga4EventV1>::try_from(raw);
         assert!(parsed.is_err());

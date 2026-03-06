@@ -555,6 +555,77 @@ pub struct SourceCoverageV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Session-level visitor classification derived from `ga_session_number`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VisitorTypeV1 {
+    New,
+    Returning,
+    #[default]
+    Unknown,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Rollup of GA4 event data to session semantics for funnels and landing analysis.
+/// invariants:
+///   - `session_key` is stable and unique within one artifact.
+///   - `landing_context`, when present, must agree with `landing_path`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct Ga4SessionRollupV1 {
+    pub session_key: String,
+    pub user_pseudo_id: String,
+    #[serde(default)]
+    pub ga_session_id: Option<i64>,
+    pub session_start_ts_utc: String,
+    pub first_event_ts_utc: String,
+    #[serde(default)]
+    pub landing_path: Option<String>,
+    #[serde(default)]
+    pub landing_host: Option<String>,
+    #[serde(default)]
+    pub landing_context: Option<LandingContextV1>,
+    #[serde(default)]
+    pub visitor_type: VisitorTypeV1,
+    pub engaged_session: bool,
+    #[serde(default)]
+    pub engagement_time_msec: u64,
+    #[serde(default)]
+    pub country: Option<String>,
+    #[serde(default)]
+    pub platform: Option<String>,
+    #[serde(default)]
+    pub device_category: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub medium: Option<String>,
+    #[serde(default)]
+    pub source_medium: Option<String>,
+    #[serde(default)]
+    pub campaign: Option<String>,
+    #[serde(default)]
+    pub page_view_count: u32,
+    #[serde(default)]
+    pub user_engagement_count: u32,
+    #[serde(default)]
+    pub scroll_count: u32,
+    #[serde(default)]
+    pub view_item_count: u32,
+    #[serde(default)]
+    pub add_to_cart_count: u32,
+    #[serde(default)]
+    pub begin_checkout_count: u32,
+    #[serde(default)]
+    pub purchase_count: u32,
+    #[serde(default)]
+    pub revenue_usd: f64,
+    #[serde(default)]
+    pub transaction_ids: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Versioned artifact envelope returned by the orchestrator.
 /// invariants:
 ///   - `schema_version` is explicit at root.
@@ -573,6 +644,8 @@ pub struct MockAnalyticsArtifactV1 {
     pub provenance: Vec<SourceProvenance>,
     #[serde(default)]
     pub source_coverage: Vec<SourceCoverageV1>,
+    #[serde(default)]
+    pub ga4_session_rollups: Vec<Ga4SessionRollupV1>,
     #[serde(default)]
     pub ingest_cleaning_notes: Vec<IngestCleaningNoteV1>,
     pub validation: AnalyticsValidationReportV1,
@@ -797,8 +870,20 @@ pub struct StorefrontBehaviorRowV1 {
     pub segment: String,
     pub product_or_template: String,
     pub sessions: u64,
+    #[serde(default)]
+    pub landing_path: Option<String>,
+    #[serde(default)]
+    pub landing_family: Option<String>,
+    #[serde(default)]
+    pub engaged_rate: f64,
+    #[serde(default)]
+    pub product_view_rate: f64,
     pub add_to_cart_rate: f64,
+    #[serde(default)]
+    pub checkout_rate: f64,
     pub purchase_rate: f64,
+    #[serde(default)]
+    pub revenue_per_session: f64,
     pub aov: f64,
 }
 

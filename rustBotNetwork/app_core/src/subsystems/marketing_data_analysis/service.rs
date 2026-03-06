@@ -15,6 +15,7 @@ use super::contracts::{
     ReconciliationPolicyV1, SourceCoverageV1, SourceWindowGranularityV1,
     MOCK_ANALYTICS_SCHEMA_VERSION_V1,
 };
+use super::ga4_sessions::rollup_ga4_sessions_v1;
 use super::ingest::{
     parse_ga4_event, parse_google_ads_row, parse_wix_order, window_completeness, CleaningNote,
     Ga4EventRawV1, GoogleAdsRowRawV1, TimeGranularity, WixOrderRawV1,
@@ -260,6 +261,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             start,
             budget_plan.effective_end,
         );
+        let ga4_session_rollups = rollup_ga4_sessions_v1(&ga4_events);
         let ingest_audit =
             collect_ingest_cleaning_notes(&ga4_events, &google_ads_raw_rows, &wix_orders)?;
         let freshness_policy = FreshnessSlaPolicyV1::default();
@@ -313,6 +315,12 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         if ga4_unified_topology {
             uncertainty_notes.push(
                 "source_topology=ga4_unified: Google Ads and Wix connectors are intentionally disabled; cross-source reconciliation checks are reported as not applicable."
+                    .to_string(),
+            );
+        }
+        if !ga4_events.is_empty() && ga4_session_rollups.is_empty() {
+            uncertainty_notes.push(
+                "GA4 session rollups are unavailable for this run; funnel and storefront panels require landing/session fields from the GA4 BigQuery export."
                     .to_string(),
             );
         }
@@ -391,6 +399,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             uncertainty_notes,
             provenance,
             source_coverage,
+            ga4_session_rollups,
             ingest_cleaning_notes: ingest_audit.notes,
             validation: super::contracts::AnalyticsValidationReportV1 {
                 is_valid: false,
@@ -2742,6 +2751,7 @@ mod tests {
             source_medium: Some("google / cpc".to_string()),
             dimensions: dimensions.clone(),
             metrics: BTreeMap::new(),
+            ..Default::default()
         };
         let events = vec![
             base.clone(),
@@ -2756,6 +2766,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
         ];
         let (duplicate_rows, unique_signatures, ratio) = ga4_duplicate_signature_stats(&events);
@@ -2802,6 +2813,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: base_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase_ndp".to_string(),
@@ -2813,6 +2825,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: second_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase_ndp".to_string(),
@@ -2824,6 +2837,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: third_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "page_view".to_string(),
@@ -2835,6 +2849,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: BTreeMap::new(),
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
         ];
 
@@ -2880,6 +2895,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: canonical_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase_ndp".to_string(),
@@ -2891,6 +2907,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: matching_custom_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase_ndp".to_string(),
@@ -2902,6 +2919,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: orphan_custom_dimensions,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
         ];
 
@@ -2961,6 +2979,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_ndp_dims,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase_ndp".to_string(),
@@ -2972,6 +2991,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_ndp_dup_dims,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase".to_string(),
@@ -2983,6 +3003,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_dims,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase".to_string(),
@@ -2994,6 +3015,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_dup_dims,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
         ];
 
@@ -3044,6 +3066,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_day_one,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase".to_string(),
@@ -3055,6 +3078,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_day_one_dup,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
             Ga4EventRawV1 {
                 event_name: "purchase".to_string(),
@@ -3066,6 +3090,7 @@ mod tests {
                 source_medium: Some("google / cpc".to_string()),
                 dimensions: purchase_day_two,
                 metrics: BTreeMap::new(),
+                ..Default::default()
             },
         ];
 
@@ -3096,6 +3121,7 @@ mod tests {
             source_medium: Some("google / cpc".to_string()),
             dimensions: BTreeMap::new(),
             metrics: BTreeMap::new(),
+            ..Default::default()
         }];
         let ads = vec![GoogleAdsRowRawV1 {
             campaign_id: " camp-1 ".to_string(),
@@ -3434,6 +3460,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: BTreeMap::new(),
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
                 Ga4EventRawV1 {
                     event_name: "purchase".to_string(),
@@ -3445,6 +3472,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: BTreeMap::new(),
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
                 Ga4EventRawV1 {
                     event_name: "cta_click".to_string(),
@@ -3456,6 +3484,7 @@ mod tests {
                     source_medium: Some("direct / none".to_string()),
                     dimensions: BTreeMap::new(),
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
             ])
         }
@@ -3608,6 +3637,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: purchase_ndp_dimensions,
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
                 Ga4EventRawV1 {
                     event_name: "purchase".to_string(),
@@ -3619,6 +3649,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: purchase_dimensions,
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
             ])
         }
@@ -3713,6 +3744,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: matched_custom_dimensions,
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
                 Ga4EventRawV1 {
                     event_name: "purchase_ndp".to_string(),
@@ -3724,6 +3756,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: orphan_custom_dimensions,
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
                 Ga4EventRawV1 {
                     event_name: "purchase".to_string(),
@@ -3735,6 +3768,7 @@ mod tests {
                     source_medium: Some("google / cpc".to_string()),
                     dimensions: purchase_dimensions,
                     metrics: BTreeMap::new(),
+                    ..Default::default()
                 },
             ])
         }
@@ -3936,6 +3970,7 @@ mod tests {
                 cleaning_note_count: 0,
             }],
             source_coverage: Vec::new(),
+            ga4_session_rollups: Vec::new(),
             ingest_cleaning_notes: Vec::new(),
             validation: super::super::contracts::AnalyticsValidationReportV1 {
                 is_valid: true,

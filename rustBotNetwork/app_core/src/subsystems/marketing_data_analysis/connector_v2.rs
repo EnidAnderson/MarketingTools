@@ -1069,10 +1069,16 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 CAST(event_timestamp AS STRING) AS event_timestamp_micros, \
                 user_pseudo_id, \
                 device.category AS device_category, \
+                platform, \
+                geo.country AS country, \
                 traffic_source.source AS traffic_source_source, \
                 traffic_source.medium AS traffic_source_medium, \
                 (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key = 'campaign' LIMIT 1) AS campaign_name, \
                 (SELECT CAST(ep.value.int_value AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_id' LIMIT 1) AS ga_session_id, \
+                (SELECT CAST(COALESCE(ep.value.int_value, SAFE_CAST(ep.value.string_value AS INT64)) AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'ga_session_number' LIMIT 1) AS ga_session_number, \
+                (SELECT ep.value.string_value FROM UNNEST(event_params) ep WHERE ep.key = 'page_location' LIMIT 1) AS page_location, \
+                (SELECT COALESCE(ep.value.string_value, CAST(ep.value.int_value AS STRING)) FROM UNNEST(event_params) ep WHERE ep.key = 'session_engaged' LIMIT 1) AS session_engaged, \
+                (SELECT CAST(COALESCE(ep.value.int_value, SAFE_CAST(ep.value.string_value AS INT64)) AS STRING) FROM UNNEST(event_params) ep WHERE ep.key = 'engagement_time_msec' LIMIT 1) AS engagement_time_msec, \
                 ecommerce.transaction_id AS transaction_id, \
                 CAST(ecommerce.purchase_revenue AS STRING) AS purchase_revenue, \
                 CAST(ecommerce.purchase_revenue_in_usd AS STRING) AS purchase_revenue_in_usd, \
@@ -1134,6 +1140,14 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .remove("device_category")
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
+            let platform = row
+                .remove("platform")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let country = row
+                .remove("country")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
             let source = row
                 .remove("traffic_source_source")
                 .map(|value| value.trim().to_string())
@@ -1142,10 +1156,10 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .remove("traffic_source_medium")
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
-            let source_medium = match (source, medium) {
+            let source_medium = match (source.as_ref(), medium.as_ref()) {
                 (Some(source), Some(medium)) => Some(format!("{} / {}", source, medium)),
-                (Some(source), None) => Some(source),
-                (None, Some(medium)) => Some(medium),
+                (Some(source), None) => Some(source.clone()),
+                (None, Some(medium)) => Some(medium.clone()),
                 (None, None) => None,
             };
             let session_id = row
@@ -1153,6 +1167,23 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .map(|value| format!("ga_session:{}", value));
+            let ga_session_id = session_id
+                .as_ref()
+                .and_then(|value| value.trim().strip_prefix("ga_session:"))
+                .and_then(|value| value.parse::<i64>().ok());
+            let ga_session_number = row
+                .remove("ga_session_number")
+                .and_then(|value| value.trim().parse::<i64>().ok());
+            let page_location = row
+                .remove("page_location")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let session_engaged = row
+                .remove("session_engaged")
+                .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "True"));
+            let engagement_time_msec = row
+                .remove("engagement_time_msec")
+                .and_then(|value| value.trim().parse::<i64>().ok());
             let transaction_id = row
                 .remove("transaction_id")
                 .map(|value| value.trim().to_string())
@@ -1165,14 +1196,26 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
                 .remove("purchase_revenue_in_usd")
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty());
+            let purchase_revenue_value = purchase_revenue
+                .as_ref()
+                .and_then(|value| value.parse::<f64>().ok());
+            let purchase_revenue_in_usd_value = purchase_revenue_in_usd
+                .as_ref()
+                .and_then(|value| value.parse::<f64>().ok());
+            let event_bundle_sequence_id = row
+                .get("event_bundle_sequence_id")
+                .and_then(|value| value.trim().parse::<i64>().ok());
+            let batch_event_index = row
+                .get("batch_event_index")
+                .and_then(|value| value.trim().parse::<i64>().ok());
             let mut dimensions = BTreeMap::new();
             dimensions.insert(
                 "ga4_read_backend".to_string(),
                 "bigquery_export".to_string(),
             );
             dimensions.insert("event_timestamp_micros".to_string(), micros.to_string());
-            if let Some(value) = transaction_id {
-                dimensions.insert("transaction_id".to_string(), value);
+            if let Some(value) = transaction_id.as_ref() {
+                dimensions.insert("transaction_id".to_string(), value.clone());
             }
             if let Some(value) = purchase_revenue {
                 dimensions.insert("purchase_revenue".to_string(), value);
@@ -1197,11 +1240,26 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             events.push(Ga4EventRawV1 {
                 event_name,
                 event_timestamp_utc: timestamp,
+                event_timestamp_micros: Some(micros),
                 user_pseudo_id,
                 session_id,
+                ga_session_id,
+                ga_session_number,
                 campaign,
                 device_category,
+                platform,
+                country,
                 source_medium,
+                traffic_source_source: source,
+                traffic_source_medium: medium,
+                page_location,
+                session_engaged,
+                engagement_time_msec,
+                transaction_id,
+                purchase_revenue: purchase_revenue_value,
+                purchase_revenue_in_usd: purchase_revenue_in_usd_value,
+                event_bundle_sequence_id,
+                batch_event_index,
                 dimensions,
                 metrics,
             });
@@ -1325,11 +1383,26 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             events.push(Ga4EventRawV1 {
                 event_name,
                 event_timestamp_utc: timestamp,
+                event_timestamp_micros: None,
                 user_pseudo_id: user,
                 session_id: Some(format!("ga4_count:{}", event_count)),
+                ga_session_id: None,
+                ga_session_number: None,
                 campaign,
                 device_category,
+                platform: None,
+                country: None,
                 source_medium,
+                traffic_source_source: None,
+                traffic_source_medium: None,
+                page_location: None,
+                session_engaged: None,
+                engagement_time_msec: None,
+                transaction_id: None,
+                purchase_revenue: None,
+                purchase_revenue_in_usd: None,
+                event_bundle_sequence_id: None,
+                batch_event_index: None,
                 dimensions: row.dimensions,
                 metrics: row.metrics,
             });
@@ -1832,13 +1905,31 @@ pub fn generate_simulated_ga4_events(
         events.push(Ga4EventRawV1 {
             event_name: " purchase ".to_string(),
             event_timestamp_utc: format!("{}T12:00:00Z", current.format("%Y-%m-%d")),
+            event_timestamp_micros: None,
             user_pseudo_id: format!(" user_{}_{} ", seed % 1000, current.ordinal()),
             session_id: Some(format!("sess_{}_{}", seed, current.ordinal())),
+            ga_session_id: Some((seed as i64 % 10_000) + current.ordinal() as i64),
+            ga_session_number: Some(1),
             campaign: Some("spring_launch".to_string()),
             device_category: Some("mobile".to_string()),
+            platform: Some("WEB".to_string()),
+            country: Some("United States".to_string()),
             source_medium: Some("google / cpc".to_string()),
+            traffic_source_source: Some("google".to_string()),
+            traffic_source_medium: Some("cpc".to_string()),
+            page_location: Some(
+                "https://naturesdietpet.com/simply-raw-freeze-dried-raw-meals".to_string(),
+            ),
+            session_engaged: Some(true),
+            engagement_time_msec: Some(1200),
+            transaction_id: None,
+            purchase_revenue: None,
+            purchase_revenue_in_usd: None,
+            event_bundle_sequence_id: None,
+            batch_event_index: None,
             dimensions: BTreeMap::new(),
             metrics: BTreeMap::new(),
+            ..Default::default()
         });
         let Some(next) = current.checked_add_signed(Duration::days(1)) else {
             break;
@@ -2022,6 +2113,7 @@ mod tests {
     use httptest::{Expectation, Server};
     use once_cell::sync::Lazy;
     use std::future::Future;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::process::Command;
     use std::sync::Mutex;
     use tempfile::tempdir;
@@ -2094,6 +2186,10 @@ mod tests {
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
+    }
+
+    fn maybe_spawn_test_server() -> Option<Server> {
+        catch_unwind(AssertUnwindSafe(Server::run)).ok()
     }
 
     #[test]
@@ -2212,7 +2308,9 @@ mod tests {
             return;
         }
         let _guard = ENV_MUTEX.lock().expect("env mutex");
-        let server = Server::run();
+        let Some(server) = maybe_spawn_test_server() else {
+            return;
+        };
         server.expect(
             Expectation::matching(request::method_path("POST", "/token"))
                 .respond_with(status_code(401).body("unauthorized")),
@@ -2254,7 +2352,9 @@ mod tests {
             return;
         }
         let _guard = ENV_MUTEX.lock().expect("env mutex");
-        let server = Server::run();
+        let Some(server) = maybe_spawn_test_server() else {
+            return;
+        };
         server.expect(
             Expectation::matching(request::method_path("POST", "/token")).respond_with(
                 json_encoded(serde_json::json!({
