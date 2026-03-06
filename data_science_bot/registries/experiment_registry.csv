@@ -1,1 +1,2 @@
 experiment_id,created_at_utc,owner,unit_of_randomization,primary_metric,guardrail_metrics,mde,alpha,power_target,required_sample_size,planned_start_date,planned_end_date,status
+EXP-DSBOT-0001,2026-03-06T21:21:23Z,data_science_bot,paid_session,purchase_session_rate,"revenue_per_session|begin_checkout_rate|landing_page_missing_ratio",>= 1.5pp absolute lift,0.05,0.80,,,design_pending

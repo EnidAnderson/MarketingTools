@@ -874,6 +874,102 @@ pub struct PublishExportGateV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Versioned landing-taxonomy assignment emitted by analytics and experiment workflows.
+/// invariants:
+///   - `taxonomy_version` identifies the exact mapping contract used at classification time.
+///   - `matched_rule_id` must be stable so audit logs can explain why a route was bucketed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct LandingContextV1 {
+    pub taxonomy_version: String,
+    pub matched_rule_id: String,
+    pub landing_path: String,
+    pub landing_family: String,
+    pub landing_page_group: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Machine-readable policy state describing whether an insight is decision-safe.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InsightPermissionStateV1 {
+    AllowedOperationalClaim,
+    DirectionalOnly,
+    InsufficientEvidence,
+    InstrumentFirst,
+    Blocked,
+}
+
+impl Default for InsightPermissionStateV1 {
+    fn default() -> Self {
+        Self::InsufficientEvidence
+    }
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Sample context attached to experiment-readiness and insight-permission cards.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct InsightSampleContextV1 {
+    pub analysis_window: String,
+    pub units_observed: u64,
+    pub outcome_events: Option<u64>,
+    #[serde(default)]
+    pub coverage_notes: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Typed insight-permission card consumed by dashboards and content workflows.
+/// invariants:
+///   - `allowed_uses` and `blocked_uses` are policy outputs, not narrative suggestions.
+///   - `permission_state` must downgrade to `instrument_first` when instrumentation is insufficient.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct InsightPermissionCardV1 {
+    pub insight_id: String,
+    pub decision_target: String,
+    pub statement: String,
+    pub permission_state: InsightPermissionStateV1,
+    pub confidence_tier: String,
+    pub action_state: String,
+    pub sample_context: InsightSampleContextV1,
+    #[serde(default)]
+    pub allowed_uses: Vec<String>,
+    #[serde(default)]
+    pub blocked_uses: Vec<String>,
+    #[serde(default)]
+    pub next_data_actions: Vec<String>,
+    #[serde(default)]
+    pub taxonomy_version: Option<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Typed experiment-readiness card for landing and campaign experiments.
+/// invariants:
+///   - `control_landing_family` names the operational control candidate when one exists.
+///   - If `required_sample_size` exceeds `observed_sample_size`, readiness cannot be `allowed_operational_claim`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExperimentReadinessCardV1 {
+    pub experiment_id: String,
+    pub objective: String,
+    pub control_landing_family: String,
+    #[serde(default)]
+    pub challenger_landing_families: Vec<String>,
+    pub primary_metric: String,
+    pub baseline_value: Option<String>,
+    pub minimum_detectable_effect: Option<String>,
+    pub required_sample_size: Option<u64>,
+    pub observed_sample_size: Option<u64>,
+    pub readiness_state: InsightPermissionStateV1,
+    #[serde(default)]
+    pub blocking_reasons: Vec<String>,
+    #[serde(default)]
+    pub next_actions: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Stable multi-chart payload for frontend executive dashboard rendering.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ExecutiveDashboardSnapshotV1 {

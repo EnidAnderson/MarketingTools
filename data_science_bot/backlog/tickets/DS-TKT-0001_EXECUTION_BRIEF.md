@@ -48,6 +48,7 @@
 
 1. `data_science_bot/queries/bigquery/traffic_measurement_audit.sql`
 2. `data_science_bot/queries/bigquery/traffic_taxonomy_dimension_inventory.sql`
+3. `data_science_bot/queries/bigquery/google_cpc_landing_family_performance.sql`
 
 ## Execution Notes
 

@@ -28,6 +28,8 @@ Create decision-grade analytics and reporting for Nature's Diet that marketers c
 - `ANALYSIS_WORKFLOW.md`: end-to-end analysis protocol.
 - `REPORTING_FRONTEND_SPEC.md`: requirements for scientific UX in dashboards.
 - `DATA_COLLECTION_IMPROVEMENT_PLAYBOOK.md`: how to improve data quality/capacity.
+- `LANDING_TAXONOMY_V2.md`: Nature's Diet-specific landing-family taxonomy for traffic and experiment analysis.
+- `EXPERIMENT_INSIGHT_GATING_SPEC.md`: typed policy for allowed claims vs insufficient evidence.
 - `backlog/`: prioritized science work plan.
 - `templates/`: analysis and handoff templates.
 - `registries/`: append-oriented CSV logs for hypotheses, experiments, metrics, and decisions.

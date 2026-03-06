@@ -1,1 +1,4 @@
 hypothesis_id,created_at_utc,owner,question_type,decision_target,primary_metric,expected_direction,min_effect_size,status,notes
+HYP-DSBOT-0001,2026-03-06T21:21:23Z,data_science_bot,descriptive,landing_experiment_control_selection,google_cpc_sessions,Current Simply Raw offer landing is the dominant control candidate,n/a,supported_control_candidate,"Use for control design, not for causal superiority claims"
+HYP-DSBOT-0002,2026-03-06T21:21:23Z,data_science_bot,causal,paid_landing_routing,purchase_session_rate,bundle_offer_lp > simply_raw_offer_lp,>= 1.5pp absolute lift,insufficient_evidence,"Observational raw rates are confounded; requires randomized routing"
+HYP-DSBOT-0003,2026-03-06T21:21:23Z,data_science_bot,causal,paid_landing_routing,revenue_per_session,product_detail_lp > simply_raw_offer_lp,>= 15% relative lift,insufficient_evidence,"Product-detail pages may be warmer traffic today; causal claim not allowed yet"

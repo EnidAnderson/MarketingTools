@@ -13,6 +13,7 @@ pub mod connector_factory;
 pub mod connector_v2;
 pub mod contracts;
 pub mod executive_dashboard;
+pub mod experiment_governance;
 pub mod export_audit;
 pub mod ingest;
 pub mod longitudinal;
@@ -58,16 +59,21 @@ pub use contracts::{
     BudgetSummaryV1, ChannelMixPointV1, ConfidenceCalibrationV1, ConnectorConfigAttestationV1,
     DailyRevenuePointV1, DashboardExportAuditRecordV1, DataQualityScorecardV1,
     DataQualitySummaryV1, DriftFlagV1, EvidenceItem, ExecutiveDashboardSnapshotV1,
-    ForecastSummaryV1, FreshnessSlaPolicyV1, FunnelStageV1, FunnelSummaryV1, FunnelSurvivalPointV1,
-    FunnelSurvivalReportV1, GuidanceItem, HighLeverageReportsV1, HistoricalAnalysisV1,
-    IngestCleaningNoteV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1,
-    MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1,
-    ReconciliationToleranceV1, RevenueTruthReportV1, SourceCoverageV1, SourceFreshnessSlaV1,
-    SourceWindowGranularityV1, SourceWindowObservationV1, StorefrontBehaviorRowV1,
-    StorefrontBehaviorSummaryV1, ValidationCheck,
+    ExperimentReadinessCardV1, ForecastSummaryV1, FreshnessSlaPolicyV1, FunnelStageV1,
+    FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1, GuidanceItem,
+    HighLeverageReportsV1, HistoricalAnalysisV1, IngestCleaningNoteV1, InsightPermissionCardV1,
+    InsightPermissionStateV1, InsightSampleContextV1, KpiAttributionNarrativeV1, KpiDeltaV1,
+    KpiTileV1, LandingContextV1, MockAnalyticsArtifactV1, MockAnalyticsRequestV1,
+    OperatorSummaryV1, PersistedAnalyticsRunV1, PortfolioRowV1, QualityCheckApplicabilityV1,
+    QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1, RevenueTruthReportV1,
+    SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
+    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
+pub use experiment_governance::{
+    resolve_landing_experiment_permission_v1, resolve_landing_experiment_readiness_v1,
+    ExperimentClaimKindV1, LandingExperimentAssessmentInputV1,
+};
 pub use export_audit::DashboardExportAuditStore;
 pub use ingest::{
     join_coverage_ratio, parse_ga4_event, parse_google_ads_row, parse_wix_order,

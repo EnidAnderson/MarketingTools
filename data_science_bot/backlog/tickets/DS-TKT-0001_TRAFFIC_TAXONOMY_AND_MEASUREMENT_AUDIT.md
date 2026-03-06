@@ -42,6 +42,7 @@ Create a trustworthy session-level taxonomy for traffic analysis and identify in
    - `device_category`
    - `visitor_type`
    - `source_medium`
+   - `landing_family`
    - `landing_page_group`
    - `landing_path`
    - `country`

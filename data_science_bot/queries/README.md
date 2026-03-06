@@ -16,6 +16,7 @@ These queries are baseline analysis assets for the data scientist bot.
 - `bigquery/duplicate_purchase_audit.sql`
 - `bigquery/traffic_taxonomy_dimension_inventory.sql`
 - `bigquery/traffic_measurement_audit.sql`
+- `bigquery/google_cpc_landing_family_performance.sql`
 
 ## Recommended Execution Order For Traffic Science
 
@@ -24,3 +25,4 @@ These queries are baseline analysis assets for the data scientist bot.
 3. `bigquery/funnel_by_device.sql`
 4. `bigquery/retention_cohort.sql`
 5. `bigquery/duplicate_purchase_audit.sql`
+6. `bigquery/google_cpc_landing_family_performance.sql`
