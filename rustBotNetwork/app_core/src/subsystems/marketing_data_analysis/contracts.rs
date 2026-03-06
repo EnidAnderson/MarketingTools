@@ -1185,9 +1185,33 @@ pub struct ExperimentReadinessCardV1 {
     pub observed_sample_size: Option<u64>,
     pub readiness_state: InsightPermissionStateV1,
     #[serde(default)]
+    pub control_variant_id: Option<String>,
+    #[serde(default)]
+    pub challenger_variant_id: Option<String>,
+    #[serde(default)]
+    pub permission_level: String,
+    #[serde(default)]
+    pub supporting_reasons: Vec<String>,
+    #[serde(default)]
     pub blocking_reasons: Vec<String>,
     #[serde(default)]
     pub next_actions: Vec<String>,
+    #[serde(default)]
+    pub assigned_sessions_control: Option<u64>,
+    #[serde(default)]
+    pub assigned_sessions_challenger: Option<u64>,
+    #[serde(default)]
+    pub control_outcome_events: Option<u64>,
+    #[serde(default)]
+    pub challenger_outcome_events: Option<u64>,
+    #[serde(default)]
+    pub assignment_rate_bps: Option<u32>,
+    #[serde(default)]
+    pub ambiguity_rate_bps: Option<u32>,
+    #[serde(default)]
+    pub partial_or_unassigned_rate_bps: Option<u32>,
+    #[serde(default)]
+    pub denominator_scope: Option<String>,
 }
 
 /// # NDOC

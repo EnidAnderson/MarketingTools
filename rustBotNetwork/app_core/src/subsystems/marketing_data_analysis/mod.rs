@@ -77,7 +77,9 @@ pub use contracts::{
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use experiment_governance::{
     resolve_landing_experiment_permission_v1, resolve_landing_experiment_readiness_v1,
+    resolve_observed_experiment_pair_permission_v1, resolve_observed_experiment_pair_readiness_v1,
     ExperimentClaimKindV1, LandingExperimentAssessmentInputV1,
+    ObservedExperimentPairAssessmentInputV1,
 };
 pub use export_audit::DashboardExportAuditStore;
 pub use ga4_sessions::{
