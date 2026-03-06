@@ -112,7 +112,7 @@ session_rollup_base AS (
   LEFT JOIN landing_pages lp
     ON se.user_pseudo_id = lp.user_pseudo_id
    AND se.session_key = lp.session_key
-  GROUP BY 1, 2, 3, 4, 5, lp.first_page_location
+  GROUP BY 1, 2, 4, 5, lp.first_page_location
 ),
 session_rollup_paths AS (
   SELECT
