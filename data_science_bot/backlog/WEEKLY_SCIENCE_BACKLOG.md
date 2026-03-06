@@ -2,11 +2,11 @@
 
 ## Current Priorities
 
-1. Build canonical revenue decomposition report: gross, net, refunds, duplicate-adjusted.
-2. Ship device-level funnel with uncertainty-aware drop-off intervals.
-3. Add cohort retention report with survival curves and confidence bands.
-4. Implement attribution sensitivity panel (last-click vs data-driven assumptions).
-5. Add experiment readiness check: expected power and MDE at current traffic.
+1. `DS-TKT-0001` Traffic Taxonomy and Measurement Audit.
+2. `DS-TKT-0003` Segment-Level Funnel Survival with uncertainty-aware drop-off intervals.
+3. `DS-TKT-0006` Retention and Repeat-Purchase Survival with confidence bands.
+4. `DS-TKT-0004` Purchase Truth and Duplicate-Stream Forensics.
+5. `DS-TKT-0007` Statistical Power and Decision Thresholds for executive claims.
 
 ## High-Risk Questions To Resolve
 
@@ -20,3 +20,7 @@
 - Revenue and conversion numbers reconcile with store ledger tolerance.
 - Significant claims pass multiple-testing controls.
 - Underpowered claims are visibly blocked from executive recommendation.
+
+## Queue Source
+
+- Canonical ticket queue: `data_science_bot/backlog/SCIENCE_TICKET_QUEUE.md`

@@ -14,3 +14,13 @@ These queries are baseline analysis assets for the data scientist bot.
 - `bigquery/funnel_by_device.sql`
 - `bigquery/retention_cohort.sql`
 - `bigquery/duplicate_purchase_audit.sql`
+- `bigquery/traffic_taxonomy_dimension_inventory.sql`
+- `bigquery/traffic_measurement_audit.sql`
+
+## Recommended Execution Order For Traffic Science
+
+1. `bigquery/traffic_measurement_audit.sql`
+2. `bigquery/traffic_taxonomy_dimension_inventory.sql`
+3. `bigquery/funnel_by_device.sql`
+4. `bigquery/retention_cohort.sql`
+5. `bigquery/duplicate_purchase_audit.sql`
