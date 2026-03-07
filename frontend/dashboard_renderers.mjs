@@ -140,6 +140,82 @@ export function renderDecisionFeedSurface(elements, viewModel) {
   });
 }
 
+export function renderExperimentGovernanceSurface(element, viewModel) {
+  if (!element) return;
+
+  const notesMarkup = viewModel.notes.length
+    ? `<div class="experiment-governance-note-list">
+        ${viewModel.notes
+          .map((note) => `<div class="narrative-item">${escapeHtml(note)}</div>`)
+          .join('')}
+      </div>`
+    : '';
+
+  const itemsMarkup = viewModel.items.length
+    ? viewModel.items
+        .map(
+          (item) => `
+        <article
+          class="experiment-governance-item"
+          data-item-id="${escapeHtml(item.itemId)}"
+          data-permission-state="${escapeHtml(item.permissionState)}"
+          data-permission-level="${escapeHtml(item.permissionLevel)}"
+        >
+          <div class="experiment-governance-head">
+            <div class="experiment-governance-title-block">
+              <div class="experiment-governance-eyebrow">${escapeHtml(item.experimentId)}</div>
+              <h3 class="experiment-governance-title">${escapeHtml(item.experimentName)}</h3>
+            </div>
+            <div class="experiment-governance-chip-row">
+              <span class="experiment-chip ${escapeHtml(item.permissionTone)}">${escapeHtml(item.permissionLevel.replaceAll('_', ' '))}</span>
+              <span class="experiment-chip neutral">${escapeHtml(item.permissionState.replaceAll('_', ' '))}</span>
+              <span class="experiment-chip neutral">${escapeHtml(item.confidenceTier)}</span>
+            </div>
+          </div>
+          <p class="experiment-governance-statement">${escapeHtml(item.statement)}</p>
+          <div class="experiment-governance-metrics">
+            ${item.metricTiles
+              .map(
+                (metric) => `
+                  <div class="experiment-governance-metric" data-metric-key="${escapeHtml(metric.key)}">
+                    <div class="forecast-label">${escapeHtml(metric.label)}</div>
+                    <div class="forecast-value">${escapeHtml(metric.value)}</div>
+                  </div>`
+              )
+              .join('')}
+          </div>
+          <div class="experiment-governance-lists">
+            <div class="experiment-governance-list-block">
+              <h4>Supporting Reasons</h4>
+              <ul>${(item.supportingReasons.length ? item.supportingReasons : ['None']).map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>
+            </div>
+            <div class="experiment-governance-list-block">
+              <h4>Blocking Reasons</h4>
+              <ul>${(item.blockingReasons.length ? item.blockingReasons : ['None']).map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>
+            </div>
+            <div class="experiment-governance-list-block">
+              <h4>Next Actions</h4>
+              <ul>${(item.nextActions.length ? item.nextActions : ['None']).map((value) => `<li>${escapeHtml(value)}</li>`).join('')}</ul>
+            </div>
+          </div>
+        </article>`
+        )
+        .join('')
+    : `<div class="narrative-item">No experiment claims are available for this snapshot.</div>`;
+
+  element.innerHTML = `
+    <p class="experiment-governance-summary">${escapeHtml(viewModel.summary)}</p>
+    ${notesMarkup}
+    ${itemsMarkup}
+  `;
+
+  setDataAttributes(element, {
+    panel: viewModel.panelId,
+    coverageScope: viewModel.coverageScope,
+    itemCount: viewModel.items.length
+  });
+}
+
 export function renderKpiSurface(elements, viewModel) {
   if (!elements.kpiGrid) return;
 

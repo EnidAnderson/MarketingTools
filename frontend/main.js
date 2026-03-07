@@ -13,6 +13,7 @@ import {
   buildChannelMixChartModel,
   buildDailyRevenueChartModel,
   buildDeltaChartModel,
+  buildExperimentGovernanceViewModel,
   buildFunnelSurvivalModel,
   buildKpiViewModel
 } from './dashboard_view_models.mjs';
@@ -20,6 +21,7 @@ import {
   renderAttributionDeltaTableSurface,
   renderChartSurfaceMetadata,
   renderChartSummarySurface,
+  renderExperimentGovernanceSurface,
   renderKpiSurface
 } from './dashboard_renderers.mjs';
 
@@ -96,6 +98,7 @@ const el = {
   attributionDeltaSummary: document.getElementById('attributionDeltaSummary'),
   attributionDeltaTableBody: document.getElementById('attributionDeltaTableBody'),
   dailyRevenueSummary: document.getElementById('dailyRevenueSummary'),
+  experimentGovernancePanel: document.getElementById('experimentGovernancePanel'),
   highLeverageScorecardPanel: document.getElementById('highLeverageScorecardPanel'),
   loadTextTemplatesButton: document.getElementById('loadTextTemplatesButton'),
   runTextWorkflowButton: document.getElementById('runTextWorkflowButton'),
@@ -1028,11 +1031,21 @@ function renderExecutiveDashboard(snapshot) {
 function renderHighLeverageReports(reports, snapshot) {
   const funnelSurvivalModel = renderFunnelSurvivalReport(reports?.funnel_survival || {});
   const attributionDeltaModel = renderAttributionDeltaReport(reports?.attribution_delta || {});
+  const experimentGovernanceModel = renderExperimentGovernanceReport(
+    reports?.experiment_governance || {}
+  );
   renderHighLeverageScorecard(reports?.data_quality_scorecard || {}, snapshot?.publish_export_gate || {});
   return {
     funnelSurvival: funnelSurvivalModel?.diagnostics || null,
-    attributionDelta: attributionDeltaModel?.diagnostics || null
+    attributionDelta: attributionDeltaModel?.diagnostics || null,
+    experimentGovernance: experimentGovernanceModel?.diagnostics || null
   };
+}
+
+function renderExperimentGovernanceReport(report) {
+  const viewModel = buildExperimentGovernanceViewModel(report);
+  renderExperimentGovernanceSurface(el.experimentGovernancePanel, viewModel);
+  return viewModel;
 }
 
 function renderFunnelSurvivalReport(report) {

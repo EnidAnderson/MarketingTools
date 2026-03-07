@@ -228,6 +228,122 @@ export function buildDecisionFeedViewModel(cards = []) {
   };
 }
 
+function permissionTone(permissionLevel) {
+  if (permissionLevel === 'decision_ready') return 'good';
+  if (permissionLevel === 'directional_only') return 'neutral';
+  if (permissionLevel === 'descriptive_only' || permissionLevel === 'instrument_first') {
+    return 'warn';
+  }
+  if (permissionLevel === 'blocked') return 'bad';
+  return 'neutral';
+}
+
+function rateDisplayFromBps(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'n/a';
+  return `${fmtNum(numeric / 100, 2)}%`;
+}
+
+function normalizeList(values) {
+  return Array.isArray(values)
+    ? values.map(cleanText).filter(Boolean)
+    : [];
+}
+
+export function buildExperimentGovernanceViewModel(report = {}) {
+  const items = Array.isArray(report.items)
+    ? report.items.map((item, index) => {
+        const permission = item?.permission || {};
+        const readiness = item?.readiness || {};
+        const permissionLevel = cleanText(readiness.permission_level || permission.action_state)
+          .toLowerCase()
+          || 'unknown';
+        const permissionState = cleanText(readiness.readiness_state || permission.permission_state)
+          .toLowerCase()
+          || 'unknown';
+        const blockingReasons = normalizeList(readiness.blocking_reasons);
+        const supportingReasons = normalizeList(readiness.supporting_reasons);
+        const nextActions = normalizeList(readiness.next_actions || permission.next_data_actions);
+        const allowedUses = normalizeList(permission.allowed_uses);
+        const blockedUses = normalizeList(permission.blocked_uses);
+        const metricTiles = [
+          {
+            key: 'assignment-rate',
+            label: 'Assignment Rate',
+            value: rateDisplayFromBps(readiness.assignment_rate_bps)
+          },
+          {
+            key: 'ambiguity-rate',
+            label: 'Ambiguity Rate',
+            value: rateDisplayFromBps(readiness.ambiguity_rate_bps)
+          },
+          {
+            key: 'partial-rate',
+            label: 'Partial / Unassigned',
+            value: rateDisplayFromBps(readiness.partial_or_unassigned_rate_bps)
+          },
+          {
+            key: 'control-sessions',
+            label: 'Control Sessions',
+            value: fmtInt(readiness.assigned_sessions_control || 0)
+          },
+          {
+            key: 'challenger-sessions',
+            label: 'Challenger Sessions',
+            value: fmtInt(readiness.assigned_sessions_challenger || 0)
+          },
+          {
+            key: 'denominator-scope',
+            label: 'Denominator',
+            value: cleanText(readiness.denominator_scope).replaceAll('_', ' ') || 'n/a'
+          }
+        ];
+
+        return {
+          itemId: cleanText(item.experiment_id) || `experiment-governance-${index + 1}`,
+          experimentId: cleanText(item.experiment_id) || 'n/a',
+          experimentName: cleanText(item.experiment_name) || cleanText(item.experiment_id) || 'Experiment',
+          statement: cleanText(permission.statement) || cleanText(readiness.objective) || 'No experiment claim available.',
+          permissionState,
+          permissionLevel,
+          permissionTone: permissionTone(permissionLevel),
+          confidenceTier: cleanText(permission.confidence_tier) || 'unknown',
+          controlVariantId: cleanText(readiness.control_variant_id) || 'n/a',
+          challengerVariantId: cleanText(readiness.challenger_variant_id) || 'n/a',
+          controlLandingFamily: cleanText(readiness.control_landing_family) || 'n/a',
+          challengerLandingFamily: cleanText((readiness.challenger_landing_families || [])[0]) || 'n/a',
+          metricTiles,
+          blockingReasons,
+          supportingReasons,
+          nextActions,
+          allowedUses,
+          blockedUses
+        };
+      })
+    : [];
+
+  const notes = normalizeList(report.notes);
+  const coverageScope = cleanText(report.coverage_scope) || 'unknown';
+  const summary =
+    cleanText(report.summary)
+    || 'No experiment-governance summary available for this run.';
+
+  return {
+    panelId: 'experiment-governance',
+    summary,
+    coverageScope,
+    notes,
+    items,
+    diagnostics: {
+      coverageScope,
+      itemCount: items.length,
+      permissionLevels: items.map((item) => item.permissionLevel),
+      permissionStates: items.map((item) => item.permissionState),
+      experimentIds: items.map((item) => item.experimentId)
+    }
+  };
+}
+
 export function normalizeKpiKey(label) {
   return String(label || '')
     .toLowerCase()

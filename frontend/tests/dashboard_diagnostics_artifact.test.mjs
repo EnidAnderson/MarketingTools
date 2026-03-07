@@ -22,8 +22,13 @@ test('dashboard diagnostics artifact is deterministic and captures DOM contracts
   assert.match(artifact.domContracts.dailyRevenueSummary.textContent, /\$4,861\.42/);
   assert.match(artifact.domContracts.funnelSurvivalSummary.textContent, /Bottleneck: Add To Cart/);
   assert.equal(artifact.domContracts.attributionDeltaTableBody.rowCount, '3');
+  assert.equal(artifact.domContracts.experimentGovernancePanel.itemCount, '1');
   assert.equal(
     artifact.diagnostics.highLeverageReports.attributionDelta.dominantCampaign,
     'Puppy Starter Bundle'
+  );
+  assert.deepEqual(
+    artifact.diagnostics.highLeverageReports.experimentGovernance.permissionLevels,
+    ['directional_only']
   );
 });

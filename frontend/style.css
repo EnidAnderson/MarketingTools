@@ -679,6 +679,147 @@ button:focus-visible {
   border-left: 4px solid var(--ok);
 }
 
+.experiment-governance-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.experiment-governance-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.experiment-governance-note-list {
+  display: grid;
+  gap: 8px;
+}
+
+.experiment-governance-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.experiment-governance-item[data-permission-state="decision_ready"] {
+  border-left: 4px solid var(--ok);
+}
+
+.experiment-governance-item[data-permission-state="directional_only"] {
+  border-left: 4px solid #2f6ea5;
+}
+
+.experiment-governance-item[data-permission-state="insufficient_evidence"],
+.experiment-governance-item[data-permission-state="instrument_first"] {
+  border-left: 4px solid var(--warn);
+}
+
+.experiment-governance-item[data-permission-state="blocked"] {
+  border-left: 4px solid var(--bad);
+}
+
+.experiment-governance-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.experiment-governance-title-block {
+  display: grid;
+  gap: 4px;
+}
+
+.experiment-governance-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.experiment-governance-eyebrow {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.experiment-governance-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.experiment-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  background: #f6f8f8;
+  color: #3d5261;
+}
+
+.experiment-chip.good {
+  background: #e9f7ef;
+  color: #0e7a44;
+}
+
+.experiment-chip.warn {
+  background: #fff7db;
+  color: #9b6b00;
+}
+
+.experiment-chip.bad {
+  background: #fdecef;
+  color: #a4232c;
+}
+
+.experiment-chip.neutral {
+  background: #eef4f4;
+  color: #3d5261;
+}
+
+.experiment-governance-statement {
+  margin: 0;
+  font-size: 13px;
+  color: #24303b;
+}
+
+.experiment-governance-metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.experiment-governance-metric {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfc;
+  padding: 9px;
+}
+
+.experiment-governance-lists {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.experiment-governance-list-block h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.experiment-governance-list-block ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .forecast-label {
   color: var(--muted);
   font-size: 12px;

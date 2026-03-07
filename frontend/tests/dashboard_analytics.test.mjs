@@ -6,6 +6,7 @@ import {
   buildChannelMixChartModel,
   buildDailyRevenueChartModel,
   buildDeltaChartModel,
+  buildExperimentGovernanceViewModel,
   buildFunnelSurvivalModel,
   buildKpiViewModel
 } from '../dashboard_view_models.mjs';
@@ -13,6 +14,7 @@ import {
   renderAttributionDeltaTableSurface,
   renderChartSummarySurface,
   renderChartSurfaceMetadata,
+  renderExperimentGovernanceSurface,
   renderKpiSurface
 } from '../dashboard_renderers.mjs';
 import { executiveFixtureSnapshot } from './dashboard_fixture_data.mjs';
@@ -74,6 +76,9 @@ test('high-leverage report models produce deterministic summaries and table rows
   const attributionModel = buildAttributionDeltaModel(
     executiveFixtureSnapshot.high_leverage_reports.attribution_delta
   );
+  const experimentGovernanceModel = buildExperimentGovernanceViewModel(
+    executiveFixtureSnapshot.high_leverage_reports.experiment_governance
+  );
 
   assert.equal(funnelModel.diagnostics.pointCount, 7);
   assert.equal(funnelModel.diagnostics.bottleneckStage, 'Add To Cart');
@@ -84,6 +89,11 @@ test('high-leverage report models produce deterministic summaries and table rows
   assert.equal(attributionModel.rows[0].campaign, 'Puppy Starter Bundle');
   assert.equal(attributionModel.rows[0].lastTouchDisplay, '47.0%');
   assert.match(attributionModel.summaryText, /HHI: 0\.3640\./);
+
+  assert.equal(experimentGovernanceModel.diagnostics.itemCount, 1);
+  assert.deepEqual(experimentGovernanceModel.diagnostics.permissionLevels, ['directional_only']);
+  assert.equal(experimentGovernanceModel.items[0].metricTiles[0].value, '90.00%');
+  assert.equal(experimentGovernanceModel.items[0].metricTiles[5].value, 'assigned sessions only');
 });
 
 test('render helpers emit stable DOM contracts for KPIs and chart metadata', () => {
@@ -91,6 +101,7 @@ test('render helpers emit stable DOM contracts for KPIs and chart metadata', () 
   const dailyRevenueSummary = createElementStub();
   const deltaCanvas = createElementStub();
   const attributionTableBody = createElementStub();
+  const experimentGovernancePanel = createElementStub();
   const viewModel = buildKpiViewModel(executiveFixtureSnapshot.kpis, executiveFixtureSnapshot);
   const dailyRevenueModel = buildDailyRevenueChartModel(
     executiveFixtureSnapshot.daily_revenue_series
@@ -101,11 +112,15 @@ test('render helpers emit stable DOM contracts for KPIs and chart metadata', () 
   const attributionModel = buildAttributionDeltaModel(
     executiveFixtureSnapshot.high_leverage_reports.attribution_delta
   );
+  const experimentGovernanceModel = buildExperimentGovernanceViewModel(
+    executiveFixtureSnapshot.high_leverage_reports.experiment_governance
+  );
 
   renderKpiSurface({ kpiGrid }, viewModel);
   renderChartSummarySurface(dailyRevenueSummary, dailyRevenueModel);
   renderChartSurfaceMetadata(deltaCanvas, deltaModel.diagnostics);
   renderAttributionDeltaTableSurface(attributionTableBody, attributionModel);
+  renderExperimentGovernanceSurface(experimentGovernancePanel, experimentGovernanceModel);
 
   assert.equal(kpiGrid.dataset.kpiCount, '7');
   assert.match(kpiGrid.innerHTML, /data-kpi-key="roas"/);
@@ -119,4 +134,11 @@ test('render helpers emit stable DOM contracts for KPIs and chart metadata', () 
   assert.equal(deltaCanvas.dataset.datasetCount, '1');
   assert.equal(attributionTableBody.dataset.rowCount, '3');
   assert.match(attributionTableBody.innerHTML, /Puppy Starter Bundle/);
+  assert.equal(experimentGovernancePanel.dataset.itemCount, '1');
+  assert.equal(
+    experimentGovernancePanel.dataset.coverageScope,
+    'experiment_id_scoped_observed_sessions'
+  );
+  assert.match(experimentGovernancePanel.innerHTML, /directional only/);
+  assert.match(experimentGovernancePanel.innerHTML, /assigned sessions only/);
 });

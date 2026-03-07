@@ -2,9 +2,11 @@
 use super::contracts::{
     AttributionDeltaReportV1, AttributionDeltaRowV1, ChannelMixPointV1, DailyRevenuePointV1,
     DataQualityScorecardV1, DataQualitySummaryV1, DecisionFeedCardV1, ExecutiveDashboardSnapshotV1,
+    ExperimentAnalyticsSummaryV1, ExperimentGovernanceItemV1, ExperimentGovernanceReportV1,
     ForecastSummaryV1, FunnelSummaryV1, FunnelSurvivalPointV1, FunnelSurvivalReportV1,
-    HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1, PublishExportGateV1,
-    QualityCheckApplicabilityV1, RevenueTruthReportV1, StorefrontBehaviorSummaryV1,
+    Ga4SessionRollupV1, HighLeverageReportsV1, KpiTileV1, PersistedAnalyticsRunV1, PortfolioRowV1,
+    PublishExportGateV1, QualityCheckApplicabilityV1, RevenueTruthReportV1,
+    StorefrontBehaviorSummaryV1,
 };
 use super::ga4_sessions::{
     build_experiment_analytics_summary_from_sessions_v1, build_funnel_summary_from_sessions_v1,
@@ -12,6 +14,7 @@ use super::ga4_sessions::{
 };
 use super::{
     load_attestation_key_registry_from_env_or_file, resolve_attestation_policy_v1,
+    resolve_observed_experiment_pair_permission_v1, resolve_observed_experiment_pair_readiness_v1,
     verify_connector_attestation_with_registry_v1,
 };
 use crate::data_models::analytics::ReportMetrics;
@@ -19,6 +22,14 @@ use chrono::Utc;
 
 const SNAPSHOT_SCHEMA_VERSION_V1: &str = "executive_dashboard_snapshot.v1";
 const DEFAULT_COMPARE_WINDOW_RUNS: usize = 1;
+const EXPERIMENT_MIN_ASSIGNED_SESSIONS_PER_ARM: u64 = 100;
+const EXPERIMENT_MIN_OUTCOME_EVENTS_PER_ARM: u64 = 10;
+const EXPERIMENT_MIN_ASSIGNMENT_RATE_BPS: u32 = 8_000;
+const EXPERIMENT_MAX_AMBIGUITY_RATE_BPS: u32 = 500;
+const EXPERIMENT_MAX_PARTIAL_OR_UNASSIGNED_RATE_BPS: u32 = 2_000;
+const EXPERIMENT_MIN_GUARDRAIL_COVERAGE_BPS: u32 = 7_000;
+const EXPERIMENT_REQUIRED_GUARDRAILS: [&str; 4] =
+    ["device_category", "platform", "country", "source_medium"];
 
 #[derive(Debug, Clone, Copy)]
 pub struct SnapshotBuildOptions {
@@ -146,12 +157,14 @@ fn build_high_leverage_reports(
     funnel_summary: &FunnelSummaryV1,
     publish_export_gate: &PublishExportGateV1,
 ) -> HighLeverageReportsV1 {
+    let experiment_analytics = build_experiment_analytics_report(run);
     HighLeverageReportsV1 {
         revenue_truth: build_revenue_truth_report(run),
         funnel_survival: build_funnel_survival_report(funnel_summary),
         attribution_delta: build_attribution_delta_report(run),
         data_quality_scorecard: build_data_quality_scorecard(run, publish_export_gate),
-        experiment_analytics: build_experiment_analytics_report(run),
+        experiment_governance: build_experiment_governance_report(run, &experiment_analytics),
+        experiment_analytics,
     }
 }
 
@@ -159,6 +172,292 @@ fn build_experiment_analytics_report(
     run: &PersistedAnalyticsRunV1,
 ) -> super::contracts::ExperimentAnalyticsSummaryV1 {
     build_experiment_analytics_summary_from_sessions_v1(&run.artifact.ga4_session_rollups)
+}
+
+#[derive(Debug, Clone, Default)]
+struct ExperimentVariantCandidate {
+    experiment_id: String,
+    experiment_name: Option<String>,
+    variant_id: String,
+    variant_name: Option<String>,
+    assigned_sessions: u64,
+    landing_family_counts: std::collections::BTreeMap<String, u64>,
+    taxonomy_version: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ExperimentGovernanceCandidate {
+    experiment_id: String,
+    experiment_name: Option<String>,
+    control_variant_id: String,
+    control_label: String,
+    control_landing_family: String,
+    challenger_variant_id: String,
+    challenger_label: String,
+    challenger_landing_family: String,
+    taxonomy_version: Option<String>,
+}
+
+fn collect_experiment_governance_candidates(
+    sessions: &[Ga4SessionRollupV1],
+) -> Vec<ExperimentGovernanceCandidate> {
+    use std::collections::BTreeMap;
+
+    let mut by_experiment: BTreeMap<String, Vec<ExperimentVariantCandidate>> = BTreeMap::new();
+    for session in sessions {
+        if session.experiment_context.assignment_status
+            != super::contracts::ExperimentAssignmentStatusV1::Assigned
+        {
+            continue;
+        }
+        let Some(experiment_id) = session.experiment_context.experiment_id.clone() else {
+            continue;
+        };
+        let Some(variant_id) = session.experiment_context.variant_id.clone() else {
+            continue;
+        };
+        let variants = by_experiment.entry(experiment_id.clone()).or_default();
+        let position = variants
+            .iter()
+            .position(|candidate| candidate.variant_id == variant_id);
+        let candidate = if let Some(index) = position {
+            &mut variants[index]
+        } else {
+            variants.push(ExperimentVariantCandidate {
+                experiment_id,
+                experiment_name: session.experiment_context.experiment_name.clone(),
+                variant_id,
+                variant_name: session.experiment_context.variant_name.clone(),
+                ..Default::default()
+            });
+            variants.last_mut().expect("variant candidate inserted")
+        };
+        candidate.assigned_sessions = candidate.assigned_sessions.saturating_add(1);
+        if candidate.experiment_name.is_none() {
+            candidate.experiment_name = session.experiment_context.experiment_name.clone();
+        }
+        if candidate.variant_name.is_none() {
+            candidate.variant_name = session.experiment_context.variant_name.clone();
+        }
+        if candidate.taxonomy_version.is_none() {
+            candidate.taxonomy_version = session
+                .landing_context
+                .as_ref()
+                .map(|context| context.taxonomy_version.clone());
+        }
+        let landing_family = session
+            .landing_context
+            .as_ref()
+            .map(|context| context.landing_family.clone())
+            .unwrap_or_else(|| "unknown_landing_family".to_string());
+        *candidate
+            .landing_family_counts
+            .entry(landing_family)
+            .or_insert(0) += 1;
+    }
+
+    by_experiment
+        .into_values()
+        .filter_map(|variants| build_experiment_governance_candidate(variants))
+        .collect()
+}
+
+fn build_experiment_governance_candidate(
+    mut variants: Vec<ExperimentVariantCandidate>,
+) -> Option<ExperimentGovernanceCandidate> {
+    if variants.is_empty() {
+        return None;
+    }
+    variants.sort_by(|left, right| {
+        right
+            .assigned_sessions
+            .cmp(&left.assigned_sessions)
+            .then_with(|| left.variant_id.cmp(&right.variant_id))
+    });
+    let control_index = select_control_variant_index(&variants);
+    let control = variants.get(control_index)?.clone();
+    let challenger = variants
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != control_index)
+        .max_by(|(_, left), (_, right)| {
+            left.assigned_sessions
+                .cmp(&right.assigned_sessions)
+                .then_with(|| left.variant_id.cmp(&right.variant_id))
+        })
+        .map(|(_, variant)| variant.clone())
+        .unwrap_or_else(|| ExperimentVariantCandidate {
+            experiment_id: control.experiment_id.clone(),
+            experiment_name: control.experiment_name.clone(),
+            variant_id: "unresolved_challenger".to_string(),
+            variant_name: Some("Unresolved Challenger".to_string()),
+            assigned_sessions: 0,
+            taxonomy_version: control.taxonomy_version.clone(),
+            ..Default::default()
+        });
+
+    Some(ExperimentGovernanceCandidate {
+        experiment_id: control.experiment_id.clone(),
+        experiment_name: control.experiment_name.clone(),
+        control_variant_id: control.variant_id.clone(),
+        control_label: variant_label(&control),
+        control_landing_family: dominant_landing_family(&control),
+        challenger_variant_id: challenger.variant_id.clone(),
+        challenger_label: variant_label(&challenger),
+        challenger_landing_family: dominant_landing_family(&challenger),
+        taxonomy_version: control.taxonomy_version.or(challenger.taxonomy_version),
+    })
+}
+
+fn select_control_variant_index(variants: &[ExperimentVariantCandidate]) -> usize {
+    variants
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| control_rank(left).cmp(&control_rank(right)))
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+fn control_rank(variant: &ExperimentVariantCandidate) -> (u8, u64, String) {
+    let label = variant_label(variant).to_ascii_lowercase();
+    let dominant_landing = dominant_landing_family(variant);
+    let control_hint = u8::from(dominant_landing == "simply_raw_offer_lp");
+    let explicit_control = u8::from(
+        label.contains("control")
+            || label.contains("baseline")
+            || label.contains("current")
+            || label.contains("simply raw"),
+    );
+    (
+        control_hint
+            .saturating_mul(2)
+            .saturating_add(explicit_control),
+        variant.assigned_sessions,
+        variant.variant_id.clone(),
+    )
+}
+
+fn dominant_landing_family(variant: &ExperimentVariantCandidate) -> String {
+    variant
+        .landing_family_counts
+        .iter()
+        .max_by(|left, right| left.1.cmp(right.1).then_with(|| left.0.cmp(right.0)))
+        .map(|(landing_family, _)| landing_family.clone())
+        .unwrap_or_else(|| "unknown_landing_family".to_string())
+}
+
+fn variant_label(variant: &ExperimentVariantCandidate) -> String {
+    variant
+        .variant_name
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| variant.variant_id.clone())
+}
+
+fn build_experiment_governance_report(
+    run: &PersistedAnalyticsRunV1,
+    experiment_analytics: &ExperimentAnalyticsSummaryV1,
+) -> ExperimentGovernanceReportV1 {
+    let scoped_candidates =
+        collect_experiment_governance_candidates(&run.artifact.ga4_session_rollups);
+    if scoped_candidates.is_empty() {
+        return ExperimentGovernanceReportV1 {
+            summary: "No experiment-assigned sessions available for governance evaluation."
+                .to_string(),
+            coverage_scope: "no_experiment_scope".to_string(),
+            items: Vec::new(),
+            notes: vec![
+                "No experiment_id/variant_id pairs reached assigned-session status in this run."
+                    .to_string(),
+            ],
+        };
+    }
+
+    if scoped_candidates.len() > 1 {
+        let experiment_ids = scoped_candidates
+            .iter()
+            .map(|candidate| candidate.experiment_id.clone())
+            .collect::<Vec<_>>();
+        return ExperimentGovernanceReportV1 {
+            summary: format!(
+                "{} experiments observed, but auto-readiness is deferred until experiment-scoped coverage is explicit.",
+                experiment_ids.len()
+            ),
+            coverage_scope: "run_scoped_multi_experiment_not_evaluated".to_string(),
+            items: Vec::new(),
+            notes: vec![
+                format!("observed_experiment_ids={}", experiment_ids.join(",")),
+                "Configure experiment-scoped dashboard evaluation before trusting automatic control/challenger claims across multiple experiments.".to_string(),
+            ],
+        };
+    }
+
+    let candidate = &scoped_candidates[0];
+    let scoped_sessions = run
+        .artifact
+        .ga4_session_rollups
+        .iter()
+        .filter(|session| {
+            session.experiment_context.experiment_id.as_deref()
+                == Some(candidate.experiment_id.as_str())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let scoped_analytics = build_experiment_analytics_summary_from_sessions_v1(&scoped_sessions);
+    let input = super::experiment_governance::ObservedExperimentPairAssessmentInputV1 {
+        insight_id: format!("INS-EXP-{}", candidate.experiment_id),
+        experiment_id: candidate.experiment_id.clone(),
+        decision_target: format!("landing_experiment:{}", candidate.experiment_id),
+        statement: format!(
+            "Assess whether {} improves purchase_session_rate versus {} for experiment {}.",
+            candidate.challenger_label, candidate.control_label, candidate.experiment_id
+        ),
+        control_landing_family: candidate.control_landing_family.clone(),
+        challenger_landing_family: candidate.challenger_landing_family.clone(),
+        control_variant_id: candidate.control_variant_id.clone(),
+        challenger_variant_id: candidate.challenger_variant_id.clone(),
+        primary_metric: "purchase_session_rate".to_string(),
+        analysis_window: run.artifact.report.date_range.clone(),
+        taxonomy_version: candidate.taxonomy_version.clone(),
+        minimum_assigned_sessions_per_arm: EXPERIMENT_MIN_ASSIGNED_SESSIONS_PER_ARM,
+        minimum_outcome_events_per_arm: EXPERIMENT_MIN_OUTCOME_EVENTS_PER_ARM,
+        minimum_assignment_rate_bps: EXPERIMENT_MIN_ASSIGNMENT_RATE_BPS,
+        maximum_ambiguity_rate_bps: EXPERIMENT_MAX_AMBIGUITY_RATE_BPS,
+        maximum_partial_or_unassigned_rate_bps: EXPERIMENT_MAX_PARTIAL_OR_UNASSIGNED_RATE_BPS,
+        minimum_guardrail_coverage_bps: EXPERIMENT_MIN_GUARDRAIL_COVERAGE_BPS,
+        required_guardrail_dimensions: EXPERIMENT_REQUIRED_GUARDRAILS
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        instrumentation_ready: experiment_analytics.assignment_coverage.assigned_sessions > 0,
+        taxonomy_coverage_ready: candidate.taxonomy_version.is_some(),
+        causal_design_approved: false,
+        observed: scoped_analytics,
+    };
+    let permission = resolve_observed_experiment_pair_permission_v1(&input);
+    let readiness = resolve_observed_experiment_pair_readiness_v1(&input);
+    let item = ExperimentGovernanceItemV1 {
+        experiment_id: candidate.experiment_id.clone(),
+        experiment_name: candidate.experiment_name.clone(),
+        permission,
+        readiness,
+    };
+
+    ExperimentGovernanceReportV1 {
+        summary: format!(
+            "Evaluated 1 experiment pair using experiment-scoped observed sessions for {}.",
+            candidate.experiment_id
+        ),
+        coverage_scope: "experiment_id_scoped_observed_sessions".to_string(),
+        items: vec![item],
+        notes: vec![
+            format!(
+                "control_variant={} challenger_variant={}",
+                candidate.control_variant_id, candidate.challenger_variant_id
+            ),
+            "Experiment claims remain coupled to readiness state and assigned-session denominator scope.".to_string(),
+        ],
+    }
 }
 
 fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthReportV1 {
@@ -1906,6 +2205,169 @@ mod tests {
         assert!(cards
             .iter()
             .any(|card| card.card_id == "experiment-assignment-incomplete"));
+    }
+
+    #[test]
+    fn experiment_governance_report_couples_claim_with_readiness_card() {
+        let mut run = build_run("run-exp", "p1", 200.0, 6.5);
+        let control_sessions = (0..120).map(|index| {
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: format!("control-{index}"),
+                user_pseudo_id: format!("user-control-{index}"),
+                ga_session_id: Some(1_000 + index),
+                session_start_ts_utc: "2026-02-01T10:00:00Z".to_string(),
+                first_event_ts_utc: "2026-02-01T10:00:00Z".to_string(),
+                landing_path: Some("/simply-raw-freeze-dried-raw-meals".to_string()),
+                landing_host: Some("www.naturesdietpet.com".to_string()),
+                landing_context: Some(
+                    crate::subsystems::marketing_data_analysis::contracts::LandingContextV1 {
+                        taxonomy_version: "nd_landing_taxonomy.v2".to_string(),
+                        matched_rule_id: "offer.simply_raw".to_string(),
+                        landing_path: "/simply-raw-freeze-dried-raw-meals".to_string(),
+                        landing_family: "simply_raw_offer_lp".to_string(),
+                        landing_page_group: "offer_landing".to_string(),
+                    },
+                ),
+                experiment_context: crate::subsystems::marketing_data_analysis::contracts::SessionExperimentContextV1 {
+                    experiment_id: Some("lp_paid_offer_test".to_string()),
+                    experiment_name: Some("Landing LP Test".to_string()),
+                    variant_id: Some("control".to_string()),
+                    variant_name: Some("Simply Raw".to_string()),
+                    assignment_source: Some(
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentSourceV1::Ga4EventParam,
+                    ),
+                    assignment_confidence:
+                        crate::subsystems::marketing_data_analysis::contracts::AssignmentConfidenceV1::High,
+                    assignment_status:
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentStatusV1::Assigned,
+                    assignment_observed_at_utc: Some("2026-02-01T10:00:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                },
+                country: Some("US".to_string()),
+                platform: Some("WEB".to_string()),
+                device_category: Some(if index % 2 == 0 {
+                    "mobile".to_string()
+                } else {
+                    "desktop".to_string()
+                }),
+                source: Some("google".to_string()),
+                medium: Some("cpc".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                campaign: Some("Landing LP Test".to_string()),
+                page_view_count: 2,
+                user_engagement_count: 1,
+                scroll_count: 1,
+                view_item_count: 1,
+                add_to_cart_count: u32::from(index < 40),
+                begin_checkout_count: u32::from(index < 25),
+                purchase_count: u32::from(index < 16),
+                revenue_usd: if index < 16 { 48.5 } else { 0.0 },
+                transaction_ids: if index < 16 {
+                    vec![format!("tx-control-{index}")]
+                } else {
+                    Vec::new()
+                },
+                engaged_session: true,
+                engagement_time_msec: 1_200,
+                visitor_type:
+                    crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
+            }
+        });
+        let challenger_sessions = (0..120).map(|index| {
+            crate::subsystems::marketing_data_analysis::contracts::Ga4SessionRollupV1 {
+                session_key: format!("challenger-{index}"),
+                user_pseudo_id: format!("user-challenger-{index}"),
+                ga_session_id: Some(2_000 + index),
+                session_start_ts_utc: "2026-02-01T11:00:00Z".to_string(),
+                first_event_ts_utc: "2026-02-01T11:00:00Z".to_string(),
+                landing_path: Some("/simply-raw-value-bundle-assortment".to_string()),
+                landing_host: Some("www.naturesdietpet.com".to_string()),
+                landing_context: Some(
+                    crate::subsystems::marketing_data_analysis::contracts::LandingContextV1 {
+                        taxonomy_version: "nd_landing_taxonomy.v2".to_string(),
+                        matched_rule_id: "offer.bundle".to_string(),
+                        landing_path: "/simply-raw-value-bundle-assortment".to_string(),
+                        landing_family: "bundle_offer_lp".to_string(),
+                        landing_page_group: "offer_landing".to_string(),
+                    },
+                ),
+                experiment_context: crate::subsystems::marketing_data_analysis::contracts::SessionExperimentContextV1 {
+                    experiment_id: Some("lp_paid_offer_test".to_string()),
+                    experiment_name: Some("Landing LP Test".to_string()),
+                    variant_id: Some("challenger_bundle".to_string()),
+                    variant_name: Some("Bundle".to_string()),
+                    assignment_source: Some(
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentSourceV1::Ga4EventParam,
+                    ),
+                    assignment_confidence:
+                        crate::subsystems::marketing_data_analysis::contracts::AssignmentConfidenceV1::High,
+                    assignment_status:
+                        crate::subsystems::marketing_data_analysis::contracts::ExperimentAssignmentStatusV1::Assigned,
+                    assignment_observed_at_utc: Some("2026-02-01T11:00:00Z".to_string()),
+                    assignment_notes: Vec::new(),
+                },
+                country: Some("US".to_string()),
+                platform: Some("WEB".to_string()),
+                device_category: Some(if index % 2 == 0 {
+                    "mobile".to_string()
+                } else {
+                    "desktop".to_string()
+                }),
+                source: Some("google".to_string()),
+                medium: Some("cpc".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                campaign: Some("Landing LP Test".to_string()),
+                page_view_count: 2,
+                user_engagement_count: 1,
+                scroll_count: 1,
+                view_item_count: 1,
+                add_to_cart_count: u32::from(index < 50),
+                begin_checkout_count: u32::from(index < 30),
+                purchase_count: u32::from(index < 18),
+                revenue_usd: if index < 18 { 55.0 } else { 0.0 },
+                transaction_ids: if index < 18 {
+                    vec![format!("tx-challenger-{index}")]
+                } else {
+                    Vec::new()
+                },
+                engaged_session: true,
+                engagement_time_msec: 1_400,
+                visitor_type:
+                    crate::subsystems::marketing_data_analysis::contracts::VisitorTypeV1::New,
+            }
+        });
+        run.artifact.ga4_session_rollups = control_sessions.chain(challenger_sessions).collect();
+
+        let report =
+            build_experiment_governance_report(&run, &build_experiment_analytics_report(&run));
+        assert_eq!(
+            report.coverage_scope,
+            "experiment_id_scoped_observed_sessions"
+        );
+        assert_eq!(report.items.len(), 1);
+        let item = &report.items[0];
+        assert_eq!(item.experiment_id, "lp_paid_offer_test");
+        assert_eq!(
+            item.readiness.readiness_state,
+            crate::subsystems::marketing_data_analysis::contracts::InsightPermissionStateV1::DirectionalOnly
+        );
+        assert_eq!(item.readiness.permission_level, "directional_only");
+        assert_eq!(
+            item.readiness.control_variant_id.as_deref(),
+            Some("control")
+        );
+        assert_eq!(
+            item.readiness.challenger_variant_id.as_deref(),
+            Some("challenger_bundle")
+        );
+        assert_eq!(
+            item.readiness.denominator_scope.as_deref(),
+            Some("assigned_sessions_only")
+        );
+        assert!(item
+            .readiness
+            .blocking_reasons
+            .contains(&"causal_design_not_approved".to_string()));
     }
 
     #[test]

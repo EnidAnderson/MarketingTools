@@ -4,6 +4,7 @@ import {
   buildChannelMixChartModel,
   buildDailyRevenueChartModel,
   buildDeltaChartModel,
+  buildExperimentGovernanceViewModel,
   buildFunnelSurvivalModel,
   buildKpiViewModel
 } from './dashboard_view_models.mjs';
@@ -11,6 +12,7 @@ import {
   renderAttributionDeltaTableSurface,
   renderChartSummarySurface,
   renderChartSurfaceMetadata,
+  renderExperimentGovernanceSurface,
   renderKpiSurface
 } from './dashboard_renderers.mjs';
 
@@ -40,7 +42,8 @@ function createElements() {
     funnelSurvivalSummary: createElementStub(),
     attributionDeltaChart: createElementStub(),
     attributionDeltaSummary: createElementStub(),
-    attributionDeltaTableBody: createElementStub()
+    attributionDeltaTableBody: createElementStub(),
+    experimentGovernancePanel: createElementStub()
   };
 }
 
@@ -95,6 +98,9 @@ export function buildDashboardDiagnosticsArtifact(snapshot) {
   const attributionDeltaModel = buildAttributionDeltaModel(
     snapshot?.high_leverage_reports?.attribution_delta || {}
   );
+  const experimentGovernanceModel = buildExperimentGovernanceViewModel(
+    snapshot?.high_leverage_reports?.experiment_governance || {}
+  );
 
   renderKpiSurface(elements, kpiModel);
   renderChartSurfaceMetadata(elements.deltaChart, deltaChartModel.diagnostics);
@@ -106,6 +112,7 @@ export function buildDashboardDiagnosticsArtifact(snapshot) {
   renderChartSummarySurface(elements.attributionDeltaSummary, attributionDeltaModel);
   renderChartSurfaceMetadata(elements.attributionDeltaChart, attributionDeltaModel.diagnostics);
   renderAttributionDeltaTableSurface(elements.attributionDeltaTableBody, attributionDeltaModel);
+  renderExperimentGovernanceSurface(elements.experimentGovernancePanel, experimentGovernanceModel);
 
   const diagnostics = renderDashboardDecisionSurfaces({
     elements,
@@ -120,7 +127,8 @@ export function buildDashboardDiagnosticsArtifact(snapshot) {
       },
       highLeverageReports: {
         funnelSurvival: funnelSurvivalModel.diagnostics,
-        attributionDelta: attributionDeltaModel.diagnostics
+        attributionDelta: attributionDeltaModel.diagnostics,
+        experimentGovernance: experimentGovernanceModel.diagnostics
       }
     }
   });
@@ -161,7 +169,8 @@ export function buildDashboardDiagnosticsArtifact(snapshot) {
         textContent: elements.attributionDeltaSummary.textContent
       },
       attributionDeltaChart: cloneDataset(elements.attributionDeltaChart),
-      attributionDeltaTableBody: cloneDataset(elements.attributionDeltaTableBody)
+      attributionDeltaTableBody: cloneDataset(elements.attributionDeltaTableBody),
+      experimentGovernancePanel: cloneDataset(elements.experimentGovernancePanel)
     }
   };
 }

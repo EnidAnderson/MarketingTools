@@ -966,6 +966,31 @@ pub struct ExperimentAnalyticsSummaryV1 {
 
 /// # NDOC
 /// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: One experiment claim bundled with its permission and readiness posture.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExperimentGovernanceItemV1 {
+    pub experiment_id: String,
+    #[serde(default)]
+    pub experiment_name: Option<String>,
+    pub permission: InsightPermissionCardV1,
+    pub readiness: ExperimentReadinessCardV1,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Dashboard-facing experiment governance report tying claims to explicit readiness state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ExperimentGovernanceReportV1 {
+    pub summary: String,
+    pub coverage_scope: String,
+    #[serde(default)]
+    pub items: Vec<ExperimentGovernanceItemV1>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
 /// purpose: Consolidated high-leverage reports derived from dashboard artifact evidence.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct HighLeverageReportsV1 {
@@ -975,6 +1000,8 @@ pub struct HighLeverageReportsV1 {
     pub data_quality_scorecard: DataQualityScorecardV1,
     #[serde(default)]
     pub experiment_analytics: ExperimentAnalyticsSummaryV1,
+    #[serde(default)]
+    pub experiment_governance: ExperimentGovernanceReportV1,
 }
 
 /// # NDOC

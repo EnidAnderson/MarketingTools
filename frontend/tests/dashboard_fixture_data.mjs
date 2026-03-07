@@ -160,6 +160,66 @@ export const executiveFixtureSnapshot = {
       dominant_last_touch_campaign: 'Puppy Starter Bundle',
       last_touch_concentration_hhi: 0.364,
       summary: 'Last-touch revenue concentration is moderate.'
+    },
+    experiment_governance: {
+      summary:
+        'Evaluated 1 experiment pair using experiment-scoped observed sessions for lp_paid_offer_test.',
+      coverage_scope: 'experiment_id_scoped_observed_sessions',
+      notes: [
+        'control_variant=control challenger_variant=challenger_bundle',
+        'Experiment claims remain coupled to readiness state and assigned-session denominator scope.'
+      ],
+      items: [
+        {
+          experiment_id: 'lp_paid_offer_test',
+          experiment_name: 'Landing LP Test',
+          permission: {
+            insight_id: 'INS-EXP-lp_paid_offer_test',
+            decision_target: 'landing_experiment:lp_paid_offer_test',
+            statement:
+              'Assess whether Bundle improves purchase_session_rate versus Simply Raw for experiment lp_paid_offer_test.',
+            permission_state: 'directional_only',
+            confidence_tier: 'directional',
+            action_state: 'directional_review_only',
+            sample_context: {
+              analysis_window: '2026-02-04/2026-03-05',
+              units_observed: 400,
+              outcome_events: 34,
+              coverage_notes: ['assignment_rate_bps=9000', 'ambiguity_rate_bps=200']
+            },
+            allowed_uses: ['use_to_prioritize_follow_up_experiments'],
+            blocked_uses: ['auto_reroute_google_ads_traffic_based_on_this_claim'],
+            next_data_actions: ['approve_randomized_or_quasi_experiment_design'],
+            taxonomy_version: 'nd_landing_taxonomy.v2'
+          },
+          readiness: {
+            experiment_id: 'lp_paid_offer_test',
+            objective:
+              'Assess whether Bundle improves purchase_session_rate versus Simply Raw for experiment lp_paid_offer_test.',
+            control_landing_family: 'simply_raw_offer_lp',
+            challenger_landing_families: ['bundle_offer_lp'],
+            primary_metric: 'purchase_session_rate',
+            readiness_state: 'directional_only',
+            control_variant_id: 'control',
+            challenger_variant_id: 'challenger_bundle',
+            permission_level: 'directional_only',
+            supporting_reasons: [
+              'instrumentation_ready',
+              'assignment_rate_meets_threshold=9000bps'
+            ],
+            blocking_reasons: ['causal_design_not_approved'],
+            next_actions: ['approve_randomized_or_quasi_experiment_design'],
+            assigned_sessions_control: 180,
+            assigned_sessions_challenger: 180,
+            control_outcome_events: 16,
+            challenger_outcome_events: 18,
+            assignment_rate_bps: 9000,
+            ambiguity_rate_bps: 200,
+            partial_or_unassigned_rate_bps: 800,
+            denominator_scope: 'assigned_sessions_only'
+          }
+        }
+      ]
     }
   },
   publish_export_gate: {
