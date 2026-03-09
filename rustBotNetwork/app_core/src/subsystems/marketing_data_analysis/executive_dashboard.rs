@@ -471,13 +471,6 @@ fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthRepo
         "ga4_near_duplicate_second_rate",
     )
     .unwrap_or(0.0);
-    let risk = if near_duplicate_ratio >= 0.10 {
-        "high"
-    } else if near_duplicate_ratio >= 0.03 {
-        "medium"
-    } else {
-        "low"
-    };
     let canonical_revenue = finite_or_zero(run.artifact.report.total_metrics.conversions_value);
     let canonical_conversions = finite_or_zero(run.artifact.report.total_metrics.conversions);
     let estimated_revenue_at_risk = round4(canonical_revenue * near_duplicate_ratio.max(0.0));
@@ -523,15 +516,34 @@ fn build_revenue_truth_report(run: &PersistedAnalyticsRunV1) -> RevenueTruthRepo
         &run.artifact.quality_controls.schema_drift_checks,
         "ga4_custom_purchase_ndp_orphan_rate",
     );
-    let truth_guard_status = if custom_purchase_rows == 0 {
+    let canonical_truth_key_failed = has_failed_quality_check(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_canonical_purchase_truth_key_coverage",
+    );
+    let canonical_revenue_failed = has_failed_quality_check(
+        &run.artifact.quality_controls.schema_drift_checks,
+        "ga4_canonical_purchase_revenue_coverage",
+    );
+    let truth_guard_status = if canonical_truth_key_failed || canonical_revenue_failed {
+        "canonical_truth_degraded"
+    } else if custom_purchase_rows == 0 {
         "canonical_only"
     } else if custom_schema_failed || custom_overlap_failed || custom_orphan_failed {
         "guarded_review_required"
     } else {
         "guarded_clean"
     };
+    let risk = if canonical_truth_key_failed || canonical_revenue_failed {
+        "high"
+    } else if custom_schema_failed || custom_overlap_failed || custom_orphan_failed {
+        "medium"
+    } else if strict_duplicate_ratio >= 0.02 {
+        "medium"
+    } else {
+        "low"
+    };
     let summary = format!(
-        "Canonical purchase metrics enforced. strict_duplicate_ratio={:.4}, near_duplicate_ratio={:.4}, custom_purchase_rows={}, overlap_ratio={:.4}, orphan_ratio={:.4}, truth_guard_status={}, inflation_risk={}",
+        "Canonical purchase truth uses stable purchase identity keys. strict_duplicate_ratio={:.4}, near_duplicate_ratio={:.4}, custom_purchase_rows={}, overlap_ratio={:.4}, orphan_ratio={:.4}, truth_guard_status={}, inflation_risk={}",
         strict_duplicate_ratio,
         near_duplicate_ratio,
         custom_purchase_rows,
@@ -798,6 +810,54 @@ fn build_decision_feed(run: &PersistedAnalyticsRunV1) -> Vec<DecisionFeedCardV1>
             evidence_refs: vec![
                 "quality_controls.schema_drift_checks".to_string(),
                 format!("run_id={}", run.metadata.run_id),
+            ],
+        });
+    }
+    if let Some(check) = quality.schema_drift_checks.iter().find(|check| {
+        check.code == "ga4_canonical_purchase_truth_key_coverage"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "canonical-purchase-truth-key".to_string(),
+            priority: "critical".to_string(),
+            status: "blocked".to_string(),
+            title: "Canonical purchase truth keys missing".to_string(),
+            summary: format!(
+                "Some canonical `purchase` rows cannot be identified deterministically ({}). Those rows are excluded from truth KPIs.",
+                check.observed
+            ),
+            recommended_action:
+                "Fix checkout instrumentation so every canonical `purchase` includes either transaction_id or a stable fallback identity surface."
+                    .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks.ga4_canonical_purchase_truth_key_coverage"
+                    .to_string(),
+                "high_leverage_reports.revenue_truth".to_string(),
+            ],
+        });
+    }
+    if let Some(check) = quality.schema_drift_checks.iter().find(|check| {
+        check.code == "ga4_canonical_purchase_revenue_coverage"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        cards.push(DecisionFeedCardV1 {
+            card_id: "canonical-purchase-revenue".to_string(),
+            priority: "critical".to_string(),
+            status: "blocked".to_string(),
+            title: "Canonical purchase revenue incomplete".to_string(),
+            summary: format!(
+                "Some canonical `purchase` rows are missing revenue fields ({}). Revenue truth is incomplete.",
+                check.observed
+            ),
+            recommended_action:
+                "Fix GA4 purchase value capture before using executive revenue totals for decision-making."
+                    .to_string(),
+            evidence_refs: vec![
+                "quality_controls.schema_drift_checks.ga4_canonical_purchase_revenue_coverage"
+                    .to_string(),
+                "high_leverage_reports.revenue_truth".to_string(),
             ],
         });
     }
@@ -1079,6 +1139,26 @@ fn build_publish_export_gate(run: &PersistedAnalyticsRunV1) -> PublishExportGate
             || check.severity != "high"
     }) {
         blocking_reasons.push("High-severity schema-drift failure present.".to_string());
+    }
+    if quality.schema_drift_checks.iter().any(|check| {
+        check.code == "ga4_canonical_purchase_truth_key_coverage"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        blocking_reasons.push(
+            "Canonical purchase rows are missing stable truth keys; revenue truth cannot be established for all purchases."
+                .to_string(),
+        );
+    }
+    if quality.schema_drift_checks.iter().any(|check| {
+        check.code == "ga4_canonical_purchase_revenue_coverage"
+            && check.applicability == QualityCheckApplicabilityV1::Applies
+            && !check.passed
+    }) {
+        blocking_reasons.push(
+            "Canonical purchase rows are missing revenue fields; executive revenue totals are incomplete."
+                .to_string(),
+        );
     }
     if quality.schema_drift_checks.iter().any(|check| {
         check.code == "ga4_custom_purchase_ndp_schema_integrity"
@@ -1791,7 +1871,7 @@ mod tests {
             .high_leverage_reports
             .revenue_truth
             .summary
-            .contains("Canonical purchase metrics enforced"));
+            .contains("stable purchase identity keys"));
         assert!(!snap.high_leverage_reports.funnel_survival.points.is_empty());
         assert_eq!(
             snap.high_leverage_reports
@@ -1919,6 +1999,35 @@ mod tests {
         assert!((report.custom_purchase_overlap_ratio - 0.8333).abs() < 0.0001);
         assert!((report.custom_purchase_orphan_ratio - 0.1667).abs() < 0.0001);
         assert_eq!(report.truth_guard_status, "guarded_review_required");
+    }
+
+    #[test]
+    fn revenue_truth_report_marks_canonical_truth_degraded_when_truth_checks_fail() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_truth_key_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, unique_truth_rows=3, duplicate_rows=0, rows_with_transaction_id=1, rows_using_fallback_key=2, rows_missing_truth_key=1".to_string(),
+                expected: "all canonical purchase rows must resolve to a stable truth key".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_revenue_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, rows_with_revenue=3, rows_missing_revenue=1".to_string(),
+                expected: "all canonical purchase rows must include purchase revenue".to_string(),
+            },
+        ]);
+        let report = build_revenue_truth_report(&run);
+        assert_eq!(report.truth_guard_status, "canonical_truth_degraded");
+        assert_eq!(report.inflation_risk, "high");
+        assert!(report.summary.contains("stable purchase identity keys"));
     }
 
     #[test]
@@ -2086,6 +2195,42 @@ mod tests {
     }
 
     #[test]
+    fn publish_gate_blocks_when_canonical_purchase_truth_is_incomplete() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_truth_key_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, unique_truth_rows=3, duplicate_rows=0, rows_with_transaction_id=1, rows_using_fallback_key=2, rows_missing_truth_key=1".to_string(),
+                expected: "all canonical purchase rows must resolve to a stable truth key".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_revenue_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, rows_with_revenue=3, rows_missing_revenue=1".to_string(),
+                expected: "all canonical purchase rows must include purchase revenue".to_string(),
+            },
+        ]);
+        let gate = build_publish_export_gate(&run);
+        assert!(!gate.publish_ready);
+        assert_eq!(gate.gate_status, "blocked");
+        assert!(gate
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason.contains("stable truth keys")));
+        assert!(gate
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason.contains("missing revenue fields")));
+    }
+
+    #[test]
     fn publish_gate_warns_when_custom_purchase_overlap_and_orphans_fail() {
         let mut run = build_run("run-2", "p1", 200.0, 6.5);
         run.artifact.quality_controls.schema_drift_checks.extend([
@@ -2154,6 +2299,38 @@ mod tests {
         assert!(!cards
             .iter()
             .any(|card| card.card_id == "schema-drift" && card.status == "blocked"));
+    }
+
+    #[test]
+    fn decision_feed_surfaces_canonical_purchase_truth_cards() {
+        let mut run = build_run("run-2", "p1", 200.0, 6.5);
+        run.artifact.quality_controls.schema_drift_checks.extend([
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_truth_key_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, unique_truth_rows=3, duplicate_rows=0, rows_with_transaction_id=1, rows_using_fallback_key=2, rows_missing_truth_key=1".to_string(),
+                expected: "all canonical purchase rows must resolve to a stable truth key".to_string(),
+            },
+            crate::subsystems::marketing_data_analysis::contracts::QualityCheckV1 {
+                applicability:
+                    crate::subsystems::marketing_data_analysis::contracts::QualityCheckApplicabilityV1::Applies,
+                code: "ga4_canonical_purchase_revenue_coverage".to_string(),
+                passed: false,
+                severity: "high".to_string(),
+                observed: "purchase_rows=4, rows_with_revenue=3, rows_missing_revenue=1".to_string(),
+                expected: "all canonical purchase rows must include purchase revenue".to_string(),
+            },
+        ]);
+        let cards = build_decision_feed(&run);
+        assert!(cards
+            .iter()
+            .any(|card| card.card_id == "canonical-purchase-truth-key"));
+        assert!(cards
+            .iter()
+            .any(|card| card.card_id == "canonical-purchase-revenue"));
     }
 
     #[test]

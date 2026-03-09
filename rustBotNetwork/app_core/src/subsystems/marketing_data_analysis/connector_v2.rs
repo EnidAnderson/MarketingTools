@@ -1930,10 +1930,30 @@ pub fn generate_simulated_ga4_events(
     let mut events = Vec::new();
 
     while current <= end {
+        let event_timestamp_micros = current
+            .and_hms_opt(12, 0, 0)
+            .map(|ts| ts.and_utc().timestamp_micros())
+            .unwrap_or(0);
+        let transaction_id = format!("sim-tx-{}-{}", seed % 10_000, current.ordinal());
+        let purchase_revenue = round4(48.0 + (current.ordinal0() % 11) as f64 + (seed % 7) as f64);
+        let mut dimensions = BTreeMap::new();
+        dimensions.insert(
+            "event_timestamp_micros".to_string(),
+            event_timestamp_micros.to_string(),
+        );
+        dimensions.insert(
+            "ga_session_id".to_string(),
+            ((seed as i64 % 10_000) + current.ordinal() as i64).to_string(),
+        );
+        dimensions.insert("transaction_id".to_string(), transaction_id.clone());
+        dimensions.insert(
+            "purchase_revenue".to_string(),
+            format!("{purchase_revenue:.2}"),
+        );
         events.push(Ga4EventRawV1 {
             event_name: " purchase ".to_string(),
             event_timestamp_utc: format!("{}T12:00:00Z", current.format("%Y-%m-%d")),
-            event_timestamp_micros: None,
+            event_timestamp_micros: Some(event_timestamp_micros),
             user_pseudo_id: format!(" user_{}_{} ", seed % 1000, current.ordinal()),
             session_id: Some(format!("sess_{}_{}", seed, current.ordinal())),
             ga_session_id: Some((seed as i64 % 10_000) + current.ordinal() as i64),
@@ -1956,12 +1976,12 @@ pub fn generate_simulated_ga4_events(
             variant_name: Some("Simply Raw Control".to_string()),
             session_engaged: Some(true),
             engagement_time_msec: Some(1200),
-            transaction_id: None,
-            purchase_revenue: None,
-            purchase_revenue_in_usd: None,
+            transaction_id: Some(transaction_id),
+            purchase_revenue: Some(purchase_revenue),
+            purchase_revenue_in_usd: Some(purchase_revenue),
             event_bundle_sequence_id: None,
             batch_event_index: None,
-            dimensions: BTreeMap::new(),
+            dimensions,
             metrics: BTreeMap::new(),
             ..Default::default()
         });

@@ -355,6 +355,26 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             provided_observation_sources.as_ref(),
         );
         if let Some(check) = quality_controls.schema_drift_checks.iter().find(|check| {
+            check.code == "ga4_canonical_purchase_truth_key_coverage"
+                && check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+        }) {
+            uncertainty_notes.push(format!(
+                "Some canonical `purchase` rows could not resolve to a stable truth key ({}); those rows are excluded from truth KPIs until checkout instrumentation is fixed.",
+                check.observed
+            ));
+        }
+        if let Some(check) = quality_controls.schema_drift_checks.iter().find(|check| {
+            check.code == "ga4_canonical_purchase_revenue_coverage"
+                && check.applicability == QualityCheckApplicabilityV1::Applies
+                && !check.passed
+        }) {
+            uncertainty_notes.push(format!(
+                "Some canonical `purchase` rows are missing revenue fields ({}); revenue truth should be treated as incomplete until purchase value capture is fixed.",
+                check.observed
+            ));
+        }
+        if let Some(check) = quality_controls.schema_drift_checks.iter().find(|check| {
             check.code == "ga4_custom_purchase_ndp_overlap_rate"
                 && check.applicability == QualityCheckApplicabilityV1::Applies
                 && !check.passed
@@ -661,13 +681,17 @@ fn ga4_events_to_report(
     let mut campaigns: BTreeMap<String, ReportMetrics> = BTreeMap::new();
     let mut event_buckets: BTreeMap<(String, String), ReportMetrics> = BTreeMap::new();
     let mut canonical_purchase_seconds: BTreeMap<(String, String), Vec<i64>> = BTreeMap::new();
+    let mut seen_canonical_purchase_truth_keys = BTreeSet::new();
     for event in ga4_events {
         if !is_ga4_canonical_purchase_event(&event.event_name) {
             continue;
         }
-        let Some(tx_id) = ga4_transaction_id(event) else {
+        let Some(truth_key) = ga4_canonical_purchase_truth_key(event) else {
             continue;
         };
+        if !seen_canonical_purchase_truth_keys.insert(truth_key) {
+            continue;
+        }
         let Some(event_second) = ga4_event_epoch_seconds(event) else {
             continue;
         };
@@ -677,12 +701,11 @@ fn ga4_events_to_report(
             .entry((user, session))
             .or_default()
             .push(event_second);
-        debug_assert!(!tx_id.trim().is_empty());
     }
     for seconds in canonical_purchase_seconds.values_mut() {
         seconds.sort_unstable();
     }
-    let mut seen_purchase_transaction_ids = BTreeSet::new();
+    let mut seen_purchase_truth_keys = BTreeSet::new();
     let mut seen_custom_purchase_second_keys = BTreeSet::new();
 
     for event in ga4_events {
@@ -704,12 +727,14 @@ fn ga4_events_to_report(
         let session_key = ga4_session_key(event);
 
         if is_ga4_canonical_purchase_event(&event_name_lower) {
-            if let Some(tx_id) = ga4_transaction_id(event) {
-                if !seen_purchase_transaction_ids.insert(tx_id) {
+            if let Some(truth_key) = ga4_canonical_purchase_truth_key(event) {
+                if !seen_purchase_truth_keys.insert(truth_key) {
                     include_in_kpi_rollup = false;
                 } else {
                     effective_count = 1;
                 }
+            } else {
+                include_in_kpi_rollup = false;
             }
         } else if is_ga4_custom_purchase_event(&event_name_lower) {
             if let Some(second) = event_second {
@@ -853,20 +878,18 @@ fn build_daily_revenue_series_from_ga4(
     end: NaiveDate,
 ) -> Vec<DailyRevenuePointV1> {
     let mut by_day = seeded_daily_revenue_map(start, end);
-    let mut seen_purchase_transaction_ids = BTreeSet::new();
+    let mut seen_purchase_truth_keys = BTreeSet::new();
 
     for event in ga4_events {
         if !is_ga4_canonical_purchase_event(&event.event_name) {
             continue;
         }
-        let first_transaction_occurrence = if let Some(tx_id) = ga4_transaction_id(event) {
-            if !seen_purchase_transaction_ids.insert(tx_id) {
-                continue;
-            }
-            true
-        } else {
-            false
+        let Some(truth_key) = ga4_canonical_purchase_truth_key(event) else {
+            continue;
         };
+        if !seen_purchase_truth_keys.insert(truth_key) {
+            continue;
+        }
         let Some(day) = ga4_event_date_utc(event) else {
             continue;
         };
@@ -874,11 +897,7 @@ fn build_daily_revenue_series_from_ga4(
             continue;
         }
         let revenue = ga4_purchase_revenue(event).unwrap_or(0.0).max(0.0);
-        let conversions = if first_transaction_occurrence {
-            1.0
-        } else {
-            ga4_event_count_hint(event) as f64
-        };
+        let conversions = 1.0_f64;
         if let Some((day_revenue, day_conversions)) = by_day.get_mut(&day) {
             *day_revenue += revenue;
             *day_conversions += conversions.max(0.0);
@@ -957,14 +976,43 @@ fn ga4_dimension(event: &Ga4EventRawV1, key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn ga4_event_timestamp_micros(event: &Ga4EventRawV1) -> Option<i64> {
+    event
+        .event_timestamp_micros
+        .or_else(|| {
+            ga4_dimension(event, "event_timestamp_micros")
+                .and_then(|value| value.parse::<i64>().ok())
+        })
+        .or_else(|| {
+            DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim())
+                .ok()
+                .map(|value| value.timestamp_micros())
+        })
+}
+
 fn ga4_transaction_id(event: &Ga4EventRawV1) -> Option<String> {
-    ga4_dimension(event, "transaction_id")
+    event
+        .transaction_id
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| ga4_dimension(event, "transaction_id"))
 }
 
 fn ga4_purchase_revenue(event: &Ga4EventRawV1) -> Option<f64> {
-    ga4_dimension(event, "purchase_revenue")
-        .and_then(|value| value.parse::<f64>().ok())
+    event
+        .purchase_revenue
         .filter(|value| value.is_finite() && *value >= 0.0)
+        .or_else(|| {
+            event
+                .purchase_revenue_in_usd
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        })
+        .or_else(|| {
+            ga4_dimension(event, "purchase_revenue")
+                .and_then(|value| value.parse::<f64>().ok())
+                .filter(|value| value.is_finite() && *value >= 0.0)
+        })
         .or_else(|| {
             ga4_dimension(event, "purchase_revenue_in_usd")
                 .and_then(|value| value.parse::<f64>().ok())
@@ -973,8 +1021,7 @@ fn ga4_purchase_revenue(event: &Ga4EventRawV1) -> Option<f64> {
 }
 
 fn ga4_event_epoch_seconds(event: &Ga4EventRawV1) -> Option<i64> {
-    ga4_dimension(event, "event_timestamp_micros")
-        .and_then(|value| value.parse::<i64>().ok())
+    ga4_event_timestamp_micros(event)
         .map(|micros| micros.div_euclid(1_000_000))
         .or_else(|| {
             DateTime::parse_from_rfc3339(event.event_timestamp_utc.trim())
@@ -1037,6 +1084,71 @@ fn ga4_custom_purchase_value(event: &Ga4EventRawV1) -> Option<f64> {
         .filter(|value| value.is_finite() && *value >= 0.0)
 }
 
+fn ga4_canonical_purchase_fallback_truth_key(event: &Ga4EventRawV1) -> Option<String> {
+    let timestamp_micros = ga4_event_timestamp_micros(event)?;
+    let revenue = round4(ga4_purchase_revenue(event)?);
+    let user_pseudo_id = event.user_pseudo_id.trim();
+    if user_pseudo_id.is_empty() {
+        return None;
+    }
+    let session_key = ga4_session_key(event);
+    Some(format!(
+        "fallback:{user_pseudo_id}:{session_key}:{timestamp_micros}:{revenue:.4}"
+    ))
+}
+
+fn ga4_canonical_purchase_truth_key(event: &Ga4EventRawV1) -> Option<String> {
+    ga4_transaction_id(event)
+        .map(|value| format!("tx:{value}"))
+        .or_else(|| ga4_canonical_purchase_fallback_truth_key(event))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct Ga4CanonicalPurchaseTruthStats {
+    total_rows: usize,
+    unique_truth_rows: usize,
+    duplicate_rows: usize,
+    rows_with_transaction_id: usize,
+    rows_with_revenue: usize,
+    rows_using_fallback_key: usize,
+    rows_missing_truth_key: usize,
+}
+
+fn ga4_canonical_purchase_truth_stats(
+    ga4_events: &[Ga4EventRawV1],
+) -> Ga4CanonicalPurchaseTruthStats {
+    let mut stats = Ga4CanonicalPurchaseTruthStats::default();
+    let mut seen_truth_keys = BTreeSet::new();
+    for event in ga4_events {
+        if !is_ga4_canonical_purchase_event(&event.event_name) {
+            continue;
+        }
+        stats.total_rows += 1;
+        if ga4_transaction_id(event).is_some() {
+            stats.rows_with_transaction_id += 1;
+        }
+        if ga4_purchase_revenue(event).is_some() {
+            stats.rows_with_revenue += 1;
+        }
+        if ga4_transaction_id(event).is_none()
+            && ga4_canonical_purchase_fallback_truth_key(event).is_some()
+        {
+            stats.rows_using_fallback_key += 1;
+        }
+
+        if let Some(truth_key) = ga4_canonical_purchase_truth_key(event) {
+            if seen_truth_keys.insert(truth_key) {
+                stats.unique_truth_rows += 1;
+            } else {
+                stats.duplicate_rows += 1;
+            }
+        } else {
+            stats.rows_missing_truth_key += 1;
+        }
+    }
+    stats
+}
+
 fn ga4_custom_purchase_schema_stats(ga4_events: &[Ga4EventRawV1]) -> (usize, usize, usize) {
     let custom_purchase_events = ga4_events
         .iter()
@@ -1070,8 +1182,15 @@ fn ga4_custom_purchase_match_stats(
     tolerance_seconds: i64,
 ) -> Ga4CustomPurchaseMatchStats {
     let mut canonical_purchase_seconds: BTreeMap<(String, String), Vec<i64>> = BTreeMap::new();
+    let mut seen_canonical_purchase_truth_keys = BTreeSet::new();
     for event in ga4_events {
         if !is_ga4_canonical_purchase_event(&event.event_name) {
+            continue;
+        }
+        let Some(truth_key) = ga4_canonical_purchase_truth_key(event) else {
+            continue;
+        };
+        if !seen_canonical_purchase_truth_keys.insert(truth_key) {
             continue;
         }
         let Some(event_second) = ga4_event_epoch_seconds(event) else {
@@ -1938,6 +2057,15 @@ fn build_quality_controls(
         ga4_custom_purchase_rows_with_tx,
         ga4_custom_purchase_rows_with_value,
     ) = ga4_custom_purchase_schema_stats(ga4_events);
+    let ga4_canonical_purchase_truth_stats = ga4_canonical_purchase_truth_stats(ga4_events);
+    let ga4_canonical_purchase_rows = ga4_canonical_purchase_truth_stats.total_rows;
+    let ga4_canonical_purchase_applies = ga4_applicability == QualityCheckApplicabilityV1::Applies
+        && ga4_canonical_purchase_rows > 0;
+    let ga4_canonical_purchase_applicability = if ga4_canonical_purchase_applies {
+        QualityCheckApplicabilityV1::Applies
+    } else {
+        QualityCheckApplicabilityV1::NotApplicable
+    };
     let ga4_custom_purchase_match_stats = ga4_custom_purchase_match_stats(ga4_events, 30);
     let ga4_custom_purchase_applies =
         ga4_applicability == QualityCheckApplicabilityV1::Applies && ga4_custom_purchase_rows > 0;
@@ -1976,6 +2104,44 @@ fn build_quality_controls(
             ga4_near_duplicate_ratio
         ),
         expected: "near-duplicate ratio <= 0.05".to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_canonical_purchase_applicability.clone(),
+        code: "ga4_canonical_purchase_truth_key_coverage".to_string(),
+        passed: !ga4_canonical_purchase_applies
+            || ga4_canonical_purchase_truth_stats.rows_missing_truth_key == 0,
+        severity: "high".to_string(),
+        observed: format!(
+            "purchase_rows={}, unique_truth_rows={}, duplicate_rows={}, rows_with_transaction_id={}, rows_using_fallback_key={}, rows_missing_truth_key={}",
+            ga4_canonical_purchase_truth_stats.total_rows,
+            ga4_canonical_purchase_truth_stats.unique_truth_rows,
+            ga4_canonical_purchase_truth_stats.duplicate_rows,
+            ga4_canonical_purchase_truth_stats.rows_with_transaction_id,
+            ga4_canonical_purchase_truth_stats.rows_using_fallback_key,
+            ga4_canonical_purchase_truth_stats.rows_missing_truth_key
+        ),
+        expected:
+            "all canonical purchase rows must resolve to a stable truth key (transaction_id or fallback identity)"
+                .to_string(),
+    });
+    schema_drift_checks.push(QualityCheckV1 {
+        applicability: ga4_canonical_purchase_applicability.clone(),
+        code: "ga4_canonical_purchase_revenue_coverage".to_string(),
+        passed: !ga4_canonical_purchase_applies
+            || ga4_canonical_purchase_truth_stats.rows_with_revenue
+                == ga4_canonical_purchase_truth_stats.total_rows,
+        severity: "high".to_string(),
+        observed: format!(
+            "purchase_rows={}, rows_with_revenue={}, rows_missing_revenue={}",
+            ga4_canonical_purchase_truth_stats.total_rows,
+            ga4_canonical_purchase_truth_stats.rows_with_revenue,
+            ga4_canonical_purchase_truth_stats
+                .total_rows
+                .saturating_sub(ga4_canonical_purchase_truth_stats.rows_with_revenue)
+        ),
+        expected:
+            "all canonical purchase rows must include purchase revenue to support revenue-truth totals"
+                .to_string(),
     });
     let purchase_ndp_rows_in_report = report
         .keyword_data
@@ -3070,6 +3236,102 @@ mod tests {
     }
 
     #[test]
+    fn ga4_report_dedupes_canonical_purchase_without_transaction_id_using_fallback_truth_key() {
+        let request = MockAnalyticsRequestV1 {
+            start_date: "2026-03-01".to_string(),
+            end_date: "2026-03-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(2),
+            profile_id: "qa".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+        let mut purchase_dims = BTreeMap::new();
+        purchase_dims.insert(
+            "event_timestamp_micros".to_string(),
+            "1772500001000000".to_string(),
+        );
+        purchase_dims.insert("ga_session_id".to_string(), "session-1".to_string());
+
+        let events = vec![
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                purchase_revenue: Some(64.25),
+                dimensions: purchase_dims.clone(),
+                metrics: BTreeMap::new(),
+                ..Default::default()
+            },
+            Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                purchase_revenue: Some(64.25),
+                dimensions: purchase_dims,
+                metrics: BTreeMap::new(),
+                ..Default::default()
+            },
+        ];
+
+        let report = ga4_events_to_report(
+            &events,
+            &request,
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+        );
+
+        assert_eq!(report.total_metrics.conversions, 1.0);
+        assert!((report.total_metrics.conversions_value - 64.25).abs() < 0.0001);
+    }
+
+    #[test]
+    fn ga4_report_excludes_canonical_purchase_without_truth_key() {
+        let request = MockAnalyticsRequestV1 {
+            start_date: "2026-03-01".to_string(),
+            end_date: "2026-03-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(3),
+            profile_id: "qa".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+        let events = vec![Ga4EventRawV1 {
+            event_name: "purchase".to_string(),
+            event_timestamp_utc: "2026-03-01T12:00:01Z".to_string(),
+            user_pseudo_id: "user-1".to_string(),
+            session_id: Some("session-1".to_string()),
+            campaign: Some("Spring".to_string()),
+            device_category: Some("mobile".to_string()),
+            source_medium: Some("google / cpc".to_string()),
+            metrics: BTreeMap::new(),
+            ..Default::default()
+        }];
+
+        let report = ga4_events_to_report(
+            &events,
+            &request,
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date"),
+        );
+
+        assert_eq!(report.total_metrics.conversions, 0.0);
+        assert_eq!(report.total_metrics.conversions_value, 0.0);
+    }
+
+    #[test]
     fn daily_revenue_series_tracks_canonical_purchase_revenue_per_day() {
         let mut purchase_day_one = BTreeMap::new();
         purchase_day_one.insert("ga_session_id".to_string(), "session-1".to_string());
@@ -3478,6 +3740,14 @@ mod tests {
             _end: NaiveDate,
             _seed: u64,
         ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            let mut purchase_dimensions = BTreeMap::new();
+            purchase_dimensions.insert(
+                "event_timestamp_micros".to_string(),
+                "1767272400000000".to_string(),
+            );
+            purchase_dimensions.insert("ga_session_id".to_string(), "2001".to_string());
+            purchase_dimensions.insert("transaction_id".to_string(), "tx-observed-1".to_string());
+            purchase_dimensions.insert("purchase_revenue".to_string(), "68.50".to_string());
             Ok(vec![
                 Ga4EventRawV1 {
                     event_name: "page_view".to_string(),
@@ -3499,7 +3769,10 @@ mod tests {
                     campaign: Some("Spring Launch".to_string()),
                     device_category: Some("mobile".to_string()),
                     source_medium: Some("google / cpc".to_string()),
-                    dimensions: BTreeMap::new(),
+                    transaction_id: Some("tx-observed-1".to_string()),
+                    purchase_revenue: Some(68.50),
+                    purchase_revenue_in_usd: Some(68.50),
+                    dimensions: purchase_dimensions,
                     metrics: BTreeMap::new(),
                     ..Default::default()
                 },
@@ -3584,9 +3857,10 @@ mod tests {
         assert!(!artifact.report.campaign_data.is_empty());
         assert!(!artifact.report.ad_group_data.is_empty());
         assert!(!artifact.report.keyword_data.is_empty());
-        assert_eq!(artifact.report.total_metrics.impressions, 28);
+        assert_eq!(artifact.report.total_metrics.impressions, 26);
         assert_eq!(artifact.report.total_metrics.clicks, 5);
-        assert!((artifact.report.total_metrics.conversions - 3.0).abs() < 0.001);
+        assert!((artifact.report.total_metrics.conversions - 1.0).abs() < 0.001);
+        assert!((artifact.report.total_metrics.conversions_value - 68.5).abs() < 0.001);
         assert!(artifact
             .quality_controls
             .cross_source_checks
@@ -3956,6 +4230,259 @@ mod tests {
             .uncertainty_notes
             .iter()
             .any(|note| note.contains("potential checkout undercount")));
+    }
+
+    struct Ga4ObservedCanonicalPurchaseMissingTruthKeyConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2
+        for Ga4ObservedCanonicalPurchaseMissingTruthKeyConnector
+    {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "ga4_observed_canonical_purchase_missing_truth_key".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "ga4_observed_canonical_purchase_missing_truth_key".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            Ok(vec![Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-01-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring Launch".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                metrics: BTreeMap::new(),
+                ..Default::default()
+            }])
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct Ga4ObservedCanonicalPurchaseMissingRevenueConnector;
+
+    #[async_trait]
+    impl super::super::connector_v2::AnalyticsConnectorContractV2
+        for Ga4ObservedCanonicalPurchaseMissingRevenueConnector
+    {
+        fn capabilities(&self) -> super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+            super::super::connector_v2::AnalyticsConnectorCapabilitiesV1 {
+                connector_id: "ga4_observed_canonical_purchase_missing_revenue".to_string(),
+                contract_version: "analytics_connector_contract.v2".to_string(),
+                supports_healthcheck: true,
+                sources: Vec::new(),
+            }
+        }
+
+        async fn healthcheck(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+        ) -> Result<super::super::connector_v2::ConnectorHealthStatusV1, AnalyticsError> {
+            Ok(super::super::connector_v2::ConnectorHealthStatusV1 {
+                connector_id: "ga4_observed_canonical_purchase_missing_revenue".to_string(),
+                ok: true,
+                mode: "observed_read_only".to_string(),
+                source_status: Vec::new(),
+                blocking_reasons: Vec::new(),
+                warning_reasons: Vec::new(),
+            })
+        }
+
+        async fn fetch_ga4_events(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<Ga4EventRawV1>, AnalyticsError> {
+            let mut purchase_dimensions = BTreeMap::new();
+            purchase_dimensions.insert("ga_session_id".to_string(), "session-1".to_string());
+            purchase_dimensions.insert("transaction_id".to_string(), "tx-1".to_string());
+
+            Ok(vec![Ga4EventRawV1 {
+                event_name: "purchase".to_string(),
+                event_timestamp_utc: "2026-01-01T12:00:00Z".to_string(),
+                user_pseudo_id: "user-1".to_string(),
+                session_id: Some("session-1".to_string()),
+                campaign: Some("Spring Launch".to_string()),
+                device_category: Some("mobile".to_string()),
+                source_medium: Some("google / cpc".to_string()),
+                dimensions: purchase_dimensions,
+                metrics: BTreeMap::new(),
+                ..Default::default()
+            }])
+        }
+
+        async fn fetch_google_ads_rows(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _request: &MockAnalyticsRequestV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<GoogleAdsRow>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_orders(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::ingest::WixOrderRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+
+        async fn fetch_wix_sessions(
+            &self,
+            _config: &super::super::analytics_config::AnalyticsConnectorConfigV1,
+            _start: NaiveDate,
+            _end: NaiveDate,
+            _seed: u64,
+        ) -> Result<Vec<super::super::connector_v2::WixSessionRawV1>, AnalyticsError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn ga4_canonical_purchase_truth_key_failure_blocks_artifact() {
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = super::super::analytics_config::AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(Ga4ObservedCanonicalPurchaseMissingTruthKeyConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(56),
+            profile_id: "staging-ga4-canonical-truth-key".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let err = svc
+            .run_mock_analysis(req)
+            .await
+            .expect_err("artifact should fail closed when canonical purchase truth key is missing");
+        assert_eq!(err.code, "artifact_invariant_violation");
+        let context = err.context.expect("validation report context");
+        let failed_checks = context
+            .get("failed_quality_checks")
+            .and_then(serde_json::Value::as_array)
+            .expect("failed checks array");
+        assert!(failed_checks.iter().any(|check| {
+            check.get("code").and_then(serde_json::Value::as_str)
+                == Some("ga4_canonical_purchase_truth_key_coverage")
+        }));
+    }
+
+    #[tokio::test]
+    async fn ga4_canonical_purchase_revenue_failure_blocks_artifact() {
+        let mut cfg =
+            super::super::analytics_config::AnalyticsConnectorConfigV1::simulated_defaults();
+        cfg.mode = super::super::analytics_config::AnalyticsConnectorModeV1::ObservedReadOnly;
+        cfg.source_topology = super::super::analytics_config::AnalyticsSourceTopologyV1::Ga4Unified;
+        cfg.google_ads.enabled = false;
+        cfg.wix.enabled = false;
+        cfg.ga4.enabled = true;
+
+        let svc = DefaultMarketAnalysisService::with_connector_and_config(
+            Arc::new(Ga4ObservedCanonicalPurchaseMissingRevenueConnector),
+            cfg,
+        )
+        .expect("service config should be valid");
+        let req = MockAnalyticsRequestV1 {
+            start_date: "2026-01-01".to_string(),
+            end_date: "2026-01-01".to_string(),
+            campaign_filter: None,
+            ad_group_filter: None,
+            seed: Some(57),
+            profile_id: "staging-ga4-canonical-revenue".to_string(),
+            include_narratives: true,
+            source_window_observations: Vec::new(),
+            budget_envelope: super::super::contracts::BudgetEnvelopeV1::default(),
+        };
+
+        let err = svc
+            .run_mock_analysis(req)
+            .await
+            .expect_err("artifact should fail closed when canonical purchase revenue is missing");
+        assert_eq!(err.code, "artifact_invariant_violation");
+        let context = err.context.expect("validation report context");
+        let failed_checks = context
+            .get("failed_quality_checks")
+            .and_then(serde_json::Value::as_array)
+            .expect("failed checks array");
+        assert!(failed_checks.iter().any(|check| {
+            check.get("code").and_then(serde_json::Value::as_str)
+                == Some("ga4_canonical_purchase_revenue_coverage")
+        }));
     }
 
     #[test]
