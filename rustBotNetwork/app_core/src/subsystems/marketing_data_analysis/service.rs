@@ -20,6 +20,7 @@ use super::ingest::{
     parse_ga4_event, parse_google_ads_row, parse_wix_order, window_completeness, CleaningNote,
     Ga4EventRawV1, GoogleAdsRowRawV1, TimeGranularity, WixOrderRawV1,
 };
+use super::purchase_truth::build_purchase_truth_audit_v1;
 use super::validators::{validate_mock_analytics_artifact_v1, validate_mock_analytics_request_v1};
 use crate::data_models::analytics::{
     AdGroupCriterionResource, AdGroupReportRow, AdGroupResource, AnalyticsReport,
@@ -396,6 +397,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
         }
         let data_quality = build_data_quality_summary(&quality_controls);
         let operator_summary = build_operator_summary(&report, &observed_evidence);
+        let purchase_truth_audit = build_purchase_truth_audit_v1(&ga4_events, 30);
 
         let metadata = AnalyticsRunMetadataV1 {
             run_id: deterministic_run_id(&request, seed),
@@ -432,6 +434,7 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
             budget,
             historical_analysis: Default::default(),
             operator_summary,
+            purchase_truth_audit,
             persistence: None,
         };
 
@@ -4542,6 +4545,7 @@ mod tests {
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
+            purchase_truth_audit: Default::default(),
             persistence: None,
         };
         artifact.report.total_metrics.impressions = 10;

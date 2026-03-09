@@ -735,6 +735,8 @@ pub struct MockAnalyticsArtifactV1 {
     #[serde(default)]
     pub operator_summary: OperatorSummaryV1,
     #[serde(default)]
+    pub purchase_truth_audit: PurchaseTruthAuditReportV1,
+    #[serde(default)]
     pub persistence: Option<ArtifactPersistenceRefV1>,
 }
 
@@ -857,6 +859,62 @@ pub struct RevenueTruthReportV1 {
     pub truth_guard_status: String,
     pub inflation_risk: String,
     pub estimated_revenue_at_risk: f64,
+    pub summary: String,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Slice-level purchase-truth coverage row for day, device, or source investigation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PurchaseTruthSliceV1 {
+    pub slice_dimension: String,
+    pub slice_value: String,
+    #[serde(default)]
+    pub canonical_unique_purchases: u64,
+    #[serde(default)]
+    pub canonical_revenue_usd: f64,
+    #[serde(default)]
+    pub custom_purchase_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_overlap_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_orphan_rows: u64,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::contracts`
+/// purpose: Persisted purchase-truth audit showing where canonical coverage and custom orphan risk concentrate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PurchaseTruthAuditReportV1 {
+    #[serde(default)]
+    pub canonical_purchase_rows: u64,
+    #[serde(default)]
+    pub canonical_unique_purchases: u64,
+    #[serde(default)]
+    pub canonical_rows_with_transaction_id: u64,
+    #[serde(default)]
+    pub canonical_rows_using_fallback_key: u64,
+    #[serde(default)]
+    pub canonical_rows_missing_truth_key: u64,
+    #[serde(default)]
+    pub canonical_rows_with_revenue: u64,
+    #[serde(default)]
+    pub custom_purchase_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_overlap_rows: u64,
+    #[serde(default)]
+    pub custom_purchase_orphan_rows: u64,
+    #[serde(default)]
+    pub dominant_orphan_device_category: Option<String>,
+    #[serde(default)]
+    pub dominant_orphan_source_medium: Option<String>,
+    #[serde(default)]
+    pub slices_by_day: Vec<PurchaseTruthSliceV1>,
+    #[serde(default)]
+    pub slices_by_device_category: Vec<PurchaseTruthSliceV1>,
+    #[serde(default)]
+    pub slices_by_source_medium: Vec<PurchaseTruthSliceV1>,
+    #[serde(default)]
     pub summary: String,
 }
 
@@ -995,6 +1053,8 @@ pub struct ExperimentGovernanceReportV1 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct HighLeverageReportsV1 {
     pub revenue_truth: RevenueTruthReportV1,
+    #[serde(default)]
+    pub purchase_truth_audit: PurchaseTruthAuditReportV1,
     pub funnel_survival: FunnelSurvivalReportV1,
     pub attribution_delta: AttributionDeltaReportV1,
     pub data_quality_scorecard: DataQualityScorecardV1,

@@ -20,6 +20,7 @@ pub mod ingest;
 pub mod longitudinal;
 pub mod persistence;
 pub mod preflight;
+pub mod purchase_truth;
 pub mod service;
 pub mod validators;
 
@@ -69,10 +70,12 @@ pub use contracts::{
     HistoricalAnalysisV1, IngestCleaningNoteV1, InsightPermissionCardV1, InsightPermissionStateV1,
     InsightSampleContextV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, LandingContextV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1,
-    ReconciliationToleranceV1, RevenueTruthReportV1, SessionExperimentContextV1, SourceCoverageV1,
-    SourceFreshnessSlaV1, SourceWindowGranularityV1, SourceWindowObservationV1,
-    StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1, ValidationCheck, VisitorTypeV1,
+    PortfolioRowV1, PurchaseTruthAuditReportV1, PurchaseTruthSliceV1,
+    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1,
+    ReconciliationToleranceV1, RevenueTruthReportV1, SessionExperimentContextV1,
+    SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1,
+    SourceWindowObservationV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
+    ValidationCheck, VisitorTypeV1,
 };
 pub use executive_dashboard::{build_executive_dashboard_snapshot, SnapshotBuildOptions};
 pub use experiment_governance::{
@@ -98,5 +101,12 @@ pub use persistence::AnalyticsRunStore;
 pub use preflight::{
     evaluate_analytics_connectors_preflight, AnalyticsConnectorPreflightResultV1,
     AnalyticsPreflightSourceStatusV1, ANALYTICS_PREFLIGHT_SCHEMA_VERSION_V1,
+};
+pub use purchase_truth::{
+    build_purchase_truth_audit_v1, ga4_canonical_purchase_truth_key_v1,
+    ga4_canonical_purchase_truth_stats_v1, ga4_custom_purchase_match_stats_v1,
+    ga4_event_date_utc_v1, ga4_event_epoch_seconds_v1, ga4_purchase_revenue_v1,
+    ga4_session_key_v1, ga4_transaction_id_v1, Ga4CanonicalPurchaseTruthStatsV1,
+    Ga4CustomPurchaseMatchStatsV1,
 };
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};

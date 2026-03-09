@@ -1220,6 +1220,7 @@ mod tests {
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
+            purchase_truth_audit: Default::default(),
             persistence: None,
         };
         artifact.report.total_metrics.impressions = 1000;

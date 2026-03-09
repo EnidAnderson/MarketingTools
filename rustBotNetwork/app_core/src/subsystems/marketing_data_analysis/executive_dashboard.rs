@@ -160,6 +160,7 @@ fn build_high_leverage_reports(
     let experiment_analytics = build_experiment_analytics_report(run);
     HighLeverageReportsV1 {
         revenue_truth: build_revenue_truth_report(run),
+        purchase_truth_audit: run.artifact.purchase_truth_audit.clone(),
         funnel_survival: build_funnel_survival_report(funnel_summary),
         attribution_delta: build_attribution_delta_report(run),
         data_quality_scorecard: build_data_quality_scorecard(run, publish_export_gate),
@@ -1754,6 +1755,7 @@ mod tests {
             budget: Default::default(),
             historical_analysis: Default::default(),
             operator_summary: Default::default(),
+            purchase_truth_audit: Default::default(),
             persistence: None,
         };
         artifact.report.total_metrics.cost = spend;
