@@ -408,11 +408,13 @@ button:focus-visible {
   display: grid;
   gap: 12px;
   grid-template-columns: 2fr 1fr;
+  align-items: start;
 }
 
 .panel,
 .panel-wide {
   min-height: 180px;
+  align-self: start;
 }
 
 .panel-head {
@@ -508,6 +510,15 @@ button:focus-visible {
   margin: 0 0 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+#deltaChart,
+#channelMixChart,
+#dailyRevenueChart,
+#funnelSurvivalChart,
+#attributionDeltaChart {
+  width: 100%;
+  max-height: 360px;
 }
 
 .dq-row {

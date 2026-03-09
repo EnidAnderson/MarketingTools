@@ -417,9 +417,30 @@ impl MarketAnalysisService for DefaultMarketAnalysisService {
 
         artifact.validation = validate_mock_analytics_artifact_v1(&artifact);
         if !artifact.validation.is_valid {
-            return Err(AnalyticsError::internal(
+            let failed_quality_checks = artifact
+                .quality_controls
+                .schema_drift_checks
+                .iter()
+                .chain(artifact.quality_controls.identity_resolution_checks.iter())
+                .chain(artifact.quality_controls.freshness_sla_checks.iter())
+                .chain(artifact.quality_controls.cross_source_checks.iter())
+                .chain(artifact.quality_controls.budget_checks.iter())
+                .filter(|check| !check.passed)
+                .cloned()
+                .collect::<Vec<_>>();
+            return Err(AnalyticsError::new(
                 "artifact_invariant_violation",
                 "generated artifact failed invariant checks",
+                Vec::new(),
+                Some(serde_json::json!({
+                    "validation": serde_json::to_value(&artifact.validation).unwrap_or_else(|_| serde_json::json!({
+                        "is_valid": false,
+                        "checks": []
+                    })),
+                    "quality_controls": artifact.quality_controls,
+                    "failed_quality_checks": failed_quality_checks,
+                    "data_quality": artifact.data_quality
+                })),
             ));
         }
 
@@ -1946,7 +1967,7 @@ fn build_quality_controls(
         code: "ga4_near_duplicate_second_rate".to_string(),
         passed: ga4_applicability == QualityCheckApplicabilityV1::NotApplicable
             || ga4_near_duplicate_ratio <= 0.05,
-        severity: "high".to_string(),
+        severity: "medium".to_string(),
         observed: format!(
             "extra_rows={}, total_rows={}, duplicate_groups={}, ratio={:.4}",
             ga4_near_duplicate_rows,
@@ -2665,6 +2686,14 @@ mod tests {
             .await
             .expect_err("artifact should fail closed when completeness SLAs are unmet");
         assert_eq!(err.code, "artifact_invariant_violation");
+        let context = err.context.expect("validation report context");
+        assert_eq!(
+            context
+                .get("validation")
+                .and_then(|value| value.get("is_valid"))
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]

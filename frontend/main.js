@@ -78,6 +78,7 @@ const el = {
   dailyRevenueChart: document.getElementById('dailyRevenueChart'),
   funnelSurvivalChart: document.getElementById('funnelSurvivalChart'),
   attributionDeltaChart: document.getElementById('attributionDeltaChart'),
+  dateRangeBadge: document.getElementById('dateRangeBadge'),
   runIdBadge: document.getElementById('runIdBadge'),
   qualityList: document.getElementById('qualityList'),
   dataQualityPanel: document.getElementById('dataQualityPanel'),
@@ -995,6 +996,9 @@ async function refreshHistoryOnly() {
 function renderExecutiveDashboard(snapshot) {
   if (!snapshot) return;
 
+  if (el.dateRangeBadge) {
+    el.dateRangeBadge.textContent = `Range: ${snapshot.date_range || 'n/a'}`;
+  }
   el.runIdBadge.textContent = `Run: ${snapshot.run_id || 'n/a'} | Compare: ${snapshot.compare_window_runs || 1} run(s)`;
   const kpiModel = renderKpis(snapshot.kpis || [], snapshot);
   const highLeverageModels = renderHighLeverageReports(snapshot.high_leverage_reports || {}, snapshot);

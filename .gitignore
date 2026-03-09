@@ -49,10 +49,14 @@ data/analytics_runs/
 data/runtime/
 .natures_diet_runtime/
 src-tauri/data/analytics_runs/
+exports/
 CAMPAIGNS/
 src-tauri/CAMPAIGNS/
 temp_tauri_scaffold/
 .git-nested-backups/
+frontend/capture_frontend_audit.js
+frontend/capture_frontend_focus.js
+frontend/capture_scorecard_view.js
 
 # Share code, not planning/governance artifacts
 planning/
