@@ -50,6 +50,8 @@ data/runtime/
 .natures_diet_runtime/
 src-tauri/data/analytics_runs/
 exports/
+orders_*.csv
+shipstation*.csv
 CAMPAIGNS/
 src-tauri/CAMPAIGNS/
 temp_tauri_scaffold/

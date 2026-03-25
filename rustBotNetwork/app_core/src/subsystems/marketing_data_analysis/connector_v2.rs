@@ -15,6 +15,7 @@ use chrono_tz::Tz;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use reqwest::Client;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -110,6 +111,19 @@ pub struct WixSessionRawV1 {
     pub visitor_id: String,
     pub landing_path: String,
     pub traffic_source: Option<String>,
+}
+
+/// # NDOC
+/// component: `subsystems::marketing_data_analysis::connector_v2`
+/// purpose: Canonical Wix item row from GA4 BigQuery export (item-level ecommerce rows).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WixItemRowV1 {
+    pub event_date_utc: String,
+    pub item_id: Option<String>,
+    pub item_name: Option<String>,
+    pub sku: String,
+    pub quantity: u64,
+    pub item_revenue: Option<Decimal>,
 }
 
 /// # NDOC
@@ -406,6 +420,125 @@ impl ObservedReadOnlyAnalyticsConnectorV2 {
             rows: rows_out,
             row_count_hint,
         })
+    }
+
+    pub async fn fetch_wix_item_rows_bigquery(
+        &self,
+        config: &AnalyticsConnectorConfigV1,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<WixItemRowV1>, AnalyticsError> {
+        validate_analytics_connector_config_v1(config)?;
+        if config.mode != AnalyticsConnectorModeV1::ObservedReadOnly {
+            return Err(AnalyticsError::validation(
+                "analytics_wix_bigquery_requires_observed_mode",
+                "Wix BigQuery item export requires observed_read_only connector mode",
+                "mode",
+            ));
+        }
+        if !config.ga4.enabled {
+            return Err(AnalyticsError::validation(
+                "analytics_source_not_enabled",
+                "ga4 source is disabled in connector config",
+                "ga4.enabled",
+            ));
+        }
+        let start = parse_iso_date(start_date, "start_date")?;
+        let end = parse_iso_date(end_date, "end_date")?;
+        if start > end {
+            return Err(AnalyticsError::new(
+                "analytics_wix_bigquery_invalid_date_range",
+                "start_date must be <= end_date",
+                vec!["start_date".to_string(), "end_date".to_string()],
+                None,
+            ));
+        }
+
+        let credentials = self.load_service_account(config)?;
+        let project_id = self.resolve_bigquery_project_id(config, &credentials)?;
+        let dataset_id = self.resolve_bigquery_dataset_id(config)?;
+        let start_suffix = start.format("%Y%m%d").to_string();
+        let end_suffix = end.format("%Y%m%d").to_string();
+        let limit = self.bigquery_max_rows(config);
+        let sql = format!(
+            "SELECT
+                event_date AS event_date,
+                item.item_id AS item_id,
+                item.item_name AS item_name,
+                CAST(item.quantity AS INT64) AS quantity,
+                CAST(item.item_revenue AS STRING) AS item_revenue
+             FROM `{project}.{dataset}.events_*`, UNNEST(items) AS item
+             WHERE _TABLE_SUFFIX BETWEEN '{start}' AND '{end}'
+               AND event_name IN ('purchase', 'in_app_purchase')
+               AND item.quantity IS NOT NULL
+               AND (item.item_id IS NOT NULL OR item.item_name IS NOT NULL)
+             LIMIT {limit}",
+            project = project_id,
+            dataset = dataset_id,
+            start = start_suffix,
+            end = end_suffix,
+            limit = limit
+        );
+        let response = self.run_bigquery_query(config, &sql, limit).await?;
+        let rows = self.bigquery_rows_to_named_maps(&response);
+        let mut out = Vec::with_capacity(rows.len());
+        for (idx, mut row) in rows.into_iter().enumerate() {
+            let event_date = row
+                .remove("event_date")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    AnalyticsError::new(
+                        "analytics_bigquery_schema_mismatch",
+                        "BigQuery row missing event_date",
+                        vec!["ga4.bigquery_dataset_id".to_string()],
+                        Some(serde_json::json!({ "row_index": idx })),
+                    )
+                })?;
+            let item_id = row
+                .remove("item_id")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or(None);
+            let item_name = row
+                .remove("item_name")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or(None);
+            let sku = item_id
+                .clone()
+                .or_else(|| item_name.clone())
+                .ok_or_else(|| {
+                    AnalyticsError::new(
+                        "analytics_bigquery_schema_mismatch",
+                        "BigQuery row missing item_id and item_name",
+                        vec!["ga4.bigquery_dataset_id".to_string()],
+                        Some(serde_json::json!({ "row_index": idx })),
+                    )
+                })?;
+            let quantity = row
+                .remove("quantity")
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .unwrap_or(0)
+                .max(0) as u64;
+            let item_revenue = row
+                .remove("item_revenue")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .and_then(|value| Decimal::from_str_exact(&value).ok());
+            if quantity == 0 {
+                continue;
+            }
+            out.push(WixItemRowV1 {
+                event_date_utc: event_date,
+                item_id,
+                item_name,
+                sku,
+                quantity,
+                item_revenue,
+            });
+        }
+        Ok(out)
     }
 
     fn normalize_ga4_query(

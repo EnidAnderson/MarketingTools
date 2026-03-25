@@ -21,6 +21,7 @@ pub mod longitudinal;
 pub mod persistence;
 pub mod preflight;
 pub mod purchase_truth;
+pub mod subbly_wix_report;
 pub mod service;
 pub mod validators;
 
@@ -52,7 +53,7 @@ pub use connector_v2::{
     AnalyticsConnectorCapabilitiesV1, AnalyticsConnectorContractV2, ConnectorHealthStatusV1,
     ConnectorSourceCapabilityV1, ConnectorSourceHealthV1, Ga4RawQueryV1, Ga4RawReportRowV1,
     Ga4RawReportV1, ObservedReadOnlyAnalyticsConnectorV2, SimulatedAnalyticsConnectorV2,
-    WixSessionRawV1,
+    WixItemRowV1, WixSessionRawV1,
 };
 pub use contracts::{
     AnalyticsError, AnalyticsQualityControlsV1, AnalyticsRunMetadataV1,
@@ -108,5 +109,13 @@ pub use purchase_truth::{
     ga4_event_date_utc_v1, ga4_event_epoch_seconds_v1, ga4_purchase_revenue_v1,
     ga4_session_key_v1, ga4_transaction_id_v1, Ga4CanonicalPurchaseTruthStatsV1,
     Ga4CustomPurchaseMatchStatsV1,
+};
+pub use subbly_wix_report::{
+    build_subbly_wix_monthly_report, build_subbly_wix_monthly_report_with_bigquery,
+    default_report_paths, default_suggestions_path, default_wix_unmapped_path,
+    write_conflicts_csv, write_monthly_report_csv, write_suggestions_csv,
+    write_unresolved_csv, write_wix_unmapped_csv, MonthlySkuSalesRow,
+    SkuMappingConflict, SkuMappingSuggestion, SubblyWixReportOutput,
+    UnresolvedMixMatchItem, WixUnmappedItem,
 };
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};
