@@ -1,5 +1,4 @@
 use chrono::Utc;
-use md5::compute as md5_compute;
 use reqwest::{Client, Method, StatusCode};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -77,6 +76,7 @@ pub struct MailchimpBackfillConfigV1 {
     pub audience_id: String,
     pub store_id: String,
     pub allow_writes: bool,
+    pub confirm_automations_paused: bool,
     pub fallback_store_id: String,
     pub wix_site_id: String,
     pub wix_api_token: Option<String>,
@@ -110,11 +110,15 @@ impl MailchimpBackfillConfigV1 {
             audience_id: required_env("MAILCHIMP_AUDIENCE_ID")?,
             store_id: required_env("MAILCHIMP_STORE_ID")?,
             allow_writes: env_bool("MAILCHIMP_ALLOW_WRITES", false)?,
+            confirm_automations_paused: env_bool("MAILCHIMP_CONFIRM_AUTOMATIONS_PAUSED", false)?,
             fallback_store_id: env::var("MAILCHIMP_FALLBACK_STORE_ID")
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| DEFAULT_FALLBACK_STORE_ID.to_string()),
-            wix_site_id: required_env("WIX_SITE_ID")?,
+            wix_site_id: env::var("WIX_SITE_ID")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "unknown_wix_site".to_string()),
             wix_api_token: env::var("WIX_API_TOKEN")
                 .ok()
                 .filter(|value| !value.trim().is_empty()),
@@ -157,6 +161,7 @@ pub struct WixOrderBackfillV1 {
     pub paid_at_utc: Option<String>,
     pub order_status: String,
     pub financial_status: Option<String>,
+    pub fulfillment_status: Option<String>,
     pub customer_email: String,
     pub customer_first_name: Option<String>,
     pub customer_last_name: Option<String>,
@@ -210,6 +215,7 @@ pub struct DryRunManifestV1 {
     pub unique_products: usize,
     pub unique_variants: usize,
     pub gross_revenue_by_currency: BTreeMap<String, String>,
+    pub status_breakdown: BTreeMap<String, usize>,
     pub skipped_by_reason: BTreeMap<String, usize>,
     pub write_block_reasons: Vec<String>,
     pub notes: Vec<String>,
@@ -264,16 +270,17 @@ pub async fn run_wix_mailchimp_backfill_v1(
 ) -> Result<BackfillArtifactsV1, BackfillError> {
     fs::create_dir_all(&options.out_dir)?;
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(DEFAULT_MAILCHIMP_TIMEOUT_SECS))
+        .timeout(std::time::Duration::from_secs(
+            DEFAULT_MAILCHIMP_TIMEOUT_SECS,
+        ))
         .build()?;
 
     let source_orders = match options.source_mode {
         SourceModeV1::WixApi => fetch_wix_orders_api(&client, config, options).await?,
         SourceModeV1::WixCsv => {
-            let path = options
-                .csv_path
-                .as_ref()
-                .ok_or_else(|| BackfillError::Message("--csv is required for csv source mode".to_string()))?;
+            let path = options.csv_path.as_ref().ok_or_else(|| {
+                BackfillError::Message("--csv is required for csv source mode".to_string())
+            })?;
             parse_wix_orders_csv(path)?
         }
     };
@@ -281,7 +288,23 @@ pub async fn run_wix_mailchimp_backfill_v1(
     let valid = filter_valid_orders(source_orders);
     let manifest_prefix = phase_label(&options.phase);
     let store_decision = discover_store_target(&client, config, options).await?;
-    let manifest = build_manifest(&valid.kept, &valid.skipped, options, config, &store_decision);
+    let mut manifest = build_manifest(
+        &valid.kept,
+        &valid.skipped,
+        options,
+        config,
+        &store_decision,
+    );
+    if !config.allow_writes {
+        manifest
+            .write_block_reasons
+            .push("MAILCHIMP_ALLOW_WRITES=false".to_string());
+    }
+    if !matches!(options.phase, BackfillPhaseV1::DryRun) && !config.confirm_automations_paused {
+        manifest
+            .write_block_reasons
+            .push("MAILCHIMP_CONFIRM_AUTOMATIONS_PAUSED=false".to_string());
+    }
     let manifest_path = options
         .out_dir
         .join(format!("{manifest_prefix}_dry_run_manifest.json"));
@@ -328,9 +351,7 @@ pub async fn run_wix_mailchimp_backfill_v1(
     })
 }
 
-fn filter_valid_orders(
-    orders: Vec<WixOrderBackfillV1>,
-) -> FilteredOrdersV1 {
+fn filter_valid_orders(orders: Vec<WixOrderBackfillV1>) -> FilteredOrdersV1 {
     let mut kept = Vec::new();
     let mut skipped = Vec::new();
     for order in orders {
@@ -375,9 +396,18 @@ fn build_manifest(
     let mut products = BTreeSet::new();
     let mut variants = BTreeSet::new();
     let mut gross_by_currency: BTreeMap<String, Decimal> = BTreeMap::new();
+    let mut status_breakdown: BTreeMap<String, usize> = BTreeMap::new();
     let mut skipped_by_reason: BTreeMap<String, usize> = BTreeMap::new();
     for order in kept {
         customers.insert(normalize_email(&order.customer_email));
+        let normalized_status = order.order_status.trim().to_ascii_lowercase();
+        *status_breakdown
+            .entry(if normalized_status.is_empty() {
+                "unknown".to_string()
+            } else {
+                normalized_status
+            })
+            .or_insert(0) += 1;
         gross_by_currency
             .entry(order.currency.clone())
             .and_modify(|value| *value += order.total)
@@ -408,6 +438,7 @@ fn build_manifest(
             .into_iter()
             .map(|(currency, amount)| (currency, amount.round_dp(2).to_string()))
             .collect(),
+        status_breakdown,
         skipped_by_reason,
         write_block_reasons: decision.write_block_reasons.clone(),
         notes: decision.notes.clone(),
@@ -439,13 +470,12 @@ async fn discover_store_target(
         if looks_connected && !options.allow_existing_store_write {
             return Ok(StoreTargetDecision {
                 effective_store_id: config.fallback_store_id.clone(),
-                effective_store_mode: "fallback_dedicated_store_required".to_string(),
-                write_block_reasons: vec![
-                    "requested_mailchimp_store_appears_connected_or_non_custom".to_string(),
-                ],
+                effective_store_mode: "fallback_dedicated_store".to_string(),
+                write_block_reasons: Vec::new(),
                 notes: vec![format!(
-                    "store {} has platform {:?}; rerun with a dedicated fallback store or explicitly allow existing store writes",
+                    "store {} has platform {:?}; using fallback store {} instead of writing into the connected store",
                     store.id, store.platform
+                    , config.fallback_store_id
                 )],
             });
         }
@@ -471,14 +501,15 @@ async fn execute_mailchimp_backfill(
     effective_store_id: &str,
     orders: &[WixOrderBackfillV1],
 ) -> Result<Vec<ReconciliationRowV1>, BackfillError> {
-    ensure_store_exists(client, config, effective_store_id).await?;
-    let mut member_status_cache: HashMap<String, Option<String>> = HashMap::new();
+    ensure_single_currency(orders)?;
+    ensure_store_exists(client, config, effective_store_id, orders).await?;
     let mut rows = Vec::with_capacity(orders.len());
     for chunk in orders.chunks(config.budget.max_orders_per_write_batch) {
         for order in chunk {
-            upsert_mailchimp_customer(client, config, effective_store_id, order, &mut member_status_cache).await?;
+            upsert_mailchimp_customer(client, config, effective_store_id, order).await?;
             upsert_mailchimp_products(client, config, effective_store_id, order).await?;
             upsert_mailchimp_order(client, config, effective_store_id, order).await?;
+            upsert_mailchimp_order_lines(client, config, effective_store_id, order).await?;
             rows.push(ReconciliationRowV1 {
                 order_id: order.order_id.clone(),
                 customer_email: order.customer_email.clone(),
@@ -497,19 +528,28 @@ async fn ensure_store_exists(
     client: &Client,
     config: &MailchimpBackfillConfigV1,
     store_id: &str,
+    orders: &[WixOrderBackfillV1],
 ) -> Result<(), BackfillError> {
     let path = format!("/ecommerce/stores/{store_id}");
     let response = mailchimp_request(client, config, Method::GET, &path, None).await?;
     if response.status() == StatusCode::NOT_FOUND {
+        let currency_code = dominant_currency(orders)?;
         let body = json!({
             "id": store_id,
             "list_id": config.audience_id,
             "name": format!("Wix Backfill {}", config.wix_site_id),
             "platform": "Custom",
-            "currency_code": "USD",
+            "currency_code": currency_code,
             "is_syncing": false,
         });
-        mailchimp_request_expect_success(client, config, Method::POST, "/ecommerce/stores", Some(body)).await?;
+        mailchimp_request_expect_success(
+            client,
+            config,
+            Method::POST,
+            "/ecommerce/stores",
+            Some(body),
+        )
+        .await?;
         return Ok(());
     }
     if !response.status().is_success() {
@@ -527,45 +567,8 @@ async fn upsert_mailchimp_customer(
     config: &MailchimpBackfillConfigV1,
     store_id: &str,
     order: &WixOrderBackfillV1,
-    member_status_cache: &mut HashMap<String, Option<String>>,
 ) -> Result<(), BackfillError> {
     let email = normalize_email(&order.customer_email);
-    let subscriber_hash = format!("{:x}", md5_compute(email.as_bytes()));
-    let existing_status = if let Some(value) = member_status_cache.get(&subscriber_hash) {
-        value.clone()
-    } else {
-        let path = format!("/lists/{}/members/{}", config.audience_id, subscriber_hash);
-        let response = mailchimp_request(client, config, Method::GET, &path, None).await?;
-        let status = if response.status() == StatusCode::NOT_FOUND {
-            None
-        } else if response.status().is_success() {
-            let payload: Value = response.json().await?;
-            payload
-                .get("status")
-                .and_then(|value| value.as_str())
-                .map(|value| value.to_string())
-        } else {
-            return Err(BackfillError::Message(format!(
-                "mailchimp member lookup failed for {}: {}",
-                email,
-                response.status()
-            )));
-        };
-        member_status_cache.insert(subscriber_hash.clone(), status.clone());
-        status
-    };
-    let audience_payload = json!({
-        "email_address": email,
-        "status_if_new": existing_status.clone().unwrap_or_else(|| "transactional".to_string()),
-        "status": existing_status.clone().unwrap_or_else(|| "transactional".to_string()),
-        "merge_fields": {
-            "FNAME": order.customer_first_name.clone().unwrap_or_default(),
-            "LNAME": order.customer_last_name.clone().unwrap_or_default(),
-        }
-    });
-    let list_path = format!("/lists/{}/members/{}", config.audience_id, subscriber_hash);
-    mailchimp_request_expect_success(client, config, Method::PUT, &list_path, Some(audience_payload)).await?;
-
     let customer_id = stable_customer_id(&email);
     let customer_payload = json!({
         "id": customer_id,
@@ -575,7 +578,14 @@ async fn upsert_mailchimp_customer(
         "last_name": order.customer_last_name.clone().unwrap_or_default(),
     });
     let customer_path = format!("/ecommerce/stores/{store_id}/customers/{customer_id}");
-    mailchimp_request_expect_success(client, config, Method::PUT, &customer_path, Some(customer_payload)).await?;
+    mailchimp_request_expect_success(
+        client,
+        config,
+        Method::PUT,
+        &customer_path,
+        Some(customer_payload),
+    )
+    .await?;
     Ok(())
 }
 
@@ -598,7 +608,14 @@ async fn upsert_mailchimp_products(
             }]
         });
         let product_path = format!("/ecommerce/stores/{store_id}/products/{}", line.product_id);
-        mailchimp_request_expect_success(client, config, Method::PUT, &product_path, Some(product_payload)).await?;
+        mailchimp_request_expect_success(
+            client,
+            config,
+            Method::PUT,
+            &product_path,
+            Some(product_payload),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -615,18 +632,68 @@ async fn upsert_mailchimp_order(
         "currency_code": order.currency,
         "order_total": order.total.round_dp(2).to_string(),
         "processed_at_foreign": order.paid_at_utc.clone().unwrap_or_else(|| order.created_at_utc.clone()),
-        "financial_status": "paid",
-        "fulfillment_status": "fulfilled",
-        "lines": order.line_items.iter().map(|line| json!({
+        "financial_status": mailchimp_financial_status(order),
+        "fulfillment_status": mailchimp_fulfillment_status(order),
+        "tax_total": order.tax_total.round_dp(2).to_string(),
+        "shipping_total": order.shipping_total.round_dp(2).to_string(),
+        "discount_total": order.discount_total.round_dp(2).to_string(),
+    });
+    let path = format!(
+        "/ecommerce/stores/{store_id}/orders/{}",
+        stable_order_id(&order.order_id)
+    );
+    mailchimp_request_expect_success(client, config, Method::PUT, &path, Some(order_payload))
+        .await?;
+    Ok(())
+}
+
+async fn upsert_mailchimp_order_lines(
+    client: &Client,
+    config: &MailchimpBackfillConfigV1,
+    store_id: &str,
+    order: &WixOrderBackfillV1,
+) -> Result<(), BackfillError> {
+    let order_id = stable_order_id(&order.order_id);
+    let existing = mailchimp_request_expect_success(
+        client,
+        config,
+        Method::GET,
+        &format!("/ecommerce/stores/{store_id}/orders/{order_id}/lines?count=1000"),
+        None,
+    )
+    .await?;
+    let payload: Value = existing.json().await?;
+    let mut existing_ids = BTreeSet::new();
+    if let Some(lines) = payload.get("lines").and_then(|value| value.as_array()) {
+        for line in lines {
+            if let Some(id) = line.get("id").and_then(|value| value.as_str()) {
+                existing_ids.insert(id.to_string());
+            }
+        }
+    }
+    for line in &order.line_items {
+        let body = json!({
             "id": line.line_id,
             "product_id": line.product_id,
             "product_variant_id": line.variant_id,
             "quantity": line.quantity,
             "price": line.unit_price.round_dp(2).to_string(),
-        })).collect::<Vec<_>>()
-    });
-    let path = format!("/ecommerce/stores/{store_id}/orders/{}", stable_order_id(&order.order_id));
-    mailchimp_request_expect_success(client, config, Method::PUT, &path, Some(order_payload)).await?;
+        });
+        let path = if existing_ids.contains(&line.line_id) {
+            format!(
+                "/ecommerce/stores/{store_id}/orders/{order_id}/lines/{}",
+                line.line_id
+            )
+        } else {
+            format!("/ecommerce/stores/{store_id}/orders/{order_id}/lines")
+        };
+        let method = if existing_ids.contains(&line.line_id) {
+            Method::PATCH
+        } else {
+            Method::POST
+        };
+        mailchimp_request_expect_success(client, config, method, &path, Some(body)).await?;
+    }
     Ok(())
 }
 
@@ -635,25 +702,30 @@ async fn fetch_wix_orders_api(
     config: &MailchimpBackfillConfigV1,
     options: &BackfillRunOptionsV1,
 ) -> Result<Vec<WixOrderBackfillV1>, BackfillError> {
-    let token = config
-        .wix_api_token
-        .clone()
-        .ok_or_else(|| BackfillError::Message("WIX_API_TOKEN is required for api source mode".to_string()))?;
+    let wix_api_credential = config.wix_api_token.clone().ok_or_else(|| {
+        BackfillError::Message("WIX_API_TOKEN is required for api source mode".to_string())
+    })?;
     let mut cursor: Option<String> = None;
     let mut out = Vec::new();
     loop {
         let mut body = json!({
-            "paging": {
-                "limit": config.budget.max_source_page_size.min(DEFAULT_WIX_PAGE_LIMIT)
+            "query": {
+                "sort": [{"fieldName":"createdDate","order":"ASC"}]
             },
-            "sort": [{"fieldName":"createdDate","order":"ASC"}]
+            "cursorPaging": {
+                "limit": config.budget.max_source_page_size.min(DEFAULT_WIX_PAGE_LIMIT)
+            }
         });
         if let Some(cursor_value) = cursor.as_ref() {
-            body["cursorPaging"] = json!({ "cursor": cursor_value, "limit": config.budget.max_source_page_size });
+            body["cursorPaging"] = json!({
+                "cursor": cursor_value,
+                "limit": config.budget.max_source_page_size.min(DEFAULT_WIX_PAGE_LIMIT)
+            });
         }
         let response = client
             .post("https://www.wixapis.com/ecom/v1/orders/search")
-            .bearer_auth(token.clone())
+            .bearer_auth(wix_api_credential.clone())
+            .header("wix-site-id", config.wix_site_id.clone())
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -673,19 +745,34 @@ async fn fetch_wix_orders_api(
             .unwrap_or_default();
         for item in items {
             out.push(parse_wix_api_order(item)?);
+            if let Some(max_orders) = options.max_orders {
+                if out.len() >= max_orders {
+                    out.truncate(max_orders);
+                    return Ok(out);
+                }
+            }
             if out.len() as u64 >= config.budget.max_orders_per_run {
                 return Ok(out);
             }
         }
         cursor = payload
             .get("metadata")
-            .and_then(|value| value.get("cursor"))
+            .and_then(|value| value.get("cursors"))
+            .and_then(|value| value.get("next"))
             .and_then(|value| value.as_str())
             .map(|value| value.to_string())
             .or_else(|| {
                 payload
                     .get("pagingMetadata")
-                    .and_then(|value| value.get("cursor"))
+                    .and_then(|value| value.get("cursors"))
+                    .and_then(|value| value.get("next"))
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+            .or_else(|| {
+                payload
+                    .get("cursors")
+                    .and_then(|value| value.get("next"))
                     .and_then(|value| value.as_str())
                     .map(|value| value.to_string())
             });
@@ -703,14 +790,17 @@ fn parse_wix_api_order(value: Value) -> Result<WixOrderBackfillV1, BackfillError
     let created_at_utc = string_path(&value, &["createdDate"])
         .or_else(|| string_path(&value, &["_createdDate"]))
         .unwrap_or_else(|| Utc::now().to_rfc3339());
-    let paid_at_utc = string_path(&value, &["paymentStatus", "lastUpdated"]);
+    let paid_at_utc = string_path(&value, &["paymentStatus", "lastUpdated"])
+        .or_else(|| string_path(&value, &["updatedDate"]));
     let buyer_email = string_path(&value, &["buyerInfo", "email"])
         .or_else(|| string_path(&value, &["billingInfo", "contactDetails", "email"]))
         .unwrap_or_default();
     let order_status = string_path(&value, &["status"])
         .or_else(|| string_path(&value, &["fulfillmentStatus"]))
         .unwrap_or_else(|| "unknown".to_string());
-    let financial_status = string_path(&value, &["paymentStatus", "status"]);
+    let financial_status = string_path(&value, &["paymentStatus", "status"])
+        .or_else(|| string_path(&value, &["paymentStatus"]));
+    let fulfillment_status = string_path(&value, &["fulfillmentStatus"]);
     let currency = string_path(&value, &["currency"])
         .or_else(|| string_path(&value, &["priceSummary", "currency"]))
         .unwrap_or_else(|| "USD".to_string());
@@ -718,7 +808,8 @@ fn parse_wix_api_order(value: Value) -> Result<WixOrderBackfillV1, BackfillError
         .or_else(|| decimal_path(&value, &["priceSummary", "totalPrice", "amount"]))
         .unwrap_or(Decimal::ZERO);
     let subtotal = decimal_path(&value, &["priceSummary", "subtotal", "amount"]).unwrap_or(total);
-    let tax_total = decimal_path(&value, &["priceSummary", "tax", "amount"]).unwrap_or(Decimal::ZERO);
+    let tax_total =
+        decimal_path(&value, &["priceSummary", "tax", "amount"]).unwrap_or(Decimal::ZERO);
     let shipping_total =
         decimal_path(&value, &["priceSummary", "shipping", "amount"]).unwrap_or(Decimal::ZERO);
     let discount_total =
@@ -738,6 +829,7 @@ fn parse_wix_api_order(value: Value) -> Result<WixOrderBackfillV1, BackfillError
         paid_at_utc,
         order_status,
         financial_status,
+        fulfillment_status,
         customer_email: buyer_email,
         customer_first_name: string_path(&value, &["buyerInfo", "firstName"]),
         customer_last_name: string_path(&value, &["buyerInfo", "lastName"]),
@@ -754,8 +846,13 @@ fn parse_wix_api_order(value: Value) -> Result<WixOrderBackfillV1, BackfillError
     })
 }
 
-fn parse_wix_api_line_item(index: usize, value: Value) -> Result<WixOrderLineItemBackfillV1, BackfillError> {
-    let title = string_path(&value, &["productName"])
+fn parse_wix_api_line_item(
+    index: usize,
+    value: Value,
+) -> Result<WixOrderLineItemBackfillV1, BackfillError> {
+    let title = string_path(&value, &["productName", "original"])
+        .or_else(|| string_path(&value, &["productName", "translated"]))
+        .or_else(|| string_path(&value, &["productName"]))
         .or_else(|| string_path(&value, &["name"]))
         .unwrap_or_else(|| format!("line-{index}"));
     let product_id = string_path(&value, &["catalogReference", "catalogItemId"])
@@ -769,15 +866,19 @@ fn parse_wix_api_line_item(index: usize, value: Value) -> Result<WixOrderLineIte
         .unwrap_or(1);
     let unit_price = decimal_path(&value, &["price", "amount"])
         .or_else(|| decimal_path(&value, &["priceData", "price", "amount"]))
+        .or_else(|| decimal_path(&value, &["lineItemPrice", "amount"]))
         .unwrap_or(Decimal::ZERO);
     let line_total = decimal_path(&value, &["priceData", "totalPrice", "amount"])
+        .or_else(|| decimal_path(&value, &["totalPriceAfterTax", "amount"]))
+        .or_else(|| decimal_path(&value, &["totalPriceBeforeTax", "amount"]))
         .unwrap_or(unit_price * Decimal::from(quantity));
     Ok(WixOrderLineItemBackfillV1 {
         line_id: string_path(&value, &["id"]).unwrap_or_else(|| format!("{product_id}:{index}")),
         product_id,
         variant_id,
         title,
-        sku: string_path(&value, &["sku"]),
+        sku: string_path(&value, &["sku"])
+            .or_else(|| string_path(&value, &["physicalProperties", "sku"])),
         quantity,
         unit_price,
         line_total,
@@ -792,7 +893,14 @@ fn parse_wix_orders_csv(path: &Path) -> Result<Vec<WixOrderBackfillV1>, Backfill
         .enumerate()
         .map(|(idx, header)| (header.trim().to_ascii_lowercase(), idx))
         .collect::<HashMap<_, _>>();
-    let required = ["order_id", "customer_email", "currency", "line_title", "quantity", "unit_price"];
+    let required = [
+        "order_id",
+        "customer_email",
+        "currency",
+        "line_title",
+        "quantity",
+        "unit_price",
+    ];
     for field in required {
         if !index.contains_key(field) {
             return Err(BackfillError::Message(format!(
@@ -810,13 +918,16 @@ fn parse_wix_orders_csv(path: &Path) -> Result<Vec<WixOrderBackfillV1>, Backfill
 
     let mut out = Vec::new();
     for (order_id, rows) in grouped {
-        let first = rows.first().ok_or_else(|| BackfillError::Message("grouped csv order had no rows".to_string()))?;
+        let first = rows
+            .first()
+            .ok_or_else(|| BackfillError::Message("grouped csv order had no rows".to_string()))?;
         let currency = csv_value(first, &index, "currency").unwrap_or_else(|| "USD".to_string());
         let line_items = rows
             .iter()
             .enumerate()
             .map(|(idx, row)| {
-                let title = csv_value(row, &index, "line_title").unwrap_or_else(|| format!("line-{idx}"));
+                let title =
+                    csv_value(row, &index, "line_title").unwrap_or_else(|| format!("line-{idx}"));
                 let quantity = csv_value(row, &index, "quantity")
                     .and_then(|value| value.parse::<u32>().ok())
                     .unwrap_or(1);
@@ -824,7 +935,8 @@ fn parse_wix_orders_csv(path: &Path) -> Result<Vec<WixOrderBackfillV1>, Backfill
                     .and_then(|value| Decimal::from_str_exact(&value).ok())
                     .unwrap_or(Decimal::ZERO);
                 Ok(WixOrderLineItemBackfillV1 {
-                    line_id: csv_value(row, &index, "line_id").unwrap_or_else(|| format!("{order_id}:{idx}")),
+                    line_id: csv_value(row, &index, "line_id")
+                        .unwrap_or_else(|| format!("{order_id}:{idx}")),
                     product_id: csv_value(row, &index, "product_id")
                         .unwrap_or_else(|| stable_id_from_text(&title)),
                     variant_id: csv_value(row, &index, "variant_id")
@@ -837,15 +949,19 @@ fn parse_wix_orders_csv(path: &Path) -> Result<Vec<WixOrderBackfillV1>, Backfill
                 })
             })
             .collect::<Result<Vec<_>, BackfillError>>()?;
-        let total = line_items.iter().fold(Decimal::ZERO, |sum, line| sum + line.line_total);
+        let total = line_items
+            .iter()
+            .fold(Decimal::ZERO, |sum, line| sum + line.line_total);
         out.push(WixOrderBackfillV1 {
             order_id: order_id.clone(),
             created_at_utc: csv_value(first, &index, "created_at_utc")
                 .or_else(|| csv_value(first, &index, "created_at"))
                 .unwrap_or_else(|| Utc::now().to_rfc3339()),
             paid_at_utc: csv_value(first, &index, "paid_at_utc"),
-            order_status: csv_value(first, &index, "order_status").unwrap_or_else(|| "paid".to_string()),
+            order_status: csv_value(first, &index, "order_status")
+                .unwrap_or_else(|| "paid".to_string()),
             financial_status: csv_value(first, &index, "financial_status"),
+            fulfillment_status: csv_value(first, &index, "fulfillment_status"),
             customer_email: csv_value(first, &index, "customer_email").unwrap_or_default(),
             customer_first_name: csv_value(first, &index, "customer_first_name"),
             customer_last_name: csv_value(first, &index, "customer_last_name"),
@@ -864,7 +980,10 @@ fn parse_wix_orders_csv(path: &Path) -> Result<Vec<WixOrderBackfillV1>, Backfill
     Ok(out)
 }
 
-fn write_reconciliation_csv(path: &Path, rows: &[ReconciliationRowV1]) -> Result<(), BackfillError> {
+fn write_reconciliation_csv(
+    path: &Path,
+    rows: &[ReconciliationRowV1],
+) -> Result<(), BackfillError> {
     let mut writer = csv::Writer::from_path(path)?;
     writer.write_record([
         "order_id",
@@ -907,7 +1026,9 @@ fn build_idempotency_report(
         effective_store_id: effective_store_id.to_string(),
         checked_orders: orders.len(),
         duplicate_source_order_ids: duplicates,
-        notes: vec!["deterministic order ids are wix:<order_id>; reruns should upsert same ids".to_string()],
+        notes: vec![
+            "deterministic order ids are wix:<order_id>; reruns should upsert same ids".to_string(),
+        ],
     }
 }
 
@@ -916,7 +1037,8 @@ async fn mailchimp_get_json(
     config: &MailchimpBackfillConfigV1,
     path: &str,
 ) -> Result<Value, BackfillError> {
-    let response = mailchimp_request_expect_success(client, config, Method::GET, path, None).await?;
+    let response =
+        mailchimp_request_expect_success(client, config, Method::GET, path, None).await?;
     Ok(response.json().await?)
 }
 
@@ -980,6 +1102,65 @@ fn normalize_email(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
+fn dominant_currency(orders: &[WixOrderBackfillV1]) -> Result<String, BackfillError> {
+    ensure_single_currency(orders)?;
+    orders
+        .first()
+        .map(|order| order.currency.clone())
+        .ok_or_else(|| {
+            BackfillError::Message("no orders available to infer store currency".to_string())
+        })
+}
+
+fn ensure_single_currency(orders: &[WixOrderBackfillV1]) -> Result<(), BackfillError> {
+    let currencies = orders
+        .iter()
+        .map(|order| order.currency.trim())
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>();
+    if currencies.len() > 1 {
+        return Err(BackfillError::Message(format!(
+            "mixed currencies are not supported for a single Mailchimp store: {:?}",
+            currencies
+        )));
+    }
+    Ok(())
+}
+
+fn mailchimp_financial_status(order: &WixOrderBackfillV1) -> &'static str {
+    let status = order
+        .financial_status
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if status.contains("refund") {
+        "refunded"
+    } else if status.contains("paid") {
+        "paid"
+    } else if status.contains("pending") || status.contains("unpaid") {
+        "pending"
+    } else {
+        "paid"
+    }
+}
+
+fn mailchimp_fulfillment_status(order: &WixOrderBackfillV1) -> &'static str {
+    let status = order
+        .fulfillment_status
+        .as_deref()
+        .unwrap_or(order.order_status.as_str())
+        .trim()
+        .to_ascii_lowercase();
+    if status.contains("fulfilled") || status.contains("completed") || status.contains("shipped") {
+        "shipped"
+    } else if status.contains("cancel") {
+        "cancelled"
+    } else {
+        "pending"
+    }
+}
+
 fn required_env(name: &str) -> Result<String, BackfillError> {
     env::var(name)
         .map_err(|_| BackfillError::Message(format!("{name} is required")))
@@ -1011,11 +1192,7 @@ fn phase_label(phase: &BackfillPhaseV1) -> &'static str {
     }
 }
 
-fn csv_value(
-    row: &csv::StringRecord,
-    index: &HashMap<String, usize>,
-    key: &str,
-) -> Option<String> {
+fn csv_value(row: &csv::StringRecord, index: &HashMap<String, usize>, key: &str) -> Option<String> {
     index
         .get(key)
         .and_then(|idx| row.get(*idx))
@@ -1028,7 +1205,10 @@ fn string_path(value: &Value, path: &[&str]) -> Option<String> {
     for key in path {
         current = current.get(*key)?;
     }
-    current.as_str().map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+    current
+        .as_str()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn decimal_path(value: &Value, path: &[&str]) -> Option<Decimal> {
@@ -1041,13 +1221,34 @@ fn parse_wix_address(root: &Value, path: &[&str]) -> Option<BackfillAddressV1> {
         current = current.get(*key)?;
     }
     Some(BackfillAddressV1 {
-        name: current.get("fullName").and_then(|value| value.as_str()).map(str::to_string),
-        address1: current.get("addressLine1").and_then(|value| value.as_str()).map(str::to_string),
-        address2: current.get("addressLine2").and_then(|value| value.as_str()).map(str::to_string),
-        city: current.get("city").and_then(|value| value.as_str()).map(str::to_string),
-        province: current.get("subdivision").and_then(|value| value.as_str()).map(str::to_string),
-        postal_code: current.get("postalCode").and_then(|value| value.as_str()).map(str::to_string),
-        country_code: current.get("country").and_then(|value| value.as_str()).map(str::to_string),
+        name: current
+            .get("fullName")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        address1: current
+            .get("addressLine1")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        address2: current
+            .get("addressLine2")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        city: current
+            .get("city")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        province: current
+            .get("subdivision")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        postal_code: current
+            .get("postalCode")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        country_code: current
+            .get("country")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
     })
 }
 
@@ -1066,7 +1267,10 @@ mod tests {
 
     #[test]
     fn stable_ids_are_deterministic() {
-        assert_eq!(stable_customer_id(" Test@Example.com "), "wixcust:test@example.com");
+        assert_eq!(
+            stable_customer_id(" Test@Example.com "),
+            "wixcust:test@example.com"
+        );
         assert_eq!(stable_order_id("123"), "wix:123");
     }
 
@@ -1078,6 +1282,7 @@ mod tests {
             paid_at_utc: None,
             order_status: "paid".to_string(),
             financial_status: Some("paid".to_string()),
+            fulfillment_status: None,
             customer_email: "test@example.com".to_string(),
             customer_first_name: None,
             customer_last_name: None,
@@ -1117,5 +1322,139 @@ mod tests {
         fs::write(&path, "order_id,customer_email\n1,test@example.com\n").unwrap();
         let err = parse_wix_orders_csv(&path).unwrap_err().to_string();
         assert!(err.contains("missing required column"));
+    }
+
+    #[test]
+    fn financial_and_fulfillment_status_mapping_is_conservative() {
+        let refunded = WixOrderBackfillV1 {
+            order_id: "1".to_string(),
+            created_at_utc: Utc::now().to_rfc3339(),
+            paid_at_utc: None,
+            order_status: "processing".to_string(),
+            financial_status: Some("REFUNDED".to_string()),
+            fulfillment_status: Some("NOT_FULFILLED".to_string()),
+            customer_email: "test@example.com".to_string(),
+            customer_first_name: None,
+            customer_last_name: None,
+            currency: "USD".to_string(),
+            total: Decimal::from(10),
+            subtotal: Decimal::from(10),
+            tax_total: Decimal::ZERO,
+            shipping_total: Decimal::ZERO,
+            discount_total: Decimal::ZERO,
+            line_items: vec![WixOrderLineItemBackfillV1 {
+                line_id: "l1".to_string(),
+                product_id: "p1".to_string(),
+                variant_id: "v1".to_string(),
+                title: "Product".to_string(),
+                sku: Some("SKU".to_string()),
+                quantity: 1,
+                unit_price: Decimal::from(10),
+                line_total: Decimal::from(10),
+            }],
+            shipping_address: None,
+            billing_address: None,
+            source_payload_ref: None,
+        };
+        assert_eq!(mailchimp_financial_status(&refunded), "refunded");
+        assert_eq!(mailchimp_fulfillment_status(&refunded), "shipped");
+
+        let shipped = WixOrderBackfillV1 {
+            order_status: "approved".to_string(),
+            financial_status: Some("PAID".to_string()),
+            fulfillment_status: Some("FULFILLED".to_string()),
+            ..refunded
+        };
+        assert_eq!(mailchimp_financial_status(&shipped), "paid");
+        assert_eq!(mailchimp_fulfillment_status(&shipped), "shipped");
+    }
+
+    #[test]
+    fn single_currency_guard_rejects_mixed_currency_runs() {
+        let usd = WixOrderBackfillV1 {
+            order_id: "1".to_string(),
+            created_at_utc: Utc::now().to_rfc3339(),
+            paid_at_utc: None,
+            order_status: "paid".to_string(),
+            financial_status: Some("paid".to_string()),
+            fulfillment_status: None,
+            customer_email: "test@example.com".to_string(),
+            customer_first_name: None,
+            customer_last_name: None,
+            currency: "USD".to_string(),
+            total: Decimal::from(10),
+            subtotal: Decimal::from(10),
+            tax_total: Decimal::ZERO,
+            shipping_total: Decimal::ZERO,
+            discount_total: Decimal::ZERO,
+            line_items: vec![WixOrderLineItemBackfillV1 {
+                line_id: "l1".to_string(),
+                product_id: "p1".to_string(),
+                variant_id: "v1".to_string(),
+                title: "Product".to_string(),
+                sku: Some("SKU".to_string()),
+                quantity: 1,
+                unit_price: Decimal::from(10),
+                line_total: Decimal::from(10),
+            }],
+            shipping_address: None,
+            billing_address: None,
+            source_payload_ref: None,
+        };
+        let eur = WixOrderBackfillV1 {
+            order_id: "2".to_string(),
+            currency: "EUR".to_string(),
+            ..usd.clone()
+        };
+        let err = ensure_single_currency(&[usd, eur]).unwrap_err().to_string();
+        assert!(err.contains("mixed currencies"));
+    }
+
+    #[test]
+    fn parse_wix_api_order_handles_live_shape_fields() {
+        let payload = json!({
+            "id": "order-1",
+            "number": "41331",
+            "createdDate": "2026-03-27T18:05:20.234Z",
+            "updatedDate": "2026-03-27T18:05:29.671Z",
+            "paymentStatus": "PAID",
+            "fulfillmentStatus": "NOT_FULFILLED",
+            "buyerInfo": {
+                "email": "customer@example.com"
+            },
+            "currency": "USD",
+            "priceSummary": {
+                "subtotal": {"amount": "89.98"},
+                "total": {"amount": "89.98"}
+            },
+            "lineItems": [{
+                "id": "line-1",
+                "productName": {
+                    "original": "Simply Raw® All Flavors Mix"
+                },
+                "catalogReference": {
+                    "catalogItemId": "catalog-1",
+                    "options": {
+                        "variantId": "variant-1"
+                    }
+                },
+                "quantity": 1,
+                "physicalProperties": {
+                    "sku": "NDP-04140031B1C1T"
+                },
+                "price": {"amount": "89.98"},
+                "totalPriceAfterTax": {"amount": "89.98"}
+            }]
+        });
+        let order = parse_wix_api_order(payload).unwrap();
+        assert_eq!(order.financial_status.as_deref(), Some("PAID"));
+        assert_eq!(order.fulfillment_status.as_deref(), Some("NOT_FULFILLED"));
+        assert_eq!(order.paid_at_utc.as_deref(), Some("2026-03-27T18:05:29.671Z"));
+        assert_eq!(order.line_items.len(), 1);
+        assert_eq!(order.line_items[0].title, "Simply Raw® All Flavors Mix");
+        assert_eq!(
+            order.line_items[0].sku.as_deref(),
+            Some("NDP-04140031B1C1T")
+        );
     }
 }

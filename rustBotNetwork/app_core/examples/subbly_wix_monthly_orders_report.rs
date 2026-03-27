@@ -1,9 +1,8 @@
 use app_core::subsystems::marketing_data_analysis::{
     analytics_connector_config_from_env, build_subbly_wix_monthly_report,
-    build_subbly_wix_monthly_report_with_bigquery, default_report_paths,
+    build_subbly_wix_monthly_report_with_bigquery, default_report_paths, default_suggestions_path,
     default_wix_unmapped_path, write_conflicts_csv, write_monthly_report_csv,
-    write_unresolved_csv, write_wix_unmapped_csv, default_suggestions_path,
-    write_suggestions_csv,
+    write_suggestions_csv, write_unresolved_csv, write_wix_unmapped_csv,
     ObservedReadOnlyAnalyticsConnectorV2,
 };
 use chrono::Utc;
@@ -110,7 +109,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_suggestions_csv(&suggestions_path, &report.suggestions)?;
 
     println!("Monthly SKU report: {}", report_path.display());
-    println!("Unresolved Mix & Match items: {}", unresolved_path.display());
+    println!(
+        "Unresolved Mix & Match items: {}",
+        unresolved_path.display()
+    );
     println!("SKU mapping conflicts: {}", conflicts_path.display());
     if !report.wix_unmapped.is_empty() {
         println!("Unmapped Wix items: {}", wix_unmapped_path.display());

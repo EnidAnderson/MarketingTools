@@ -21,8 +21,8 @@ pub mod longitudinal;
 pub mod persistence;
 pub mod preflight;
 pub mod purchase_truth;
-pub mod subbly_wix_report;
 pub mod service;
+pub mod subbly_wix_report;
 pub mod validators;
 
 pub use analytics_config::{
@@ -71,10 +71,9 @@ pub use contracts::{
     HistoricalAnalysisV1, IngestCleaningNoteV1, InsightPermissionCardV1, InsightPermissionStateV1,
     InsightSampleContextV1, KpiAttributionNarrativeV1, KpiDeltaV1, KpiTileV1, LandingContextV1,
     MockAnalyticsArtifactV1, MockAnalyticsRequestV1, OperatorSummaryV1, PersistedAnalyticsRunV1,
-    PortfolioRowV1, PurchaseTruthAuditReportV1, PurchaseTruthSliceV1,
-    QualityCheckApplicabilityV1, QualityCheckV1, ReconciliationPolicyV1,
-    ReconciliationToleranceV1, RevenueTruthReportV1, SessionExperimentContextV1,
-    SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1,
+    PortfolioRowV1, PurchaseTruthAuditReportV1, PurchaseTruthSliceV1, QualityCheckApplicabilityV1,
+    QualityCheckV1, ReconciliationPolicyV1, ReconciliationToleranceV1, RevenueTruthReportV1,
+    SessionExperimentContextV1, SourceCoverageV1, SourceFreshnessSlaV1, SourceWindowGranularityV1,
     SourceWindowObservationV1, StorefrontBehaviorRowV1, StorefrontBehaviorSummaryV1,
     ValidationCheck, VisitorTypeV1,
 };
@@ -106,16 +105,14 @@ pub use preflight::{
 pub use purchase_truth::{
     build_purchase_truth_audit_v1, ga4_canonical_purchase_truth_key_v1,
     ga4_canonical_purchase_truth_stats_v1, ga4_custom_purchase_match_stats_v1,
-    ga4_event_date_utc_v1, ga4_event_epoch_seconds_v1, ga4_purchase_revenue_v1,
-    ga4_session_key_v1, ga4_transaction_id_v1, Ga4CanonicalPurchaseTruthStatsV1,
-    Ga4CustomPurchaseMatchStatsV1,
-};
-pub use subbly_wix_report::{
-    build_subbly_wix_monthly_report, build_subbly_wix_monthly_report_with_bigquery,
-    default_report_paths, default_suggestions_path, default_wix_unmapped_path,
-    write_conflicts_csv, write_monthly_report_csv, write_suggestions_csv,
-    write_unresolved_csv, write_wix_unmapped_csv, MonthlySkuSalesRow,
-    SkuMappingConflict, SkuMappingSuggestion, SubblyWixReportOutput,
-    UnresolvedMixMatchItem, WixUnmappedItem,
+    ga4_event_date_utc_v1, ga4_event_epoch_seconds_v1, ga4_purchase_revenue_v1, ga4_session_key_v1,
+    ga4_transaction_id_v1, Ga4CanonicalPurchaseTruthStatsV1, Ga4CustomPurchaseMatchStatsV1,
 };
 pub use service::{DefaultMarketAnalysisService, MarketAnalysisService};
+pub use subbly_wix_report::{
+    build_subbly_wix_monthly_report, build_subbly_wix_monthly_report_with_bigquery,
+    default_report_paths, default_suggestions_path, default_wix_unmapped_path, write_conflicts_csv,
+    write_monthly_report_csv, write_suggestions_csv, write_unresolved_csv, write_wix_unmapped_csv,
+    MonthlySkuSalesRow, SkuMappingConflict, SkuMappingSuggestion, SubblyWixReportOutput,
+    UnresolvedMixMatchItem, WixUnmappedItem,
+};

@@ -71,14 +71,12 @@ pub fn ga4_transaction_id_v1(event: &Ga4EventRawV1) -> Option<String> {
 }
 
 pub fn ga4_event_timestamp_micros_v1(event: &Ga4EventRawV1) -> Option<i64> {
-    event
-        .event_timestamp_micros
-        .or_else(|| {
-            event
-                .dimensions
-                .get("event_timestamp_micros")
-                .and_then(|value| value.trim().parse::<i64>().ok())
-        })
+    event.event_timestamp_micros.or_else(|| {
+        event
+            .dimensions
+            .get("event_timestamp_micros")
+            .and_then(|value| value.trim().parse::<i64>().ok())
+    })
 }
 
 pub fn ga4_event_epoch_seconds_v1(event: &Ga4EventRawV1) -> Option<i64> {
@@ -230,30 +228,18 @@ pub fn build_purchase_truth_audit_v1(
                 continue;
             }
             let revenue = ga4_purchase_revenue_v1(event).unwrap_or(0.0).max(0.0);
-            increment_slice(
-                &mut by_day,
-                &slice_day(event),
-                |slice| {
-                    slice.canonical_unique_purchases += 1;
-                    slice.canonical_revenue_usd += revenue;
-                },
-            );
-            increment_slice(
-                &mut by_device,
-                &slice_device(event),
-                |slice| {
-                    slice.canonical_unique_purchases += 1;
-                    slice.canonical_revenue_usd += revenue;
-                },
-            );
-            increment_slice(
-                &mut by_source,
-                &slice_source_medium(event),
-                |slice| {
-                    slice.canonical_unique_purchases += 1;
-                    slice.canonical_revenue_usd += revenue;
-                },
-            );
+            increment_slice(&mut by_day, &slice_day(event), |slice| {
+                slice.canonical_unique_purchases += 1;
+                slice.canonical_revenue_usd += revenue;
+            });
+            increment_slice(&mut by_device, &slice_device(event), |slice| {
+                slice.canonical_unique_purchases += 1;
+                slice.canonical_revenue_usd += revenue;
+            });
+            increment_slice(&mut by_source, &slice_source_medium(event), |slice| {
+                slice.canonical_unique_purchases += 1;
+                slice.canonical_revenue_usd += revenue;
+            });
         } else if is_ga4_custom_purchase_event_v1(&event.event_name) {
             let matched = ga4_event_epoch_seconds_v1(event)
                 .map(|event_second| {
@@ -283,8 +269,7 @@ pub fn build_purchase_truth_audit_v1(
     let slices_by_day = finalize_slices("day", by_day, SliceOrder::DayAsc);
     let slices_by_device_category =
         finalize_slices("device_category", by_device, SliceOrder::RiskDesc);
-    let slices_by_source_medium =
-        finalize_slices("source_medium", by_source, SliceOrder::RiskDesc);
+    let slices_by_source_medium = finalize_slices("source_medium", by_source, SliceOrder::RiskDesc);
     let dominant_orphan_device_category = slices_by_device_category
         .iter()
         .max_by_key(|slice| slice.custom_purchase_orphan_rows)
@@ -480,9 +465,7 @@ where
 }
 
 fn option_label(value: &Option<String>) -> String {
-    value
-        .clone()
-        .unwrap_or_else(|| "none".to_string())
+    value.clone().unwrap_or_else(|| "none".to_string())
 }
 
 fn round4(value: f64) -> f64 {
@@ -540,10 +523,7 @@ mod tests {
         orphan_custom.ga_session_id = Some(202);
         orphan_custom.session_id = Some("ga_session:202".to_string());
 
-        let report = build_purchase_truth_audit_v1(
-            &[canonical, overlap_custom, orphan_custom],
-            30,
-        );
+        let report = build_purchase_truth_audit_v1(&[canonical, overlap_custom, orphan_custom], 30);
 
         assert_eq!(report.canonical_unique_purchases, 1);
         assert_eq!(report.custom_purchase_rows, 2);

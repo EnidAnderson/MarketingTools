@@ -115,7 +115,11 @@ pub async fn build_subbly_wix_monthly_report_with_bigquery(
     let (mapping, mapping_enabled) = load_mapping_csv(mapping_csv_path)?;
     let (wix_units, wix_revenues, wix_unmapped, wix_items) =
         wix_units_from_bigquery_rows(&rows, &mapping);
-    let wix_unmapped = if mapping_enabled { wix_unmapped } else { Vec::new() };
+    let wix_unmapped = if mapping_enabled {
+        wix_unmapped
+    } else {
+        Vec::new()
+    };
     build_subbly_report_core(
         subbly_csv_path,
         wix_units,
@@ -126,7 +130,10 @@ pub async fn build_subbly_wix_monthly_report_with_bigquery(
     )
 }
 
-pub fn write_monthly_report_csv(path: &Path, rows: &[MonthlySkuSalesRow]) -> Result<(), AnalyticsError> {
+pub fn write_monthly_report_csv(
+    path: &Path,
+    rows: &[MonthlySkuSalesRow],
+) -> Result<(), AnalyticsError> {
     let mut writer = csv::Writer::from_path(path).map_err(|err| {
         AnalyticsError::new(
             "monthly_report_write_failed",
@@ -166,7 +173,10 @@ pub fn write_monthly_report_csv(path: &Path, rows: &[MonthlySkuSalesRow]) -> Res
                 row.wix_units.to_string().as_str(),
                 row.combined_units.to_string().as_str(),
                 row.subbly_revenue.round_dp(2).to_string().as_str(),
-                row.subbly_reconstructed_revenue.round_dp(2).to_string().as_str(),
+                row.subbly_reconstructed_revenue
+                    .round_dp(2)
+                    .to_string()
+                    .as_str(),
                 row.wix_revenue.round_dp(2).to_string().as_str(),
                 row.combined_revenue.round_dp(2).to_string().as_str(),
             ])
@@ -186,7 +196,10 @@ pub fn write_monthly_report_csv(path: &Path, rows: &[MonthlySkuSalesRow]) -> Res
     })
 }
 
-pub fn write_unresolved_csv(path: &Path, rows: &[UnresolvedMixMatchItem]) -> Result<(), AnalyticsError> {
+pub fn write_unresolved_csv(
+    path: &Path,
+    rows: &[UnresolvedMixMatchItem],
+) -> Result<(), AnalyticsError> {
     let mut writer = csv::Writer::from_path(path).map_err(|err| {
         AnalyticsError::new(
             "unresolved_report_write_failed",
@@ -197,12 +210,7 @@ pub fn write_unresolved_csv(path: &Path, rows: &[UnresolvedMixMatchItem]) -> Res
     })?;
 
     writer
-        .write_record([
-            "order_id",
-            "shipping_date",
-            "selection_text",
-            "item_name",
-        ])
+        .write_record(["order_id", "shipping_date", "selection_text", "item_name"])
         .map_err(|err| {
             AnalyticsError::internal(
                 "unresolved_report_write_failed",
@@ -276,7 +284,10 @@ pub fn write_conflicts_csv(path: &Path, rows: &[SkuMappingConflict]) -> Result<(
     })
 }
 
-pub fn write_suggestions_csv(path: &Path, rows: &[SkuMappingSuggestion]) -> Result<(), AnalyticsError> {
+pub fn write_suggestions_csv(
+    path: &Path,
+    rows: &[SkuMappingSuggestion],
+) -> Result<(), AnalyticsError> {
     let mut writer = csv::Writer::from_path(path).map_err(|err| {
         AnalyticsError::new(
             "suggestions_report_write_failed",
@@ -337,7 +348,13 @@ pub fn write_wix_unmapped_csv(path: &Path, rows: &[WixUnmappedItem]) -> Result<(
     })?;
 
     writer
-        .write_record(["month", "raw_sku", "quantity", "item_name", "classification"])
+        .write_record([
+            "month",
+            "raw_sku",
+            "quantity",
+            "item_name",
+            "classification",
+        ])
         .map_err(|err| {
             AnalyticsError::internal(
                 "wix_unmapped_report_write_failed",
@@ -378,7 +395,11 @@ fn header_index_map(headers: &StringRecord) -> HashMap<String, usize> {
         .collect()
 }
 
-fn get_value<'a>(record: &'a StringRecord, index: &HashMap<String, usize>, key: &str) -> Option<String> {
+fn get_value<'a>(
+    record: &'a StringRecord,
+    index: &HashMap<String, usize>,
+    key: &str,
+) -> Option<String> {
     let idx = index.get(key)?;
     record.get(*idx).map(|value| value.trim().to_string())
 }
@@ -507,7 +528,11 @@ fn extract_bag_plan_name(products: &str) -> Option<String> {
 
 fn extract_product_extras(products: &str) -> Vec<(String, u32)> {
     let mut extras = Vec::new();
-    for part in products.split(',').map(|value| value.trim()).filter(|value| !value.is_empty()) {
+    for part in products
+        .split(',')
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
         if part.contains("Bag Plan") {
             continue;
         }
@@ -540,7 +565,11 @@ fn resolve_sku_from_name(
     let mut best: Option<(String, f64)> = None;
     for (candidate_name, sku) in name_to_sku.iter() {
         let score = jaccard_similarity(&input_tokens, &tokenize(candidate_name));
-        if score >= 0.55 && best.as_ref().map(|(_, best_score)| score > *best_score).unwrap_or(true)
+        if score >= 0.55
+            && best
+                .as_ref()
+                .map(|(_, best_score)| score > *best_score)
+                .unwrap_or(true)
         {
             best = Some((sku.clone(), score));
         }
@@ -582,12 +611,10 @@ fn parse_wix_bigquery_csv(path: &Path) -> Result<BTreeMap<(String, String), u64>
         })?
         .clone();
 
-    let date_col = find_column(&headers, &[
-        "order_date",
-        "order_date_utc",
-        "event_date",
-        "date",
-    ]);
+    let date_col = find_column(
+        &headers,
+        &["order_date", "order_date_utc", "event_date", "date"],
+    );
     let sku_col = find_column(&headers, &["sku", "item_sku", "item_id", "product_sku"]);
     let qty_col = find_column(&headers, &["quantity", "item_quantity", "qty"]);
 
@@ -682,7 +709,9 @@ fn wix_units_from_bigquery_rows(
             entry.0 += row.quantity;
         }
         if let Some(item_name) = row.item_name.as_ref() {
-            wix_items.entry(row.sku.clone()).or_insert_with(|| item_name.clone());
+            wix_items
+                .entry(row.sku.clone())
+                .or_insert_with(|| item_name.clone());
         }
     }
     let unmapped_rows = unmapped
@@ -792,7 +821,8 @@ fn build_subbly_report_core(
         }
 
         let products = get_value(record, &header_index, "Products").unwrap_or_default();
-        let add_supplements = get_value(record, &header_index, "Add Supplements").unwrap_or_default();
+        let add_supplements =
+            get_value(record, &header_index, "Add Supplements").unwrap_or_default();
         let add_treats = get_value(record, &header_index, "Add Treats").unwrap_or_default();
         let order_subtotal = get_value(record, &header_index, "Order Subtotal")
             .and_then(|value| parse_decimal(&value))
@@ -834,7 +864,8 @@ fn build_subbly_report_core(
             .and_then(|value| parse_decimal(&value))
             .unwrap_or(Decimal::ZERO);
         let products = get_value(&record, &header_index, "Products").unwrap_or_default();
-        let add_supplements = get_value(&record, &header_index, "Add Supplements").unwrap_or_default();
+        let add_supplements =
+            get_value(&record, &header_index, "Add Supplements").unwrap_or_default();
         let add_treats = get_value(&record, &header_index, "Add Treats").unwrap_or_default();
 
         let mut direct_items: Vec<(String, u64)> = Vec::new();
@@ -843,7 +874,9 @@ fn build_subbly_report_core(
         if !sku_field.is_empty() {
             for (sku, qty) in parse_sku_quantities(&sku_field) {
                 let normalized = normalize_name(&sku);
-                let final_sku = mapping.lookup("subbly", &normalized).unwrap_or_else(|| sku.clone());
+                let final_sku = mapping
+                    .lookup("subbly", &normalized)
+                    .unwrap_or_else(|| sku.clone());
                 direct_items.push((final_sku, qty as u64));
             }
         } else if !mix_match_columns.is_empty() {
@@ -920,7 +953,9 @@ fn build_subbly_report_core(
 
         let fallback_revenue_per_unit = order_subtotal / Decimal::from(total_units);
         let plan_revenue_budget = if use_plan_aware_allocation && extra_units > 0 {
-            bag_plan_baseline.unwrap_or(order_subtotal).min(order_subtotal)
+            bag_plan_baseline
+                .unwrap_or(order_subtotal)
+                .min(order_subtotal)
         } else {
             order_subtotal
         };
@@ -948,7 +983,11 @@ fn build_subbly_report_core(
         for (sku, qty) in direct_items {
             let key = (month.clone(), sku.clone());
             *subbly_direct.entry(key.clone()).or_insert(0) += qty;
-            let plan_qty = remaining_plan_counts.get(&sku).copied().unwrap_or(0).min(qty);
+            let plan_qty = remaining_plan_counts
+                .get(&sku)
+                .copied()
+                .unwrap_or(0)
+                .min(qty);
             if let Some(remaining) = remaining_plan_counts.get_mut(&sku) {
                 *remaining = remaining.saturating_sub(plan_qty);
             }
@@ -966,7 +1005,11 @@ fn build_subbly_report_core(
         for (sku, qty) in reconstructed_items {
             let key = (month.clone(), sku.clone());
             *subbly_reconstructed.entry(key.clone()).or_insert(0) += qty;
-            let plan_qty = remaining_plan_counts.get(&sku).copied().unwrap_or(0).min(qty);
+            let plan_qty = remaining_plan_counts
+                .get(&sku)
+                .copied()
+                .unwrap_or(0)
+                .min(qty);
             if let Some(remaining) = remaining_plan_counts.get_mut(&sku) {
                 *remaining = remaining.saturating_sub(plan_qty);
             }
@@ -977,7 +1020,9 @@ fn build_subbly_report_core(
             } else {
                 fallback_revenue_per_unit * Decimal::from(qty)
             };
-            *subbly_reconstructed_revenue.entry(key).or_insert(Decimal::ZERO) += revenue;
+            *subbly_reconstructed_revenue
+                .entry(key)
+                .or_insert(Decimal::ZERO) += revenue;
         }
     }
 
@@ -1002,8 +1047,9 @@ fn build_subbly_report_core(
         let wix = *wix_units.get(&key).unwrap_or(&0);
         let combined = subbly + recon + wix;
         let subbly_revenue = *subbly_direct_revenue.get(&key).unwrap_or(&Decimal::ZERO);
-        let subbly_reconstructed_revenue =
-            *subbly_reconstructed_revenue.get(&key).unwrap_or(&Decimal::ZERO);
+        let subbly_reconstructed_revenue = *subbly_reconstructed_revenue
+            .get(&key)
+            .unwrap_or(&Decimal::ZERO);
         let wix_revenue = *wix_revenues.get(&key).unwrap_or(&Decimal::ZERO);
         let combined_revenue = subbly_revenue + subbly_reconstructed_revenue + wix_revenue;
         rows.push(MonthlySkuSalesRow {
@@ -1051,7 +1097,9 @@ pub fn default_wix_unmapped_path(out_dir: &Path, tag: &str) -> PathBuf {
 }
 
 pub fn default_suggestions_path(out_dir: &Path, tag: &str) -> PathBuf {
-    out_dir.join(format!("subbly_wix_monthly_orders_mapping_suggestions_{tag}.csv"))
+    out_dir.join(format!(
+        "subbly_wix_monthly_orders_mapping_suggestions_{tag}.csv"
+    ))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1069,7 +1117,6 @@ impl SkuMappingRegistry {
         }
         self.global.get(normalized_value).cloned()
     }
-
 }
 
 fn suggest_mappings_from_names(

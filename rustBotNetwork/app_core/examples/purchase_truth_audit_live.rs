@@ -190,7 +190,9 @@ fn resolve_date_window(
     options: &CliOptions,
 ) -> Result<(NaiveDate, NaiveDate), Box<dyn std::error::Error>> {
     let today = Utc::now().date_naive();
-    let end = options.end_date.unwrap_or_else(|| today - Duration::days(1));
+    let end = options
+        .end_date
+        .unwrap_or_else(|| today - Duration::days(1));
     let start = options
         .start_date
         .unwrap_or_else(|| end - Duration::days(options.window_days.saturating_sub(1)));
@@ -224,7 +226,8 @@ fn parse_args(args: Vec<String>) -> Result<CliOptions, Box<dyn std::error::Error
             }
             "--window-days" => {
                 index += 1;
-                options.window_days = required_arg(&args, index, "--window-days")?.parse::<i64>()?;
+                options.window_days =
+                    required_arg(&args, index, "--window-days")?.parse::<i64>()?;
             }
             flag => return Err(format!("unrecognized flag: {flag}").into()),
         }
