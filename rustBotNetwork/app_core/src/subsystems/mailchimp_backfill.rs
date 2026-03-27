@@ -627,29 +627,37 @@ fn build_customer_batch_operations(store_id: &str, orders: &[WixOrderBackfillV1]
 }
 
 fn build_product_batch_operations(store_id: &str, orders: &[WixOrderBackfillV1]) -> Vec<Value> {
-    let mut products = BTreeMap::<String, Value>::new();
+    let mut products = BTreeMap::<String, (String, BTreeMap<String, Value>)>::new();
     for order in orders {
         for line in &order.line_items {
-            products.entry(line.product_id.clone()).or_insert_with(|| {
+            let entry = products
+                .entry(line.product_id.clone())
+                .or_insert_with(|| (line.title.clone(), BTreeMap::new()));
+            entry.1.entry(line.variant_id.clone()).or_insert_with(|| {
                 json!({
-                    "method": "PUT",
-                    "path": format!("/ecommerce/stores/{store_id}/products/{}", line.product_id),
-                    "body": serde_json::to_string(&json!({
-                        "id": line.product_id,
-                        "title": line.title,
-                        "variants": [{
-                            "id": line.variant_id,
-                            "title": line.title,
-                            "sku": line.sku.clone().unwrap_or_default(),
-                            "price": line.unit_price.round_dp(2).to_string(),
-                            "inventory_quantity": 0
-                        }]
-                    })).unwrap_or_default(),
+                    "id": line.variant_id,
+                    "title": line.title,
+                    "sku": line.sku.clone().unwrap_or_default(),
+                    "price": line.unit_price.round_dp(2).to_string(),
+                    "inventory_quantity": 0
                 })
             });
         }
     }
-    products.into_values().collect()
+    products
+        .into_iter()
+        .map(|(product_id, (title, variants))| {
+            json!({
+                "method": "PUT",
+                "path": format!("/ecommerce/stores/{store_id}/products/{product_id}"),
+                "body": serde_json::to_string(&json!({
+                    "id": product_id,
+                    "title": title,
+                    "variants": variants.into_values().collect::<Vec<_>>()
+                })).unwrap_or_default(),
+            })
+        })
+        .collect()
 }
 
 async fn submit_mailchimp_batch_operations(
