@@ -287,9 +287,23 @@ pub async fn run_wix_mailchimp_backfill_v1(
         }
     };
 
-    let valid = filter_valid_orders(source_orders);
+    let mut valid = filter_valid_orders(source_orders);
     let manifest_prefix = phase_label(&options.phase);
     let store_decision = discover_store_target(&client, config, options).await?;
+    let existing_order_ids =
+        fetch_existing_mailchimp_order_ids(&client, config, &store_decision.effective_store_id)
+            .await?;
+    if !existing_order_ids.is_empty() {
+        let mut remaining = Vec::with_capacity(valid.kept.len());
+        for order in valid.kept {
+            if existing_order_ids.contains(&stable_order_id(&order.order_id)) {
+                valid.skipped.push(("already_imported_mailchimp".to_string(), order));
+            } else {
+                remaining.push(order);
+            }
+        }
+        valid.kept = remaining;
+    }
     let mut manifest = build_manifest(
         &valid.kept,
         &valid.skipped,
@@ -569,6 +583,46 @@ async fn ensure_store_exists(
         )));
     }
     Ok(())
+}
+
+async fn fetch_existing_mailchimp_order_ids(
+    client: &Client,
+    config: &MailchimpBackfillConfigV1,
+    store_id: &str,
+) -> Result<BTreeSet<String>, BackfillError> {
+    let mut offset = 0usize;
+    let page_size = 1000usize;
+    let mut ids = BTreeSet::new();
+    loop {
+        let payload = mailchimp_get_json(
+            client,
+            config,
+            &format!(
+                "/ecommerce/stores/{store_id}/orders?count={page_size}&offset={offset}&fields=orders.id,total_items"
+            ),
+        )
+        .await?;
+        let orders = payload
+            .get("orders")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let batch_len = orders.len();
+        for order in orders {
+            if let Some(id) = string_path(&order, &["id"]) {
+                ids.insert(id);
+            }
+        }
+        let total_items = payload
+            .get("total_items")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(ids.len() as u64) as usize;
+        offset += batch_len;
+        if batch_len == 0 || offset >= total_items {
+            break;
+        }
+    }
+    Ok(ids)
 }
 
 fn build_mailchimp_order_payload(order: &WixOrderBackfillV1) -> Value {
