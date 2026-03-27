@@ -8,6 +8,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use tokio::time::{sleep, Duration};
 
 /// # NDOC
 /// component: `subsystems::mailchimp_backfill`
@@ -20,9 +21,10 @@ use thiserror::Error;
 
 const DEFAULT_MAILCHIMP_TIMEOUT_SECS: u64 = 60;
 const DEFAULT_WIX_PAGE_LIMIT: u64 = 100;
-const DEFAULT_WRITE_BATCH_SIZE: usize = 100;
+const DEFAULT_WRITE_BATCH_SIZE: usize = 500;
 const DEFAULT_FALLBACK_STORE_ID: &str = "wix_backfill_v1";
 const DEFAULT_OUTPUT_DIR: &str = "exports/mailchimp_backfill";
+const MAILCHIMP_BATCH_POLL_INTERVAL_SECS: u64 = 2;
 
 #[derive(Debug, Error)]
 pub enum BackfillError {
@@ -503,23 +505,30 @@ async fn execute_mailchimp_backfill(
 ) -> Result<Vec<ReconciliationRowV1>, BackfillError> {
     ensure_single_currency(orders)?;
     ensure_store_exists(client, config, effective_store_id, orders).await?;
+    let customer_operations = build_customer_batch_operations(effective_store_id, orders);
+    for chunk in customer_operations.chunks(config.budget.max_orders_per_write_batch) {
+        submit_mailchimp_batch_operations(client, config, chunk).await?;
+    }
+    let product_operations = build_product_batch_operations(effective_store_id, orders);
+    for chunk in product_operations.chunks(config.budget.max_orders_per_write_batch) {
+        submit_mailchimp_batch_operations(client, config, chunk).await?;
+    }
     let mut rows = Vec::with_capacity(orders.len());
     for chunk in orders.chunks(config.budget.max_orders_per_write_batch) {
-        for order in chunk {
-            upsert_mailchimp_customer(client, config, effective_store_id, order).await?;
-            upsert_mailchimp_products(client, config, effective_store_id, order).await?;
-            upsert_mailchimp_order(client, config, effective_store_id, order).await?;
-            upsert_mailchimp_order_lines(client, config, effective_store_id, order).await?;
-            rows.push(ReconciliationRowV1 {
-                order_id: order.order_id.clone(),
-                customer_email: order.customer_email.clone(),
-                currency: order.currency.clone(),
-                source_total: order.total.round_dp(2).to_string(),
-                imported: true,
-                reason: "imported".to_string(),
-                effective_store_id: effective_store_id.to_string(),
-            });
-        }
+        let order_operations = chunk
+            .iter()
+            .map(|order| build_mailchimp_order_operation(effective_store_id, order))
+            .collect::<Vec<_>>();
+        submit_mailchimp_batch_operations(client, config, &order_operations).await?;
+        rows.extend(chunk.iter().map(|order| ReconciliationRowV1 {
+            order_id: order.order_id.clone(),
+            customer_email: order.customer_email.clone(),
+            currency: order.currency.clone(),
+            source_total: order.total.round_dp(2).to_string(),
+            imported: true,
+            reason: "imported".to_string(),
+            effective_store_id: effective_store_id.to_string(),
+        }));
     }
     Ok(rows)
 }
@@ -562,71 +571,8 @@ async fn ensure_store_exists(
     Ok(())
 }
 
-async fn upsert_mailchimp_customer(
-    client: &Client,
-    config: &MailchimpBackfillConfigV1,
-    store_id: &str,
-    order: &WixOrderBackfillV1,
-) -> Result<(), BackfillError> {
-    let email = normalize_email(&order.customer_email);
-    let customer_id = stable_customer_id(&email);
-    let customer_payload = json!({
-        "id": customer_id,
-        "email_address": email,
-        "opt_in_status": false,
-        "first_name": order.customer_first_name.clone().unwrap_or_default(),
-        "last_name": order.customer_last_name.clone().unwrap_or_default(),
-    });
-    let customer_path = format!("/ecommerce/stores/{store_id}/customers/{customer_id}");
-    mailchimp_request_expect_success(
-        client,
-        config,
-        Method::PUT,
-        &customer_path,
-        Some(customer_payload),
-    )
-    .await?;
-    Ok(())
-}
-
-async fn upsert_mailchimp_products(
-    client: &Client,
-    config: &MailchimpBackfillConfigV1,
-    store_id: &str,
-    order: &WixOrderBackfillV1,
-) -> Result<(), BackfillError> {
-    for line in &order.line_items {
-        let product_payload = json!({
-            "id": line.product_id,
-            "title": line.title,
-            "variants": [{
-                "id": line.variant_id,
-                "title": line.title,
-                "sku": line.sku.clone().unwrap_or_default(),
-                "price": line.unit_price.round_dp(2).to_string(),
-                "inventory_quantity": 0
-            }]
-        });
-        let product_path = format!("/ecommerce/stores/{store_id}/products/{}", line.product_id);
-        mailchimp_request_expect_success(
-            client,
-            config,
-            Method::PUT,
-            &product_path,
-            Some(product_payload),
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn upsert_mailchimp_order(
-    client: &Client,
-    config: &MailchimpBackfillConfigV1,
-    store_id: &str,
-    order: &WixOrderBackfillV1,
-) -> Result<(), BackfillError> {
-    let order_payload = json!({
+fn build_mailchimp_order_payload(order: &WixOrderBackfillV1) -> Value {
+    json!({
         "id": stable_order_id(&order.order_id),
         "customer": {"id": stable_customer_id(&normalize_email(&order.customer_email))},
         "currency_code": order.currency,
@@ -637,64 +583,125 @@ async fn upsert_mailchimp_order(
         "tax_total": order.tax_total.round_dp(2).to_string(),
         "shipping_total": order.shipping_total.round_dp(2).to_string(),
         "discount_total": order.discount_total.round_dp(2).to_string(),
-    });
-    let path = format!(
-        "/ecommerce/stores/{store_id}/orders/{}",
-        stable_order_id(&order.order_id)
-    );
-    mailchimp_request_expect_success(client, config, Method::PUT, &path, Some(order_payload))
-        .await?;
-    Ok(())
-}
-
-async fn upsert_mailchimp_order_lines(
-    client: &Client,
-    config: &MailchimpBackfillConfigV1,
-    store_id: &str,
-    order: &WixOrderBackfillV1,
-) -> Result<(), BackfillError> {
-    let order_id = stable_order_id(&order.order_id);
-    let existing = mailchimp_request_expect_success(
-        client,
-        config,
-        Method::GET,
-        &format!("/ecommerce/stores/{store_id}/orders/{order_id}/lines?count=1000"),
-        None,
-    )
-    .await?;
-    let payload: Value = existing.json().await?;
-    let mut existing_ids = BTreeSet::new();
-    if let Some(lines) = payload.get("lines").and_then(|value| value.as_array()) {
-        for line in lines {
-            if let Some(id) = line.get("id").and_then(|value| value.as_str()) {
-                existing_ids.insert(id.to_string());
-            }
-        }
-    }
-    for line in &order.line_items {
-        let body = json!({
+        "lines": order.line_items.iter().map(|line| json!({
             "id": line.line_id,
             "product_id": line.product_id,
             "product_variant_id": line.variant_id,
             "quantity": line.quantity,
             "price": line.unit_price.round_dp(2).to_string(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn build_mailchimp_order_operation(store_id: &str, order: &WixOrderBackfillV1) -> Value {
+    json!({
+        "method": "PUT",
+        "path": format!(
+            "/ecommerce/stores/{store_id}/orders/{}",
+            stable_order_id(&order.order_id)
+        ),
+        "body": serde_json::to_string(&build_mailchimp_order_payload(order)).unwrap_or_default(),
+    })
+}
+
+fn build_customer_batch_operations(store_id: &str, orders: &[WixOrderBackfillV1]) -> Vec<Value> {
+    let mut customers = BTreeMap::<String, Value>::new();
+    for order in orders {
+        let email = normalize_email(&order.customer_email);
+        let customer_id = stable_customer_id(&email);
+        customers.entry(customer_id.clone()).or_insert_with(|| {
+            json!({
+                "method": "PUT",
+                "path": format!("/ecommerce/stores/{store_id}/customers/{customer_id}"),
+                "body": serde_json::to_string(&json!({
+                    "id": customer_id,
+                    "email_address": email,
+                    "opt_in_status": false,
+                    "first_name": order.customer_first_name.clone().unwrap_or_default(),
+                    "last_name": order.customer_last_name.clone().unwrap_or_default(),
+                })).unwrap_or_default(),
+            })
         });
-        let path = if existing_ids.contains(&line.line_id) {
-            format!(
-                "/ecommerce/stores/{store_id}/orders/{order_id}/lines/{}",
-                line.line_id
-            )
-        } else {
-            format!("/ecommerce/stores/{store_id}/orders/{order_id}/lines")
-        };
-        let method = if existing_ids.contains(&line.line_id) {
-            Method::PATCH
-        } else {
-            Method::POST
-        };
-        mailchimp_request_expect_success(client, config, method, &path, Some(body)).await?;
     }
-    Ok(())
+    customers.into_values().collect()
+}
+
+fn build_product_batch_operations(store_id: &str, orders: &[WixOrderBackfillV1]) -> Vec<Value> {
+    let mut products = BTreeMap::<String, Value>::new();
+    for order in orders {
+        for line in &order.line_items {
+            products.entry(line.product_id.clone()).or_insert_with(|| {
+                json!({
+                    "method": "PUT",
+                    "path": format!("/ecommerce/stores/{store_id}/products/{}", line.product_id),
+                    "body": serde_json::to_string(&json!({
+                        "id": line.product_id,
+                        "title": line.title,
+                        "variants": [{
+                            "id": line.variant_id,
+                            "title": line.title,
+                            "sku": line.sku.clone().unwrap_or_default(),
+                            "price": line.unit_price.round_dp(2).to_string(),
+                            "inventory_quantity": 0
+                        }]
+                    })).unwrap_or_default(),
+                })
+            });
+        }
+    }
+    products.into_values().collect()
+}
+
+async fn submit_mailchimp_batch_operations(
+    client: &Client,
+    config: &MailchimpBackfillConfigV1,
+    operations: &[Value],
+) -> Result<(), BackfillError> {
+    if operations.is_empty() {
+        return Ok(());
+    }
+    let response = mailchimp_request_expect_success(
+        client,
+        config,
+        Method::POST,
+        "/batches",
+        Some(json!({ "operations": operations })),
+    )
+    .await?;
+    let payload: Value = response.json().await?;
+    let batch_id = string_path(&payload, &["id"])
+        .ok_or_else(|| BackfillError::Message("mailchimp batch response missing id".to_string()))?;
+    loop {
+        sleep(Duration::from_secs(MAILCHIMP_BATCH_POLL_INTERVAL_SECS)).await;
+        let status_payload =
+            mailchimp_get_json(client, config, &format!("/batches/{batch_id}")).await?;
+        let status = string_path(&status_payload, &["status"])
+            .unwrap_or_else(|| "unknown".to_string())
+            .to_ascii_lowercase();
+        if status == "finished" {
+            let errored = status_payload
+                .get("errored_operations")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(0);
+            if errored > 0 {
+                let response_body_url = string_path(&status_payload, &["response_body_url"])
+                    .unwrap_or_default();
+                return Err(BackfillError::Message(format!(
+                    "mailchimp batch {batch_id} finished with {errored} errored operations; response_body_url={response_body_url}"
+                )));
+            }
+            return Ok(());
+        }
+        if matches!(
+            status.as_str(),
+            "pending" | "preprocessing" | "started" | "finalizing"
+        ) {
+            continue;
+        }
+        return Err(BackfillError::Message(format!(
+            "mailchimp batch {batch_id} entered unexpected status {status}"
+        )));
+    }
 }
 
 async fn fetch_wix_orders_api(
@@ -1472,5 +1479,50 @@ mod tests {
             order.line_items[0].sku.as_deref(),
             Some("NDP-04140031B1C1T")
         );
+    }
+
+    #[test]
+    fn batch_builders_dedupe_customers_and_products() {
+        let shared_line = WixOrderLineItemBackfillV1 {
+            line_id: "l1".to_string(),
+            product_id: "p1".to_string(),
+            variant_id: "v1".to_string(),
+            title: "Product".to_string(),
+            sku: Some("SKU".to_string()),
+            quantity: 1,
+            unit_price: Decimal::from(10),
+            line_total: Decimal::from(10),
+        };
+        let base = WixOrderBackfillV1 {
+            order_id: "1".to_string(),
+            created_at_utc: Utc::now().to_rfc3339(),
+            paid_at_utc: None,
+            order_status: "paid".to_string(),
+            financial_status: Some("PAID".to_string()),
+            fulfillment_status: Some("FULFILLED".to_string()),
+            customer_email: "test@example.com".to_string(),
+            customer_first_name: Some("Test".to_string()),
+            customer_last_name: Some("User".to_string()),
+            currency: "USD".to_string(),
+            total: Decimal::from(10),
+            subtotal: Decimal::from(10),
+            tax_total: Decimal::ZERO,
+            shipping_total: Decimal::ZERO,
+            discount_total: Decimal::ZERO,
+            line_items: vec![shared_line.clone()],
+            shipping_address: None,
+            billing_address: None,
+            source_payload_ref: None,
+        };
+        let second = WixOrderBackfillV1 {
+            order_id: "2".to_string(),
+            line_items: vec![shared_line],
+            ..base.clone()
+        };
+        let customers =
+            build_customer_batch_operations("wix_backfill_v1", &[base.clone(), second.clone()]);
+        let products = build_product_batch_operations("wix_backfill_v1", &[base, second]);
+        assert_eq!(customers.len(), 1);
+        assert_eq!(products.len(), 1);
     }
 }
