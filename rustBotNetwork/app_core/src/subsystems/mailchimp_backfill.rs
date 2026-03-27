@@ -705,23 +705,32 @@ async fn fetch_wix_orders_api(
     let wix_api_credential = config.wix_api_token.clone().ok_or_else(|| {
         BackfillError::Message("WIX_API_TOKEN is required for api source mode".to_string())
     })?;
-    let mut cursor: Option<String> = None;
+    let page_limit = config
+        .budget
+        .max_source_page_size
+        .min(DEFAULT_WIX_PAGE_LIMIT);
     let mut out = Vec::new();
+    let mut seen_order_ids = std::collections::HashSet::new();
+    let mut seen_cursors = BTreeSet::new();
+    let mut cursor: Option<String> = None;
+
     loop {
-        let mut body = json!({
-            "query": {
-                "sort": [{"fieldName":"createdDate","order":"ASC"}]
-            },
+        if !options.all_history && !out.is_empty() {
+            break;
+        }
+        let mut search = json!({
+            "sort": [{"fieldName":"createdDate","order":"ASC"}],
             "cursorPaging": {
-                "limit": config.budget.max_source_page_size.min(DEFAULT_WIX_PAGE_LIMIT)
+                "limit": page_limit
             }
         });
         if let Some(cursor_value) = cursor.as_ref() {
-            body["cursorPaging"] = json!({
-                "cursor": cursor_value,
-                "limit": config.budget.max_source_page_size.min(DEFAULT_WIX_PAGE_LIMIT)
+            search["cursorPaging"] = json!({
+                "limit": page_limit,
+                "cursor": cursor_value
             });
         }
+        let body = json!({ "search": search });
         let response = client
             .post("https://www.wixapis.com/ecom/v1/orders/search")
             .bearer_auth(wix_api_credential.clone())
@@ -744,7 +753,11 @@ async fn fetch_wix_orders_api(
             .cloned()
             .unwrap_or_default();
         for item in items {
-            out.push(parse_wix_api_order(item)?);
+            let order = parse_wix_api_order(item)?;
+            if !seen_order_ids.insert(order.order_id.clone()) {
+                continue;
+            }
+            out.push(order);
             if let Some(max_orders) = options.max_orders {
                 if out.len() >= max_orders {
                     out.truncate(max_orders);
@@ -755,31 +768,34 @@ async fn fetch_wix_orders_api(
                 return Ok(out);
             }
         }
-        cursor = payload
+        let next_cursor = payload
             .get("metadata")
             .and_then(|value| value.get("cursors"))
             .and_then(|value| value.get("next"))
             .and_then(|value| value.as_str())
-            .map(|value| value.to_string())
-            .or_else(|| {
-                payload
-                    .get("pagingMetadata")
-                    .and_then(|value| value.get("cursors"))
-                    .and_then(|value| value.get("next"))
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string())
-            })
-            .or_else(|| {
-                payload
-                    .get("cursors")
-                    .and_then(|value| value.get("next"))
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string())
-            });
-        if cursor.is_none() || (!options.all_history && !out.is_empty()) {
+            .map(|value| value.to_string());
+        let has_next = payload
+            .get("metadata")
+            .and_then(|value| value.get("hasNext"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        if !has_next || next_cursor.is_none() {
             break;
         }
+        let next_cursor = next_cursor.expect("checked is_some");
+        if !seen_cursors.insert(next_cursor.clone()) {
+            return Err(BackfillError::Message(
+                "wix orders search cursor cycle detected".to_string(),
+            ));
+        }
+        cursor = Some(next_cursor);
     }
+
+    out.sort_by(|left, right| {
+        left.created_at_utc
+            .cmp(&right.created_at_utc)
+            .then_with(|| left.order_id.cmp(&right.order_id))
+    });
     Ok(out)
 }
 
