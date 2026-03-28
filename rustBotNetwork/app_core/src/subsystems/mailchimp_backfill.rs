@@ -519,6 +519,14 @@ async fn execute_mailchimp_backfill(
 ) -> Result<Vec<ReconciliationRowV1>, BackfillError> {
     ensure_single_currency(orders)?;
     ensure_store_exists(client, config, effective_store_id, orders).await?;
+    let customer_operations = build_customer_batch_operations(effective_store_id, orders);
+    for chunk in customer_operations.chunks(config.budget.max_orders_per_write_batch) {
+        submit_mailchimp_batch_operations(client, config, chunk).await?;
+    }
+    let product_operations = build_product_batch_operations(effective_store_id, orders);
+    for chunk in product_operations.chunks(config.budget.max_orders_per_write_batch) {
+        submit_mailchimp_batch_operations(client, config, chunk).await?;
+    }
     let mut rows = Vec::with_capacity(orders.len());
     for chunk in orders.chunks(config.budget.max_orders_per_write_batch) {
         let order_operations = chunk
