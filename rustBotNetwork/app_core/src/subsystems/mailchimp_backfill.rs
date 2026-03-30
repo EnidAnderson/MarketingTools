@@ -626,9 +626,16 @@ async fn fetch_existing_mailchimp_order_ids(
 }
 
 fn build_mailchimp_order_payload(order: &WixOrderBackfillV1) -> Value {
+    let normalized_email = normalize_email(&order.customer_email);
     json!({
         "id": stable_order_id(&order.order_id),
-        "customer": {"id": stable_customer_id(&normalize_email(&order.customer_email))},
+        "customer": {
+            "id": stable_customer_id(&normalized_email),
+            "email_address": normalized_email,
+            "opt_in_status": false,
+            "first_name": order.customer_first_name.clone().unwrap_or_default(),
+            "last_name": order.customer_last_name.clone().unwrap_or_default(),
+        },
         "currency_code": order.currency,
         "order_total": order.total.round_dp(2).to_string(),
         "processed_at_foreign": order.paid_at_utc.clone().unwrap_or_else(|| order.created_at_utc.clone()),
